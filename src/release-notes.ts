@@ -20,6 +20,16 @@ export function isSemanticVersion(version: string): boolean {
 
 export const bundledReleaseNotes: readonly ReleaseNote[] = [
   {
+    version: '0.1.1-beta.1',
+    releaseDate: '2026-07-21',
+    summary: 'A focused beta update improves the visual clarity of dialogs.',
+    changes: {
+      new: [],
+      improved: [],
+      fixed: ['Dialogs now use an opaque background for clearer focus.'],
+    },
+  },
+  {
     version: '0.1.0-beta.1',
     releaseDate: '2026-07-21',
     summary:
