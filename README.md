@@ -6,6 +6,8 @@
 
 **Keep agent work grounded.**
 
+![Pi Workspace showing a Workstream for reliable offline editing](./assets/pi-workspace-product-screenshot.png)
+
 Pi Workspace is a local desktop app for working with [Pi](https://github.com/earendil-works/pi) across Git repositories and long-running goals. Plan, implement, and pick up where you left off.
 
 > [!IMPORTANT]
