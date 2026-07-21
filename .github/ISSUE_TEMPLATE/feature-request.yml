@@ -1,0 +1,52 @@
+name: Feature request
+description: Propose an outcome or improvement for Pi Workspace
+title: '[Feature]: '
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the problem before proposing implementation details. Search existing issues and the current beta scope first.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What user or contributor problem should Pi Workspace solve?
+    validations:
+      required: true
+
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: What should become possible, and how would someone know the problem is solved?
+    validations:
+      required: true
+
+  - type: textarea
+    id: current-workaround
+    attributes:
+      label: Current workaround
+      description: How is this handled today, if at all?
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope and constraints
+      description: Include relevant Workspaces, Repositories, Workstreams, Sessions, platforms, permissions, compatibility, or non-goals.
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context
+      description: Add sanitized examples, sketches, or links. Do not include credentials or private repository contents.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched for an existing request.
+          required: true
+        - label: I described the problem and desired outcome rather than only an implementation.
+          required: true

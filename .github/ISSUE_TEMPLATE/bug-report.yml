@@ -1,0 +1,76 @@
+name: Bug report
+description: Report reproducible incorrect behavior in Pi Workspace
+title: '[Bug]: '
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting a bug. Do not include credentials, private repository contents, or vulnerability details. Report security issues through SECURITY.md instead.
+
+  - type: input
+    id: version
+    attributes:
+      label: Pi Workspace version
+      description: Use the version shown in the release or application Changelog.
+      placeholder: 0.2.0-beta.1
+    validations:
+      required: true
+
+  - type: dropdown
+    id: operating-system
+    attributes:
+      label: Operating system
+      options:
+        - Debian 12 x86_64
+        - Debian 13 x86_64
+        - macOS 12 or later (universal)
+        - Unsupported operating system
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Describe the incorrect behavior and its effect.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: Provide the smallest reliable sequence that reproduces the problem.
+      placeholder: |
+        1. Open…
+        2. Select…
+        3. Observe…
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should have happened instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Relevant diagnostics
+      description: Add sanitized logs, screenshots, or other context. Remove credentials, personal data, and private repository contents.
+      render: shell
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I reproduced this on the latest beta release.
+          required: true
+        - label: I searched for an existing issue.
+          required: true
+        - label: This report does not contain confidential vulnerability details.
+          required: true

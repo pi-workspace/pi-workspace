@@ -1,0 +1,228 @@
+import { contextBridge, ipcRenderer } from 'electron'
+import type { ApplicationStateBridge, CreateWorkspaceOutcome } from '@/src/application-state-ipc'
+import type { WorkspaceMembershipUpdate, WorkspacesSnapshot } from '@/src/application-state'
+import { applicationStateIpcChannels } from '@/src/application-state-ipc'
+import type { ComposerBridge, SessionMessageSubmissionResult, SessionRunStopResult } from '@/src/composer'
+import type { PiWorkspaceBridge } from '@/src/pi-workspace'
+import { composerIpcChannels } from '@/src/composer-ipc'
+import type {
+  SessionConfigurationBridge,
+  SessionConfigurationCommandResult,
+  SessionConfigurationMutation,
+  SessionConfigurationSnapshot,
+} from '@/src/session-configuration'
+import { sessionConfigurationIpcChannels } from '@/src/session-configuration-ipc'
+import type { SettingsBridge, SettingsSnapshot, SettingsUpdate } from '@/src/settings'
+import type { WorkstreamsBridge, WorkstreamCreationOutcome } from '@/src/workstreams'
+import { workstreamsIpcChannels } from '@/src/workstreams-ipc'
+import type { WorkstreamKnowledgeBridge } from '@/src/workstream-knowledge-ipc'
+import type { WorkstreamKnowledge } from '@/src/domain/workstream-knowledge-transitions'
+import { workstreamKnowledgeIpcChannels } from '@/src/workstream-knowledge-ipc'
+import { settingsIpcChannels } from '@/src/settings-ipc'
+import type { AgentActivityDetails, SessionWorkingStateSnapshot } from '@/src/session-timeline'
+import type {
+  SessionTranscriptBridge,
+  SessionTranscriptMutation,
+  SessionTranscriptSnapshot,
+} from '@/src/session-transcript'
+import { sessionTranscriptIpcChannels } from '@/src/session-transcript-ipc'
+
+const settingsBridge: SettingsBridge = {
+  getSnapshot() {
+    return ipcRenderer.invoke(settingsIpcChannels.getSnapshot) as Promise<SettingsSnapshot>
+  },
+  update(update: SettingsUpdate) {
+    return ipcRenderer.invoke(settingsIpcChannels.update, update) as Promise<SettingsSnapshot>
+  },
+  subscribe(listener) {
+    const handleChange = (_event: Electron.IpcRendererEvent, snapshot: SettingsSnapshot) => {
+      listener(snapshot)
+    }
+
+    ipcRenderer.on(settingsIpcChannels.changed, handleChange)
+
+    return () => {
+      ipcRenderer.removeListener(settingsIpcChannels.changed, handleChange)
+    }
+  },
+}
+
+const applicationStateBridge: ApplicationStateBridge = {
+  getStartup() {
+    return ipcRenderer.invoke(applicationStateIpcChannels.getStartup)
+  },
+  createBackup() {
+    return ipcRenderer.invoke(applicationStateIpcChannels.createBackup)
+  },
+  reset(confirmation) {
+    return ipcRenderer.invoke(applicationStateIpcChannels.reset, confirmation)
+  },
+  getWorkspaces() {
+    return ipcRenderer.invoke(applicationStateIpcChannels.getWorkspaces)
+  },
+  createWorkspace(name) {
+    return ipcRenderer.invoke(applicationStateIpcChannels.createWorkspace, name) as Promise<CreateWorkspaceOutcome>
+  },
+  renameWorkspace(workspaceId, name) {
+    return ipcRenderer.invoke(
+      applicationStateIpcChannels.renameWorkspace,
+      workspaceId,
+      name
+    ) as Promise<WorkspacesSnapshot>
+  },
+  addWorkspaceRepositories(workspaceId) {
+    return ipcRenderer.invoke(
+      applicationStateIpcChannels.addWorkspaceRepositories,
+      workspaceId
+    ) as Promise<CreateWorkspaceOutcome>
+  },
+  removeWorkspaceRepository(workspaceId, membershipId) {
+    return ipcRenderer.invoke(
+      applicationStateIpcChannels.removeWorkspaceRepository,
+      workspaceId,
+      membershipId
+    ) as Promise<WorkspacesSnapshot>
+  },
+  updateWorkspaceMembership(workspaceId, membershipId, update: WorkspaceMembershipUpdate) {
+    return ipcRenderer.invoke(
+      applicationStateIpcChannels.updateWorkspaceMembership,
+      workspaceId,
+      membershipId,
+      update
+    ) as Promise<WorkspacesSnapshot>
+  },
+}
+
+const workstreamsBridge: WorkstreamsBridge = {
+  getSnapshot(workspaceId) {
+    return ipcRenderer.invoke(workstreamsIpcChannels.getSnapshot, workspaceId)
+  },
+  previewWorktreeLocations(workspaceId, repositoryId) {
+    return ipcRenderer.invoke(workstreamsIpcChannels.previewWorktreeLocations, { workspaceId, repositoryId })
+  },
+  createWorkstream(workspaceId, options) {
+    return ipcRenderer.invoke(workstreamsIpcChannels.createWorkstream, {
+      workspaceId,
+      ...options,
+    }) as Promise<WorkstreamCreationOutcome>
+  },
+  createQuickSession(workspaceId, options) {
+    return ipcRenderer.invoke(workstreamsIpcChannels.createQuickSession, {
+      workspaceId,
+      ...options,
+    }) as Promise<WorkstreamCreationOutcome>
+  },
+  createSession(workstreamId, options) {
+    return ipcRenderer.invoke(workstreamsIpcChannels.createSession, {
+      workstreamId,
+      ...options,
+    }) as Promise<WorkstreamCreationOutcome>
+  },
+  setLifecycle(workstreamId, lifecycle) {
+    return ipcRenderer.invoke(workstreamsIpcChannels.setLifecycle, { workstreamId, lifecycle })
+  },
+  renameSession(sessionId, title) {
+    return ipcRenderer.invoke(workstreamsIpcChannels.renameSession, { sessionId, title })
+  },
+  showWorkingLocation(workstreamId, repositoryId) {
+    return ipcRenderer.invoke(workstreamsIpcChannels.showWorkingLocation, { workstreamId, repositoryId })
+  },
+}
+
+const workstreamKnowledgeBridge: WorkstreamKnowledgeBridge = {
+  get(workstreamId) {
+    return ipcRenderer.invoke(workstreamKnowledgeIpcChannels.get, workstreamId)
+  },
+  mutate(workstreamId, command) {
+    return ipcRenderer.invoke(workstreamKnowledgeIpcChannels.mutate, workstreamId, command)
+  },
+  subscribe(listener) {
+    const handleChange = (_event: Electron.IpcRendererEvent, state: WorkstreamKnowledge) => listener(state)
+
+    ipcRenderer.on(workstreamKnowledgeIpcChannels.changed, handleChange)
+
+    return () => ipcRenderer.removeListener(workstreamKnowledgeIpcChannels.changed, handleChange)
+  },
+}
+
+const composerBridge: ComposerBridge = {
+  submit(submission) {
+    return ipcRenderer.invoke(composerIpcChannels.submit, submission) as Promise<SessionMessageSubmissionResult>
+  },
+  stop(sessionId) {
+    return ipcRenderer.invoke(composerIpcChannels.stop, { sessionId }) as Promise<SessionRunStopResult>
+  },
+}
+
+const sessionConfigurationBridge: SessionConfigurationBridge = {
+  getSnapshot(sessionId) {
+    return ipcRenderer.invoke(sessionConfigurationIpcChannels.getSnapshot, {
+      sessionId,
+    }) as Promise<SessionConfigurationSnapshot>
+  },
+  setModel(sessionId, model) {
+    return ipcRenderer.invoke(sessionConfigurationIpcChannels.setModel, {
+      sessionId,
+      model,
+    }) as Promise<SessionConfigurationCommandResult>
+  },
+  setEffort(sessionId, effort) {
+    return ipcRenderer.invoke(sessionConfigurationIpcChannels.setEffort, {
+      sessionId,
+      effort,
+    }) as Promise<SessionConfigurationCommandResult>
+  },
+  dismissWarning(sessionId) {
+    return ipcRenderer.invoke(sessionConfigurationIpcChannels.dismissWarning, {
+      sessionId,
+    }) as Promise<SessionConfigurationSnapshot>
+  },
+  subscribe(sessionId, listener) {
+    const handleChange = (_event: Electron.IpcRendererEvent, mutation: SessionConfigurationMutation) =>
+      listener(mutation)
+
+    const channel = sessionConfigurationIpcChannels.changed(sessionId)
+    ipcRenderer.on(channel, handleChange)
+
+    return () => ipcRenderer.removeListener(channel, handleChange)
+  },
+}
+
+const sessionTranscriptBridge: SessionTranscriptBridge = {
+  getSnapshot(sessionId) {
+    return ipcRenderer.invoke(sessionTranscriptIpcChannels.getSnapshot, {
+      sessionId,
+    }) as Promise<SessionTranscriptSnapshot>
+  },
+  getWorkingStateSnapshots() {
+    return ipcRenderer.invoke(sessionTranscriptIpcChannels.getWorkingStateSnapshots) as Promise<
+      readonly SessionWorkingStateSnapshot[]
+    >
+  },
+  loadActivityDetails(sessionId, activityId) {
+    return ipcRenderer.invoke(sessionTranscriptIpcChannels.loadActivityDetails, { sessionId, activityId }) as Promise<
+      AgentActivityDetails | undefined
+    >
+  },
+  openExternalLink(url) {
+    return ipcRenderer.invoke(sessionTranscriptIpcChannels.openExternalLink, url) as Promise<void>
+  },
+  subscribe(listener) {
+    const handleChange = (_event: Electron.IpcRendererEvent, mutation: SessionTranscriptMutation) => listener(mutation)
+    ipcRenderer.on(sessionTranscriptIpcChannels.changed, handleChange)
+
+    return () => ipcRenderer.removeListener(sessionTranscriptIpcChannels.changed, handleChange)
+  },
+}
+
+const piWorkspaceBridge: PiWorkspaceBridge = {
+  applicationState: applicationStateBridge,
+  composer: composerBridge,
+  sessionConfiguration: sessionConfigurationBridge,
+  transcript: sessionTranscriptBridge,
+  settings: settingsBridge,
+  workstreams: workstreamsBridge,
+  workstreamKnowledge: workstreamKnowledgeBridge,
+}
+
+contextBridge.exposeInMainWorld('piWorkspace', piWorkspaceBridge)

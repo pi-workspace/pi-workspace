@@ -1,0 +1,33 @@
+# Error recovery boundaries
+
+Pi Workspace keeps failures at the narrowest recoverable boundary. A failed Workspace, Workstream, Session, or control must not disable an unrelated resource. Renderer messages are intentionally safe summaries; implementation errors and provider details belong only in local diagnostic logs.
+
+| Boundary                         | Scope                | User state                                               | Recovery                                                         | Preserved state and continuation                                                                | Diagnostic logging                                    |
+| -------------------------------- | -------------------- | -------------------------------------------------------- | ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| SQLite application authority     | Application          | Recovery-only screen                                     | Back up or reset authority                                       | Repository files and Pi history remain untouched; normal use waits for repair                   | Local authority error                                 |
+| Main-process initialization      | Window               | Startup recovery page                                    | Restart Pi Workspace                                             | Saved Workspaces and Sessions remain on disk                                                    | Initialization error                                  |
+| Renderer load or process         | Window               | Window recovery page                                     | Restart Pi Workspace                                             | Saved Workspaces and Sessions remain on disk                                                    | Load/process error                                    |
+| Unexpected React render          | Window               | Renderer fallback                                        | Reload Pi Workspace                                              | Saved state remains on disk; in-memory UI state is not promised                                 | Error and component stack                             |
+| Workspace list                   | Application content  | Failed load screen                                       | Retry Workspace load                                             | Recovery authority and settings stay active                                                     | IPC rejection detail                                  |
+| Selected Workspace’s Workstreams | Workspace            | Failed content state                                     | Retry that Workspace                                             | Other Workspaces remain selectable; Session drafts are retained while the shell remains mounted | Workspace-scoped rejection detail                     |
+| Workstream Knowledge             | Workstream           | Failed durable knowledge load                            | Existing local reload                                            | Other Workstreams and Sessions continue                                                         | Workstream-scoped rejection detail                    |
+| Session message history          | Session              | Failed transcript state, never an empty transcript       | Reload messages                                                  | Other Session panes and drafts continue                                                         | No provider/runtime detail in the renderer            |
+| Session timeline                 | Session              | Failed timeline state in the active transcript           | Reload timeline                                                  | Loaded messages, other Sessions, and drafts continue                                            | No provider/runtime detail in the renderer            |
+| Submission before acceptance     | Session Composer     | Typed rejection guidance                                 | Correct configuration/state and submit the preserved draft again | Exact draft remains; other Sessions continue                                                    | Boundary error only                                   |
+| Agent Run after acceptance       | Agent Run            | Transcript-local failure                                 | Submit a later message                                           | Accepted transcript and sibling Sessions continue                                               | Provider/runtime error locally; generic renderer copy |
+| External link                    | Confirmation control | Inline failure in the confirmation                       | Try opening again or cancel                                      | Transcript and all Session state remain available                                               | Shell rejection detail is not rendered                |
+| `settings.json` read             | Settings control     | Default appearance plus warning                          | Fix/remove the file and restart                                  | Application authority and Session work continue                                                 | Malformed/read/permission error                       |
+| `settings.json` write            | Settings control     | Update rejects without changing the effective preference | Free space/fix permissions and retry the control                 | Last confirmed setting remains active; atomic replacement protects the prior file               | Write error through rejected IPC                      |
+
+## Fault injection
+
+Before release, exercise these cases against a packaged build:
+
+1. Make `settings.json` malformed and unreadable; confirm the warning and unaffected Workspace/Session use.
+2. Deny or exhaust space for a settings write; confirm the old file and effective preference remain unchanged.
+3. Remove a Repository checkout and a Session history path independently; confirm only owning resources become unavailable.
+4. Reject Workspace, Workstream, message-history, and timeline IPC reads; confirm each retry is local.
+5. Reject runtime creation, run-lease acquisition, and Pi preflight; confirm the exact draft remains.
+6. Fail an accepted provider run; confirm only that transcript reports failure and provider detail stays out of renderer copy.
+7. Fail the renderer URL and terminate its process; confirm the window recovery page can restart the application.
+8. Reject `shell.openExternal`; confirm the link dialog stays open and can retry or cancel.

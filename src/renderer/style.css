@@ -1,0 +1,330 @@
+@import 'tailwindcss';
+
+@source './';
+@source '../../components/ui-kit';
+@source '../../node_modules/streamdown/dist/*.js';
+@source '../../node_modules/@streamdown/code/dist/*.js';
+
+@custom-variant dark (&:where([data-color-scheme='dark'], [data-color-scheme='dark'] *));
+
+@theme {
+  --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+@theme inline {
+  --color-accent: var(--theme-accent);
+  --color-accent-foreground: var(--theme-accent-foreground);
+  --color-content-background: var(--theme-content-background);
+  --color-content-border: var(--theme-content-border);
+  --color-content-foreground: var(--theme-content-foreground);
+  --color-content-hover-border: var(--theme-content-hover-border);
+  --color-content-interaction: var(--theme-content-interaction);
+  --color-content-interaction-strong: var(--theme-content-interaction-strong);
+  --color-content-muted-foreground: var(--theme-content-muted-foreground);
+  --color-content-subtle-background: var(--theme-content-subtle-background);
+  --color-control-background: var(--theme-control-background);
+  --color-control-disabled-background: var(--theme-control-disabled-background);
+  --color-danger-background: var(--theme-danger-background);
+  --color-danger-border: var(--theme-danger-border);
+  --color-danger-foreground: var(--theme-danger-foreground);
+  --color-danger-on-background: var(--theme-danger-on-background);
+  --color-dropdown-background: var(--theme-dropdown-background);
+  --color-dropdown-focus-foreground: var(--theme-dropdown-focus-foreground);
+  --color-overlay-background: var(--theme-overlay-background);
+  --color-success-background: var(--theme-success-background);
+  --color-success-foreground: var(--theme-success-foreground);
+  --color-activity-background: var(--theme-activity-background);
+  --color-activity-border: var(--theme-activity-border);
+  --color-activity-blocked: var(--theme-activity-blocked);
+  --color-activity-completed: var(--theme-activity-completed);
+  --color-activity-failed: var(--theme-activity-failed);
+  --color-activity-running: var(--theme-activity-running);
+  --color-changelog-list-marker: var(--theme-changelog-list-marker);
+  --color-background: var(--theme-session-message-code-background);
+  --color-border: var(--theme-session-message-code-border);
+  --color-composer-action-background: var(--theme-composer-action-background);
+  --color-composer-action-foreground: var(--theme-composer-action-foreground);
+  --color-composer-background: var(--theme-composer-background);
+  --color-composer-border: var(--theme-composer-border);
+  --color-composer-error-foreground: var(--theme-composer-error-foreground);
+  --color-composer-foreground: var(--theme-composer-foreground);
+  --color-composer-interaction: var(--theme-composer-interaction);
+  --color-composer-muted-foreground: var(--theme-composer-muted-foreground);
+  --color-composer-reference-background: var(--theme-composer-reference-background);
+  --color-composer-reference-border: var(--theme-composer-reference-border);
+  --color-composer-reference-foreground: var(--theme-composer-reference-foreground);
+  --color-focus-ring: var(--theme-focus-ring);
+  --color-form-error-foreground: var(--theme-form-error-foreground);
+  --color-message-user-background: var(--theme-message-user-background);
+  --color-foreground: var(--theme-session-message-code-foreground);
+  --color-muted: var(--theme-session-message-code-background);
+  --color-muted-foreground: var(--theme-session-message-status-foreground);
+  --color-primary: var(--theme-session-message-link-foreground);
+  --color-sidebar: var(--theme-sidebar-background);
+  --color-session-interaction: var(--theme-session-interaction);
+  --color-session-header-active-background: var(--theme-session-header-active-background);
+  --color-session-pin: var(--theme-session-pin);
+  --color-session-pin-active: var(--theme-session-pin-active);
+  --color-session-message-code-background: var(--theme-session-message-code-background);
+  --color-session-message-code-border: var(--theme-session-message-code-border);
+  --color-session-message-code-foreground: var(--theme-session-message-code-foreground);
+  --color-session-message-error-foreground: var(--theme-session-message-error-foreground);
+  --color-session-message-label-foreground: var(--theme-session-message-label-foreground);
+  --color-session-message-link-foreground: var(--theme-session-message-link-foreground);
+  --color-session-message-person-background: var(--theme-session-message-person-background);
+  --color-session-message-person-border: var(--theme-session-message-person-border);
+  --color-session-message-person-foreground: var(--theme-session-message-person-foreground);
+  --color-session-message-pi-foreground: var(--theme-session-message-pi-foreground);
+  --color-session-message-status-foreground: var(--theme-session-message-status-foreground);
+  --color-sidebar-border: var(--theme-sidebar-border);
+  --color-sidebar-foreground: var(--theme-sidebar-foreground);
+  --color-sidebar-icon: var(--theme-sidebar-icon);
+  --color-sidebar-interaction: var(--theme-sidebar-interaction);
+  --color-sidebar-muted-foreground: var(--theme-sidebar-muted-foreground);
+}
+
+:root[data-theme] {
+  --theme-activity-background: var(--theme-content-background);
+  --theme-activity-border: var(--theme-content-border);
+  --theme-composer-action-background: var(--theme-content-foreground);
+  --theme-composer-action-foreground: var(--theme-content-background);
+  --theme-composer-background: var(--theme-content-background);
+  --theme-composer-border: var(--theme-content-border);
+  --theme-composer-error-foreground: var(--theme-danger-foreground);
+  --theme-composer-foreground: var(--theme-content-foreground);
+  --theme-composer-interaction: var(--theme-content-interaction-strong);
+  --theme-composer-muted-foreground: var(--theme-content-muted-foreground);
+  --theme-composer-reference-background: var(--theme-content-subtle-background);
+  --theme-composer-reference-border: var(--theme-content-border);
+  --theme-composer-reference-foreground: var(--theme-content-foreground);
+  --theme-dropdown-focus-foreground: var(--theme-accent-foreground);
+  --theme-focus-ring: var(--theme-accent);
+  --theme-form-error-foreground: var(--theme-danger-foreground);
+  --theme-message-user-background: var(--theme-content-subtle-background);
+  --theme-session-header-active-background: var(--theme-content-subtle-background);
+  --theme-session-interaction: var(--theme-content-interaction);
+  --theme-session-pin: var(--theme-content-muted-foreground);
+  --theme-session-pin-active: var(--theme-content-foreground);
+  --theme-session-message-code-background: var(--theme-content-subtle-background);
+  --theme-session-message-code-border: var(--theme-content-border);
+  --theme-session-message-code-foreground: var(--theme-content-foreground);
+  --theme-session-message-error-foreground: var(--theme-danger-foreground);
+  --theme-session-message-label-foreground: var(--theme-content-muted-foreground);
+  --theme-session-message-link-foreground: var(--theme-link-foreground);
+  --theme-session-message-person-background: var(--theme-content-subtle-background);
+  --theme-session-message-person-border: var(--theme-content-border);
+  --theme-session-message-person-foreground: var(--theme-content-foreground);
+  --theme-session-message-pi-foreground: var(--theme-content-foreground);
+  --theme-session-message-status-foreground: var(--theme-content-muted-foreground);
+  --theme-sidebar-background: var(--theme-content-background);
+  --theme-sidebar-border: var(--theme-content-border);
+  --theme-sidebar-foreground: var(--theme-content-foreground);
+  --theme-sidebar-icon: var(--theme-content-muted-foreground);
+  --theme-sidebar-interaction: var(--theme-content-interaction);
+  --theme-sidebar-muted-foreground: var(--theme-content-muted-foreground);
+}
+
+:root[data-theme='pi-workspace'][data-color-scheme='light'] {
+  color-scheme: light;
+  --theme-accent: #18181b;
+  --theme-accent-foreground: #ffffff;
+  --theme-content-background: #ffffff;
+  --theme-content-border: color-mix(in oklab, #09090b 10%, transparent);
+  --theme-content-foreground: #09090b;
+  --theme-content-hover-border: color-mix(in oklab, #09090b 20%, transparent);
+  --theme-content-interaction: color-mix(in oklab, #09090b 5%, transparent);
+  --theme-content-interaction-strong: color-mix(in oklab, #09090b 10%, transparent);
+  --theme-content-muted-foreground: #52525b;
+  --theme-content-subtle-background: color-mix(in oklab, #09090b 4%, transparent);
+  --theme-session-message-code-background: color-mix(in oklab, #09090b 2%, transparent);
+  --theme-session-message-code-border: color-mix(in oklab, #09090b 7%, transparent);
+  --theme-control-background: #ffffff;
+  --theme-control-disabled-background: color-mix(in oklab, #09090b 5%, transparent);
+  --theme-danger-background: #dc2626;
+  --theme-danger-border: #b91c1c;
+  --theme-danger-foreground: #b91c1c;
+  --theme-danger-on-background: #ffffff;
+  --theme-dropdown-background: color-mix(in oklab, #ffffff 75%, transparent);
+  --theme-link-foreground: #3f3f46;
+  --theme-overlay-background: color-mix(in oklab, #09090b 25%, transparent);
+  --theme-success-background: color-mix(in oklab, #16a34a 15%, transparent);
+  --theme-success-foreground: #15803d;
+  --theme-activity-blocked: #b45309;
+  --theme-activity-completed: #047857;
+  --theme-activity-failed: #b91c1c;
+  --theme-activity-running: var(--theme-content-foreground);
+  --theme-changelog-list-marker: var(--theme-content-foreground);
+}
+
+:root[data-theme='pi-workspace'][data-color-scheme='dark'] {
+  color-scheme: dark;
+  --theme-accent: #fafafa;
+  --theme-accent-foreground: #18181b;
+  --theme-content-background: #18181b;
+  --theme-content-border: color-mix(in oklab, #ffffff 10%, transparent);
+  --theme-content-foreground: #fafafa;
+  --theme-content-hover-border: color-mix(in oklab, #ffffff 20%, transparent);
+  --theme-content-interaction: color-mix(in oklab, #ffffff 7%, transparent);
+  --theme-content-interaction-strong: color-mix(in oklab, #ffffff 12%, transparent);
+  --theme-content-muted-foreground: #a1a1aa;
+  --theme-content-subtle-background: color-mix(in oklab, #ffffff 7%, transparent);
+  --theme-session-message-code-background: color-mix(in oklab, #ffffff 4%, transparent);
+  --theme-session-message-code-border: color-mix(in oklab, #ffffff 7%, transparent);
+  --theme-control-background: color-mix(in oklab, #ffffff 5%, transparent);
+  --theme-control-disabled-background: color-mix(in oklab, #ffffff 3%, transparent);
+  --theme-danger-background: #dc2626;
+  --theme-danger-border: #b91c1c;
+  --theme-danger-foreground: #f87171;
+  --theme-danger-on-background: #ffffff;
+  --theme-dropdown-background: color-mix(in oklab, #27272a 88%, transparent);
+  --theme-link-foreground: #d4d4d8;
+  --theme-overlay-background: color-mix(in oklab, #09090b 50%, transparent);
+  --theme-success-background: color-mix(in oklab, #22c55e 10%, transparent);
+  --theme-success-foreground: #4ade80;
+  --theme-activity-blocked: #fcd34d;
+  --theme-activity-completed: #6ee7b7;
+  --theme-activity-failed: #f87171;
+  --theme-activity-running: var(--theme-content-foreground);
+  --theme-changelog-list-marker: var(--theme-content-foreground);
+}
+
+:root[data-theme='one'][data-color-scheme='light'] {
+  color-scheme: light;
+  --theme-accent: #366ed8;
+  --theme-accent-foreground: #ffffff;
+  --theme-content-background: #fafafa;
+  --theme-content-border: #d7d7d8;
+  --theme-content-foreground: #383a42;
+  --theme-content-hover-border: #a0a1a7;
+  --theme-content-interaction: #eeeeef;
+  --theme-content-interaction-strong: #e5e5e6;
+  --theme-content-muted-foreground: #696c77;
+  --theme-content-subtle-background: #f0f0f1;
+  --theme-session-message-code-background: #f5f5f6;
+  --theme-session-message-code-border: #e5e5e6;
+  --theme-control-background: #ffffff;
+  --theme-control-disabled-background: #eeeeef;
+  --theme-danger-background: #c43e34;
+  --theme-danger-border: #a9342c;
+  --theme-danger-foreground: #c43e34;
+  --theme-danger-on-background: #ffffff;
+  --theme-dropdown-background: color-mix(in oklab, #ffffff 92%, transparent);
+  --theme-link-foreground: #326bcf;
+  --theme-overlay-background: color-mix(in oklab, #383a42 25%, transparent);
+  --theme-success-background: color-mix(in oklab, #50a14f 15%, transparent);
+  --theme-success-foreground: #367a36;
+  --theme-activity-blocked: #986801;
+  --theme-activity-completed: #3d843c;
+  --theme-activity-failed: #c43e34;
+  --theme-activity-running: #4078f2;
+  --theme-changelog-list-marker: #a626a4;
+  --theme-sidebar-background: #f2f2f3;
+}
+
+:root[data-theme='one'][data-color-scheme='dark'] {
+  color-scheme: dark;
+  --theme-accent: #61afef;
+  --theme-accent-foreground: #1f2329;
+  --theme-content-background: #282c34;
+  --theme-content-border: #3e4451;
+  --theme-content-foreground: #abb2bf;
+  --theme-content-hover-border: #5c6370;
+  --theme-content-interaction: #323842;
+  --theme-content-interaction-strong: #3a404b;
+  --theme-content-muted-foreground: #9299a6;
+  --theme-content-subtle-background: #2f343e;
+  --theme-session-message-code-background: #2b2f37;
+  --theme-session-message-code-border: #343a44;
+  --theme-control-background: #21252b;
+  --theme-control-disabled-background: #2c313a;
+  --theme-danger-background: #e06c75;
+  --theme-danger-border: #be5962;
+  --theme-danger-foreground: #e47780;
+  --theme-danger-on-background: #1f2329;
+  --theme-dropdown-background: color-mix(in oklab, #21252b 94%, transparent);
+  --theme-link-foreground: #61afef;
+  --theme-overlay-background: color-mix(in oklab, #181a1f 60%, transparent);
+  --theme-success-background: color-mix(in oklab, #98c379 12%, transparent);
+  --theme-success-foreground: #98c379;
+  --theme-activity-blocked: #e5c07b;
+  --theme-activity-completed: #98c379;
+  --theme-activity-failed: #e06c75;
+  --theme-activity-running: #61afef;
+  --theme-changelog-list-marker: #c678dd;
+  --theme-sidebar-background: #21252b;
+}
+
+[data-streamdown='code-block'] {
+  border-color: var(--theme-session-message-code-border);
+  background: var(--theme-session-message-code-background);
+}
+
+[data-streamdown='code-block-body'] {
+  border-color: var(--theme-session-message-code-border);
+  background: transparent;
+}
+
+[data-streamdown='code-block-body'] pre {
+  background: transparent;
+}
+
+html,
+body,
+#app {
+  min-height: 100%;
+}
+
+.session-pane {
+  container-name: session-pane;
+  container-type: inline-size;
+}
+
+.composer-editable {
+  max-height: 10.75rem;
+}
+
+.session-messages-reading-column {
+  padding: 1rem;
+}
+
+@container session-pane (min-width: 520px) {
+  .composer-tray {
+    padding-inline: 1.5rem;
+  }
+
+  .composer-editable {
+    max-height: 13.75rem;
+  }
+
+  .composer-configuration-controls {
+    flex-direction: row;
+  }
+
+  .session-messages-reading-column {
+    padding-inline: 1.5rem;
+  }
+}
+
+@media (forced-colors: active) {
+  .composer-editable:focus {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+
+  .composer-tray button:focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
+
+  .activity-card,
+  .activity-card summary:focus-visible {
+    border-color: CanvasText;
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
+
+  .session-message-interface button:focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
+}

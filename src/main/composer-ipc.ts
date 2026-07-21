@@ -1,0 +1,602 @@
+import { app, shell } from 'electron'
+import type { SessionManager } from '@earendil-works/pi-coding-agent'
+import type { SessionMessageSubmissionResult, SessionRunStopResult } from '@/src/composer'
+import type { ManagedSessionRuntimePolicy } from '@/src/domain/managed-session'
+import type {
+  WorkstreamKnowledgeCommand,
+  WorkstreamKnowledgeMutationResult,
+} from '@/src/domain/workstream-knowledge-transitions'
+import { composerIpcChannels, parseSessionMessageSubmission, parseSessionRunStopRequest } from '@/src/composer-ipc'
+import { sessionId } from '@/src/domain/session'
+import type {
+  SessionConfigurationEffort,
+  SessionConfigurationModelSelection,
+  SessionConfigurationSnapshot,
+} from '@/src/session-configuration'
+import {
+  parseEffortSelection,
+  parseModelSelection,
+  parseSessionConfigurationRequest,
+  sessionConfigurationIpcChannels,
+} from '@/src/session-configuration-ipc'
+import {
+  activityLayerCustomEntryType,
+  isActivityLayerRecord,
+  type ActivityLayerRecord,
+} from '@/src/main/activity-records'
+import { createPiSessionMessageStream } from '@/src/main/pi-session-message-mapping'
+import type { ApplicationAuthority } from '@/src/main/application-state'
+import {
+  createPiSessionRuntimeRegistry,
+  type PiSessionRuntime,
+  type PiSessionRuntimeEvent,
+  type PiSessionRuntimeRegistry,
+} from '@/src/main/pi-session-runtimes'
+import { classifyPersistedAgentState } from '@/src/main/pi-session-history'
+import { createManagedSessionServices } from '@/src/main/managed-session-resources'
+import {
+  managedSessionMethodology,
+  parsePiWorkstreamKnowledgeMutation,
+  projectWorkspaceOverview,
+} from '@/src/main/managed-session-tools'
+import { broadcastToTrustedRenderers, handleTrustedIpc } from '@/src/main/trusted-ipc'
+import { isAllowedExternalUrl } from '@/src/session-transcript'
+import {
+  parseSessionTranscriptRequest,
+  parseTranscriptActivityDetailsRequest,
+  sessionTranscriptIpcChannels,
+} from '@/src/session-transcript-ipc'
+import { agentActivityKinds, type ConversationEntry } from '@/src/session-timeline'
+
+let composerRegistry: PiSessionRuntimeRegistry | undefined
+
+const minimumModelTurnNoProgressTimeoutMs = 30 * 60 * 1_000
+
+type PiSessionRuntimeOptions =
+  | Readonly<{ kind: 'default' }>
+  | Readonly<{
+      kind: 'managed'
+      policy: ManagedSessionRuntimePolicy
+      resolvePolicy: () => Promise<ManagedSessionRuntimePolicy | undefined>
+      getWorkstreamKnowledge: () => Promise<unknown>
+      applyWorkstreamKnowledgeCommand: (
+        command: WorkstreamKnowledgeCommand
+      ) => Promise<WorkstreamKnowledgeMutationResult>
+    }>
+
+export async function createPiSessionRuntime(
+  directoryPath: string,
+  sessionManager: SessionManager,
+  options: PiSessionRuntimeOptions = { kind: 'default' }
+): Promise<PiSessionRuntime> {
+  const [{ createAgentSession, defineTool }, { Type }] = await Promise.all([
+    import('@earendil-works/pi-coding-agent'),
+    import('@earendil-works/pi-ai'),
+  ])
+
+  const runtimeListeners = new Set<(event: PiSessionRuntimeEvent) => void>()
+  let managedPolicyFailure: string | undefined
+  const managedRunControl: { abort?: () => void } = {}
+
+  const validateManagedPolicy = async (
+    managedOptions: Extract<PiSessionRuntimeOptions, { kind: 'managed' }>
+  ): Promise<ManagedSessionRuntimePolicy> => {
+    try {
+      return await requireCurrentManagedPolicy(managedOptions)
+    } catch (error) {
+      if (!managedPolicyFailure) {
+        managedPolicyFailure = error instanceof Error ? error.message : 'The managed Session runtime policy failed.'
+        managedRunControl.abort?.()
+      }
+
+      throw error
+    }
+  }
+
+  const startActivity = defineTool({
+    name: 'start_activity',
+    label: 'Start activity',
+    description: 'Begin one meaningful, user-understandable unit of work.',
+    promptSnippet: 'Declare the meaningful outcome you are starting',
+    promptGuidelines: [
+      'Use start_activity before each distinct phase of work, grouping commands and reads by meaningful outcome rather than creating an activity per operation.',
+      'Complete the current Agent Activity before using start_activity for a materially different goal.',
+    ],
+    parameters: Type.Object({
+      title: Type.String({ minLength: 1, description: 'A concise, stable, outcome-oriented title' }),
+      kind: Type.Union(agentActivityKinds.map((kind) => Type.Literal(kind))),
+      expectedOutcome: Type.Optional(Type.String({ minLength: 1 })),
+    }),
+    async execute(toolCallId) {
+      if (options.kind === 'managed') await validateManagedPolicy(options)
+
+      runtimeListeners.forEach((listener) =>
+        listener({ type: 'activity_control_accepted', toolCallId, toolName: 'start_activity' })
+      )
+
+      return { content: [{ type: 'text' as const, text: 'Activity started.' }], details: {} }
+    },
+  })
+
+  const completeActivity = defineTool({
+    name: 'complete_activity',
+    label: 'Complete activity',
+    description: 'Complete the current meaningful unit of work with a concise outcome summary.',
+    promptSnippet: 'Record the outcome of the current activity',
+    promptGuidelines: ['Use complete_activity after the current Agent Activity reaches an outcome.'],
+    parameters: Type.Object({
+      summary: Type.String({ minLength: 1, description: 'A concise summary of the achieved or observed outcome' }),
+    }),
+    async execute(toolCallId) {
+      if (options.kind === 'managed') await validateManagedPolicy(options)
+
+      runtimeListeners.forEach((listener) =>
+        listener({ type: 'activity_control_accepted', toolCallId, toolName: 'complete_activity' })
+      )
+
+      return { content: [{ type: 'text' as const, text: 'Activity completed.' }], details: {} }
+    },
+  })
+
+  const managedTools =
+    options.kind === 'managed'
+      ? [
+          defineTool({
+            name: 'workspace_overview',
+            label: 'Workspace overview',
+            description: 'Read metadata about the current Workspace and its Repositories without Repository content.',
+            parameters: Type.Object({}),
+            async execute() {
+              const policy = await validateManagedPolicy(options)
+              const overview = projectWorkspaceOverview(policy)
+
+              return { content: [{ type: 'text' as const, text: JSON.stringify(overview) }], details: {} }
+            },
+          }),
+          defineTool({
+            name: 'workstream_knowledge',
+            label: 'Workstream knowledge',
+            description: 'Read the current durable knowledge owned by this Workstream.',
+            parameters: Type.Object({}),
+            async execute() {
+              await validateManagedPolicy(options)
+              const state = await options.getWorkstreamKnowledge()
+
+              return { content: [{ type: 'text' as const, text: JSON.stringify(state) }], details: {} }
+            },
+          }),
+          defineTool({
+            name: 'update_workstream_knowledge',
+            label: 'Update Workstream knowledge',
+            description:
+              'Create, revise, or tombstone a draft Workstream record. Read workstream_knowledge first and supply its current optimistic revisions. User-only decision, assumption, and specification transitions are unavailable.',
+            parameters: Type.Object({
+              operation: Type.Union([Type.Literal('put-record'), Type.Literal('tombstone-record')]),
+              expectedKnowledgeRevision: Type.Integer({ minimum: 0 }),
+              expectedRecordRevision: Type.Integer({ minimum: 0 }),
+              record: Type.Optional(Type.Unknown({ description: 'Complete structured record draft for put-record' })),
+              recordId: Type.Optional(
+                Type.String({ minLength: 1, description: 'Existing record ID for tombstone-record' })
+              ),
+            }),
+            async execute(_toolCallId, input) {
+              await validateManagedPolicy(options)
+              const command = parsePiWorkstreamKnowledgeMutation(input)
+              if (!command) throw new TypeError('A valid Pi-authorized Workstream knowledge mutation is required.')
+
+              const result = await options.applyWorkstreamKnowledgeCommand(command)
+
+              return { content: [{ type: 'text' as const, text: JSON.stringify(result) }], details: {} }
+            },
+          }),
+        ]
+      : []
+  const customTools = [startActivity, completeActivity, ...managedTools]
+  const managedServices =
+    options.kind === 'managed'
+      ? await createManagedSessionServices(
+          directoryPath,
+          options.policy,
+          managedSessionMethodology(options.policy.mode)
+        )
+      : undefined
+  const { session } = await createAgentSession({
+    cwd: directoryPath,
+    sessionManager,
+    customTools,
+    resourceLoader: managedServices?.resourceLoader,
+    settingsManager: managedServices?.settingsManager,
+  })
+  const configuredHttpIdleTimeoutMs = session.settingsManager.getHttpIdleTimeoutMs()
+  const modelTurnNoProgressTimeoutMs =
+    configuredHttpIdleTimeoutMs === 0
+      ? minimumModelTurnNoProgressTimeoutMs
+      : Math.max(minimumModelTurnNoProgressTimeoutMs, configuredHttpIdleTimeoutMs + 10_000)
+
+  managedRunControl.abort = () => {
+    if (!session.isStreaming) return
+
+    void session.abort().catch((error: unknown) => {
+      console.error('Unable to stop a managed Session after its runtime policy failed.', error)
+    })
+  }
+
+  return {
+    get isStreaming() {
+      return session.isStreaming
+    },
+    prompt(text, options) {
+      return session.prompt(text, options)
+    },
+    rename(title) {
+      session.sessionManager.appendSessionInfo(title)
+    },
+    subscribe(listener) {
+      runtimeListeners.add(listener)
+
+      const messageStream = createPiSessionMessageStream()
+      const unsubscribe = session.subscribe((event) => {
+        messageStream
+          .handle(event)
+          .forEach((messageEvent) => listener({ type: 'message_upsert', message: messageEvent.message }))
+
+        if (event.type === 'agent_settled') {
+          if (managedPolicyFailure) {
+            const explanation = managedPolicyFailure
+            managedPolicyFailure = undefined
+            listener({ type: 'failed', explanation, diagnosticKind: 'stale-authority' })
+
+            return
+          }
+
+          const lastAssistant = session.messages.filter((message) => message.role === 'assistant').at(-1)
+
+          if (lastAssistant?.stopReason === 'error') {
+            listener({
+              type: 'failed',
+              explanation: 'The provider request failed.',
+              diagnosticKind: 'provider-failure',
+            })
+
+            return
+          }
+
+          if (lastAssistant?.stopReason === 'aborted') {
+            listener({
+              type: 'cancelled',
+              explanation: 'The Agent Run was stopped.',
+              diagnosticKind: 'runtime-cancellation',
+            })
+
+            return
+          }
+        }
+
+        const normalized = normalizePiSessionEvent(event, modelTurnNoProgressTimeoutMs)
+
+        if (normalized) listener(normalized)
+      })
+
+      return () => {
+        runtimeListeners.delete(listener)
+        unsubscribe()
+      }
+    },
+    abort() {
+      return session.abort()
+    },
+    loadHistory() {
+      const entries = session.sessionManager.getBranch()
+
+      const conversations = entries.flatMap((entry): ConversationEntry[] => {
+        if (entry.type !== 'message') return []
+
+        const message = entry.message
+
+        if (message.role !== 'user' && message.role !== 'assistant') return []
+
+        const content = messageContent(message.content)
+
+        if (message.role === 'assistant' && content.hasToolCalls) return []
+        if (content.text.length === 0) return []
+
+        return [
+          {
+            type: 'conversation',
+            id: entry.id,
+            role: message.role,
+            text: content.text,
+            timestamp: message.timestamp,
+          },
+        ]
+      })
+
+      const activityRecords = entries.flatMap((entry): ActivityLayerRecord[] => {
+        return entry.type === 'custom' &&
+          entry.customType === activityLayerCustomEntryType &&
+          isActivityLayerRecord(entry.data)
+          ? [entry.data]
+          : []
+      })
+
+      const lastAssistant = entries
+        .flatMap((entry) => (entry.type === 'message' && entry.message.role === 'assistant' ? [entry.message] : []))
+        .at(-1)
+      const finalState = classifyPersistedAgentState(lastAssistant)
+
+      return { conversations, activityRecords, finalState }
+    },
+    appendActivityRecord(record) {
+      session.sessionManager.appendCustomEntry(activityLayerCustomEntryType, record)
+    },
+    loadRawOperation(toolCallId) {
+      let input: unknown
+      let result: unknown
+
+      for (const entry of session.sessionManager.getBranch()) {
+        if (entry.type !== 'message') continue
+
+        const message = entry.message
+
+        if (message.role === 'assistant') {
+          const toolCall = message.content.find((part) => part.type === 'toolCall' && part.id === toolCallId)
+
+          if (toolCall?.type === 'toolCall') input = toolCall.arguments
+        }
+
+        if (message.role === 'toolResult' && message.toolCallId === toolCallId) {
+          result = { content: message.content, details: message.details, isError: message.isError }
+        }
+      }
+
+      return input === undefined && result === undefined ? undefined : { input, result }
+    },
+    async getConfiguration() {
+      await session.modelRuntime.refresh()
+      const models = await session.modelRuntime.getAvailable()
+      const supportsReasoning = session.supportsThinking()
+
+      return {
+        models: models.map((model) => ({
+          provider: model.provider,
+          providerName: session.modelRuntime.getProvider(model.provider)?.name ?? model.provider,
+          id: model.id,
+          name: model.name,
+        })),
+        model: session.model ? { provider: session.model.provider, id: session.model.id } : undefined,
+        effort: supportsReasoning ? (session.thinkingLevel as SessionConfigurationEffort) : 'off',
+        supportedEfforts: supportsReasoning
+          ? (session.getAvailableThinkingLevels() as SessionConfigurationEffort[])
+          : ['off'],
+      } satisfies Omit<SessionConfigurationSnapshot, 'sessionId' | 'revision' | 'persistenceWarning'>
+    },
+    async setConfigurationModel(selection: SessionConfigurationModelSelection) {
+      await session.modelRuntime.refresh()
+      const model = (await session.modelRuntime.getAvailable()).find(
+        (candidate) => candidate.provider === selection.provider && candidate.id === selection.id
+      )
+
+      if (!model) throw new Error('That Model is no longer available for this Session.')
+
+      await session.setModel(model)
+      session.settingsManager.setDefaultModelAndProvider(model.provider, model.id)
+    },
+    async setConfigurationEffort(effort: SessionConfigurationEffort) {
+      if (!session.supportsThinking() && effort === 'off') return
+      if (effort === 'off' || !session.getAvailableThinkingLevels().includes(effort)) {
+        throw new Error('That Effort is not supported by the selected Model.')
+      }
+
+      session.setThinkingLevel(effort)
+      session.settingsManager.setDefaultThinkingLevel(effort)
+    },
+    async flushConfiguration() {
+      await session.settingsManager.flush()
+
+      return session.settingsManager.drainErrors().map(({ error }) => error.message)
+    },
+    dispose() {
+      session.dispose()
+    },
+  }
+}
+
+async function requireCurrentManagedPolicy(
+  options: Extract<PiSessionRuntimeOptions, { kind: 'managed' }>
+): Promise<ManagedSessionRuntimePolicy> {
+  const current = await options.resolvePolicy()
+
+  if (
+    !current ||
+    current.sessionId !== options.policy.sessionId ||
+    current.mode !== options.policy.mode ||
+    current.lifecycle !== options.policy.lifecycle ||
+    current.resourcePolicyRevision !== options.policy.resourcePolicyRevision ||
+    current.runLeaseId !== options.policy.runLeaseId
+  ) {
+    throw new Error('The managed Session runtime policy is stale.')
+  }
+
+  return current
+}
+
+function messageContent(content: unknown): { text: string; hasToolCalls: boolean } {
+  if (typeof content === 'string') return { text: content, hasToolCalls: false }
+  if (!Array.isArray(content)) return { text: '', hasToolCalls: false }
+
+  return {
+    text: content
+      .flatMap((part) =>
+        typeof part === 'object' && part !== null && (part as { type?: unknown }).type === 'text'
+          ? [String((part as { text?: unknown }).text ?? '')]
+          : []
+      )
+      .join(''),
+    hasToolCalls: content.some(
+      (part) => typeof part === 'object' && part !== null && (part as { type?: unknown }).type === 'toolCall'
+    ),
+  }
+}
+
+function normalizePiSessionEvent(
+  event: { type: string; [key: string]: unknown },
+  modelTurnNoProgressTimeoutMs: number
+): PiSessionRuntimeEvent | undefined {
+  if (event.type === 'tool_execution_start') {
+    return {
+      type: event.type,
+      toolCallId: String(event.toolCallId),
+      toolName: String(event.toolName),
+      input: event.args,
+    }
+  }
+  if (event.type === 'tool_execution_end') {
+    return {
+      type: event.type,
+      toolCallId: String(event.toolCallId),
+      toolName: String(event.toolName),
+      result: event.result,
+      isError: event.isError === true,
+      rawResultReference: String(event.toolCallId),
+    }
+  }
+  if (event.type === 'turn_start') {
+    return { type: 'model_turn_started', noProgressTimeoutMs: modelTurnNoProgressTimeoutMs }
+  }
+  if (
+    event.type === 'message_start' ||
+    event.type === 'message_update' ||
+    event.type === 'auto_retry_start' ||
+    event.type === 'auto_retry_end' ||
+    event.type === 'compaction_start' ||
+    event.type === 'compaction_end'
+  ) {
+    return { type: 'model_turn_progress' }
+  }
+  if (event.type === 'agent_end' || event.type === 'agent_settled') return { type: event.type }
+  return undefined
+}
+
+export function initializeComposer(authority: ApplicationAuthority): void {
+  if (composerRegistry) {
+    return
+  }
+
+  const registry = createPiSessionRuntimeRegistry({
+    findSession: (id) => authority.resolveOwnedSession(id),
+    canSubmit: async (id) => {
+      const resolution = await authority.resolveOwnedSession(id)
+
+      return resolution?.canSubmit ?? false
+    },
+    acquireRunLease: (id) => authority.acquireSessionRunLease(id),
+    releaseRunLease: async (id) => {
+      await authority.settleSessionRunLease(id)
+    },
+    reconcileAfterRun: (id) => authority.settleSessionRunLease(id),
+    createSession: async ({ directoryPath, sessionPath, managedPolicy }) => {
+      const { SessionManager } = await import('@earendil-works/pi-coding-agent')
+      const sessionManager = SessionManager.open(sessionPath, undefined, directoryPath)
+
+      if (!managedPolicy) return createPiSessionRuntime(directoryPath, sessionManager)
+
+      return createPiSessionRuntime(directoryPath, sessionManager, {
+        kind: 'managed',
+        policy: managedPolicy,
+        resolvePolicy: async () => (await authority.resolveOwnedSession(managedPolicy.sessionId))?.managedPolicy,
+        getWorkstreamKnowledge: () => authority.getWorkstreamKnowledge(managedPolicy.workstreamId),
+        applyWorkstreamKnowledgeCommand: (command) =>
+          authority.applyPiWorkstreamKnowledgeCommand(managedPolicy.workstreamId, command, managedPolicy.sessionId),
+      })
+    },
+  })
+  composerRegistry = registry
+
+  handleTrustedIpc(composerIpcChannels.submit, (_event, value: unknown): Promise<SessionMessageSubmissionResult> => {
+    const submission = parseSessionMessageSubmission(value)
+
+    return submission
+      ? registry.submit(submission)
+      : Promise.resolve({ status: 'rejected', reason: 'invalid-submission' })
+  })
+
+  handleTrustedIpc(composerIpcChannels.stop, (_event, value: unknown): Promise<SessionRunStopResult> => {
+    const request = parseSessionRunStopRequest(value)
+
+    return request ? registry.stop(request.sessionId) : Promise.resolve({ status: 'not-running' })
+  })
+
+  handleTrustedIpc(sessionTranscriptIpcChannels.getSnapshot, (_event, value: unknown) => {
+    const request = parseSessionTranscriptRequest(value)
+
+    return request
+      ? registry.getTranscript(sessionId(request.sessionId))
+      : Promise.reject(new Error('Invalid Session.'))
+  })
+
+  handleTrustedIpc(sessionTranscriptIpcChannels.getWorkingStateSnapshots, () => registry.getWorkingStateSnapshots())
+
+  handleTrustedIpc(sessionTranscriptIpcChannels.openExternalLink, async (_event, value: unknown) => {
+    if (isAllowedExternalUrl(value)) await shell.openExternal(value)
+  })
+
+  handleTrustedIpc(sessionTranscriptIpcChannels.loadActivityDetails, (_event, value: unknown) => {
+    const request = parseTranscriptActivityDetailsRequest(value)
+
+    return request
+      ? registry.loadActivityDetails(sessionId(request.sessionId), request.activityId)
+      : Promise.reject(new Error('Invalid Agent Activity.'))
+  })
+
+  registry.subscribeTranscript((mutation) => {
+    broadcastToTrustedRenderers(sessionTranscriptIpcChannels.changed, mutation)
+  })
+
+  handleTrustedIpc(sessionConfigurationIpcChannels.getSnapshot, (_event, value: unknown) => {
+    const request = parseSessionConfigurationRequest(value)
+
+    return request
+      ? registry.getConfigurationSnapshot(sessionId(request.sessionId))
+      : Promise.reject(new Error('Invalid Session.'))
+  })
+
+  handleTrustedIpc(sessionConfigurationIpcChannels.setModel, (_event, value: unknown) => {
+    const request = parseModelSelection(value)
+
+    return request
+      ? registry.setConfigurationModel(sessionId(request.sessionId), request.model)
+      : Promise.reject(new Error('Invalid Model selection.'))
+  })
+
+  handleTrustedIpc(sessionConfigurationIpcChannels.setEffort, (_event, value: unknown) => {
+    const request = parseEffortSelection(value)
+
+    return request
+      ? registry.setConfigurationEffort(sessionId(request.sessionId), request.effort)
+      : Promise.reject(new Error('Invalid Effort selection.'))
+  })
+
+  handleTrustedIpc(sessionConfigurationIpcChannels.dismissWarning, (_event, value: unknown) => {
+    const request = parseSessionConfigurationRequest(value)
+
+    return request
+      ? registry.dismissConfigurationWarning(sessionId(request.sessionId))
+      : Promise.reject(new Error('Invalid Session.'))
+  })
+
+  registry.subscribeConfiguration((mutation) => {
+    broadcastToTrustedRenderers(sessionConfigurationIpcChannels.changed(mutation.sessionId), mutation)
+  })
+
+  app.once('before-quit', () => {
+    registry.dispose()
+  })
+}
+
+export function getPiSessionRuntimeRegistry(): PiSessionRuntimeRegistry {
+  if (!composerRegistry) {
+    throw new Error('The Pi Session runtime registry has not been initialized.')
+  }
+
+  return composerRegistry
+}

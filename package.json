@@ -1,0 +1,146 @@
+{
+  "name": "pi-workspace",
+  "version": "0.1.0-beta.1",
+  "private": true,
+  "license": "Apache-2.0",
+  "packageManager": "bun@1.3.14",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pi-workspace/pi-workspace.git"
+  },
+  "bugs": {
+    "url": "https://github.com/pi-workspace/pi-workspace/issues"
+  },
+  "keywords": [
+    "electron",
+    "git",
+    "pi",
+    "session-manager",
+    "developer-tools"
+  ],
+  "description": "Desktop application for navigating Pi Sessions across Workspaces and Workstreams.",
+  "desktopName": "pi-workspace.desktop",
+  "author": "Pi Workspace contributors",
+  "homepage": "https://github.com/pi-workspace/pi-workspace",
+  "type": "module",
+  "main": "dist/main/index.js",
+  "scripts": {
+    "build": "bun run scripts/build.mjs",
+    "demo": "vite --config vite.demo.config.ts",
+    "dev": "bun run scripts/dev.mjs",
+    "start": "bun run build && electron .",
+    "check": "bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build",
+    "check:renderer-bundle": "bun run build",
+    "test": "bun test --max-concurrency=1 --preload ./src/renderer/test-dom.ts",
+    "lint": "eslint . --max-warnings=0",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "package:linux": "bun run build && electron-builder --linux deb --x64 --publish never",
+    "package:mac": "bun run build && electron-builder --mac dmg --universal --publish never",
+    "release:notes": "bun run scripts/release-note-markdown.ts",
+    "release:validate": "bun run scripts/validate-release.ts",
+    "security:scan": "bash scripts/security-scan.sh",
+    "typecheck": "tsc --noEmit"
+  },
+  "build": {
+    "appId": "com.github.pi-workspace.pi-workspace",
+    "productName": "Pi Workspace",
+    "asar": true,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "assets/pi-workspace-mark.png",
+      "LICENSE",
+      "NOTICE",
+      "THIRD_PARTY_NOTICES.md",
+      "package.json"
+    ],
+    "deb": {
+      "depends": [
+        "libasound2",
+        "libatspi2.0-0",
+        "libgtk-3-0",
+        "libnotify4",
+        "libnss3",
+        "libsecret-1-0",
+        "libuuid1",
+        "libxss1",
+        "libxtst6",
+        "xdg-utils"
+      ]
+    },
+    "mac": {
+      "artifactName": "pi-workspace-${version}-mac-${arch}.${ext}",
+      "category": "public.app-category.developer-tools",
+      "entitlements": "assets/entitlements.mac.plist",
+      "entitlementsInherit": "assets/entitlements.mac.plist",
+      "icon": "assets/icons/pi-workspace.icns",
+      "minimumSystemVersion": "12.0",
+      "notarize": true,
+      "x64ArchFiles": "{Contents/Resources/app.asar.unpacked/node_modules/@earendil-works/pi-tui/native/darwin/prebuilds/**/darwin-modifiers.node,Contents/Resources/app.asar.unpacked/node_modules/@mariozechner/clipboard-darwin-arm64/clipboard.darwin-arm64.node,Contents/Resources/app.asar.unpacked/node_modules/@mariozechner/clipboard-darwin-x64/clipboard.darwin-x64.node}",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        }
+      ]
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "pi-workspace-${version}-${arch}.${ext}",
+      "category": "Development",
+      "description": "Navigate Pi Sessions across Workspaces and Workstreams.",
+      "executableName": "pi-workspace",
+      "icon": "assets/icons",
+      "maintainer": "Pi Workspace contributors <7268075+OfficialOzzy@users.noreply.github.com>",
+      "syncDesktopName": true,
+      "synopsis": "Navigate Pi Sessions by Workstream"
+    }
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@tailwindcss/vite": "^4.3.3",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/node": "^26.1.1",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.3",
+    "chokidar": "^5.0.0",
+    "electron": "^43.1.1",
+    "electron-builder": "^26.15.3",
+    "eslint": "^10.7.0",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.7.0",
+    "happy-dom": "^20.11.0",
+    "prettier": "^3.9.5",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.64.0",
+    "vite": "^8.1.5"
+  },
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "^0.80.10",
+    "@headlessui/react": "^2.2.10",
+    "@lexical/react": "0.48.0",
+    "@streamdown/code": "^1.1.1",
+    "clsx": "^2.1.1",
+    "lexical": "0.48.0",
+    "lucide-react": "^1.25.0",
+    "motion": "^12.42.2",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "streamdown": "^2.5.0",
+    "tailwindcss": "^4.3.3"
+  }
+}

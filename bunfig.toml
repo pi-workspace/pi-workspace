@@ -1,0 +1,3 @@
+[test]
+preload = ["./src/renderer/test-dom.ts"]
+maxConcurrency = 1

@@ -1,0 +1,41 @@
+# Build and dependency output
+dist
+release
+node_modules
+.pi-*/
+.worktrees
+
+# Local environment files; checked-in examples remain visible
+.env
+.env.*
+!.env.example
+!.env.sample
+!.env.template
+
+# Operating-system metadata
+.DS_Store
+._*
+Thumbs.db
+Desktop.ini
+
+# Editor temporary files
+*~
+*.bak
+*.swp
+*.swo
+*.swn
+.idea/workspace.xml
+.vscode/*.code-workspace
+
+# Runtime output and test coverage
+*.log
+coverage/
+.nyc_output/
+
+# SQLite temporary sidecar files; keep primary databases visible
+*.sqlite-shm
+*.sqlite-wal
+*.sqlite-journal
+*.db-shm
+*.db-wal
+*.db-journal
