@@ -6,6 +6,12 @@ import type {
 } from '@/src/composer'
 import type { ManagedSessionRuntimePolicy } from '@/src/domain/managed-session'
 import type { SessionId } from '@/src/domain/session'
+import {
+  projectSessionSkillSelections,
+  replaceSessionSkillTokens,
+  type SessionSkill,
+  type SessionSkillMention,
+} from '@/src/session-skills'
 import type { ActivityLayerRecord, AgentRunDiagnosticKind } from '@/src/main/activity-records'
 import {
   countArtifactFiles,
@@ -62,6 +68,8 @@ export interface PiSessionRuntime {
   loadHistory?(): PiSessionRuntimeHistory
   appendActivityRecord?(record: ActivityLayerRecord): void
   loadRawOperation?(toolCallId: string): Readonly<{ input: unknown; result?: unknown }> | undefined
+  getSkills?(): readonly SessionSkill[]
+  getSkillPrompt?(name: string): string | undefined
   getConfiguration?(): Promise<Omit<SessionConfigurationSnapshot, 'sessionId' | 'revision' | 'persistenceWarning'>>
   setConfigurationModel?(model: SessionConfigurationModelSelection): Promise<void>
   setConfigurationEffort?(effort: SessionConfigurationEffort): Promise<void>
@@ -132,6 +140,7 @@ export interface PiSessionRuntimeRegistry {
   getWorkingStateSnapshots(): readonly SessionWorkingStateSnapshot[]
   loadActivityDetails(sessionId: SessionId, activityId: string): Promise<AgentActivityDetails | undefined>
   getTranscript(sessionId: SessionId): Promise<SessionTranscriptSnapshot>
+  getAvailableSkills(sessionId: SessionId): Promise<readonly SessionSkill[]>
   subscribeTranscript(listener: (mutation: SessionTranscriptMutation) => void): () => void
   getConfigurationSnapshot(sessionId: SessionId): Promise<SessionConfigurationSnapshot>
   setConfigurationModel(
@@ -906,12 +915,18 @@ export function createPiSessionRuntimeRegistry({
     withActivationGate: activationGate.run,
   })
 
-  function acceptRun(sessionId: SessionId, messageId: string, text: string): void {
+  function acceptRun(
+    sessionId: SessionId,
+    messageId: string,
+    text: string,
+    skills?: readonly SessionSkillMention[]
+  ): void {
     const timeline = getTimeline(sessionId)
     const message: SessionTranscriptMessage = {
       id: messageId,
       role: 'user',
       text,
+      skills,
       state: 'complete',
       revision: timeline.revision + 1,
     }
@@ -924,6 +939,25 @@ export function createPiSessionRuntimeRegistry({
     runtime: PiSessionRuntime,
     authorize: () => boolean | Promise<boolean>
   ): Promise<SessionMessageSubmissionResult> {
+    const projected = projectSessionSkillSelections(submission.text)
+    const availableSkills = runtime.getSkills?.() ?? []
+    const skills = projected.selections.flatMap((selection): SessionSkillMention[] => {
+      const available = availableSkills.find((skill) => skill.name === selection.name)
+
+      return available ? [{ offset: selection.offset, skill: { ...available, availability: 'available' } }] : []
+    })
+    if (skills.length !== projected.selections.length) {
+      return { status: 'rejected', reason: 'skill-unavailable' }
+    }
+    const skillMentions = skills.length > 0 ? skills : undefined
+
+    let promptText: string | undefined
+    try {
+      promptText = replaceSessionSkillTokens(submission.text, (name) => runtime.getSkillPrompt?.(name))
+    } catch {
+      return { status: 'rejected', reason: 'unexpected' }
+    }
+    if (promptText === undefined) return { status: 'rejected', reason: 'skill-unavailable' }
     const tracksFollowUp = runtime.isStreaming && submission.delivery === 'follow-up'
 
     if (tracksFollowUp) {
@@ -978,7 +1012,8 @@ export function createPiSessionRuntimeRegistry({
               id: messageId,
               runId,
               role: 'user',
-              text: submission.text,
+              text: projected.text,
+              skills: skillMentions,
               timestamp,
             }
 
@@ -997,7 +1032,7 @@ export function createPiSessionRuntimeRegistry({
               persistActivityRecord(timeline, { version: 1, type: 'run', run })
             }
 
-            acceptRun(submission.sessionId, messageId, submission.text)
+            acceptRun(submission.sessionId, messageId, projected.text, skillMentions)
             publishTimeline(submission.sessionId)
           }
 
@@ -1011,7 +1046,7 @@ export function createPiSessionRuntimeRegistry({
         try {
           promptStarted = true
           void runtime
-            .prompt(submission.text, {
+            .prompt(promptText, {
               streamingBehavior,
               preflightResult: finishPreflight,
             })
@@ -1224,6 +1259,9 @@ export function createPiSessionRuntimeRegistry({
       await getRuntime(sessionId)
 
       return transcriptSnapshot(sessionId)
+    },
+    async getAvailableSkills(sessionId) {
+      return (await getRuntime(sessionId))?.getSkills?.() ?? []
     },
     subscribeTranscript(listener) {
       transcriptListeners.add(listener)

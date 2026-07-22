@@ -3,6 +3,7 @@ import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRe
 import { Button } from '@/components/ui-kit/button'
 import type { SessionId } from '@/src/domain/session'
 import { AgentActivityCard } from '@/src/renderer/components/agent-activity-card'
+import { SkillReference } from '@/src/renderer/components/skill-reference'
 import type { AgentActivity } from '@/src/session-timeline'
 import type { SessionTranscriptMessage, SessionTranscriptSnapshot } from '@/src/session-transcript'
 
@@ -322,6 +323,20 @@ function useTranscriptScroll({
   }
 }
 
+function UserMessageContent({ message }: Readonly<{ message: SessionTranscriptMessage }>) {
+  const content: React.ReactNode[] = []
+  let textOffset = 0
+
+  for (const [index, mention] of (message.skills ?? []).entries()) {
+    content.push(message.text.slice(textOffset, mention.offset))
+    content.push(<SkillReference key={`${mention.offset}:${mention.skill.name}:${index}`} skill={mention.skill} />)
+    textOffset = mention.offset
+  }
+
+  content.push(message.text.slice(textOffset))
+  return content
+}
+
 function SessionMessageRow({
   message,
   onOpenExternalLink,
@@ -332,7 +347,9 @@ function SessionMessageRow({
   if (message.role === 'user') {
     return (
       <article className="ml-auto w-fit max-w-[80%] rounded-xl border border-session-message-person-border bg-session-message-person-background px-3 py-2 text-sm/6 text-session-message-person-foreground">
-        <p className="whitespace-pre-wrap break-words">{message.text}</p>
+        <p className="whitespace-pre-wrap break-words">
+          <UserMessageContent message={message} />
+        </p>
       </article>
     )
   }

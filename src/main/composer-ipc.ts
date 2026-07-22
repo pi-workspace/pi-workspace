@@ -1,6 +1,7 @@
 import { app, shell } from 'electron'
+import { readFileSync } from 'node:fs'
 import type { SessionManager } from '@earendil-works/pi-coding-agent'
-import type { SessionMessageSubmissionResult, SessionRunStopResult } from '@/src/composer'
+import { isSessionSkillName, type SessionMessageSubmissionResult, type SessionRunStopResult } from '@/src/composer'
 import type { ManagedSessionRuntimePolicy } from '@/src/domain/managed-session'
 import type {
   WorkstreamKnowledgeCommand,
@@ -8,6 +9,7 @@ import type {
 } from '@/src/domain/workstream-knowledge-transitions'
 import { composerIpcChannels, parseSessionMessageSubmission, parseSessionRunStopRequest } from '@/src/composer-ipc'
 import { sessionId } from '@/src/domain/session'
+import { parseSessionSkillsRequest, sessionSkillsIpcChannels } from '@/src/session-skills-ipc'
 import type {
   SessionConfigurationEffort,
   SessionConfigurationModelSelection,
@@ -24,7 +26,7 @@ import {
   isActivityLayerRecord,
   type ActivityLayerRecord,
 } from '@/src/main/activity-records'
-import { createPiSessionMessageStream } from '@/src/main/pi-session-message-mapping'
+import { createPiSessionMessageStream, projectPiUserMessage } from '@/src/main/pi-session-message-mapping'
 import type { ApplicationAuthority } from '@/src/main/application-state'
 import {
   createPiSessionRuntimeRegistry,
@@ -69,7 +71,7 @@ export async function createPiSessionRuntime(
   sessionManager: SessionManager,
   options: PiSessionRuntimeOptions = { kind: 'default' }
 ): Promise<PiSessionRuntime> {
-  const [{ createAgentSession, defineTool }, { Type }] = await Promise.all([
+  const [{ createAgentSession, defineTool, stripFrontmatter }, { Type }] = await Promise.all([
     import('@earendil-works/pi-coding-agent'),
     import('@earendil-works/pi-ai'),
   ])
@@ -207,6 +209,18 @@ export async function createPiSessionRuntime(
     resourceLoader: managedServices?.resourceLoader,
     settingsManager: managedServices?.settingsManager,
   })
+  const getAvailableSkillResources = () =>
+    session.settingsManager.getEnableSkillCommands()
+      ? session.resourceLoader.getSkills().skills.filter(({ name }) => isSessionSkillName(name))
+      : []
+  const getAvailableSkills = () => getAvailableSkillResources().map(({ name, description }) => ({ name, description }))
+  const getSkillPrompt = (name: string) => {
+    const skill = getAvailableSkillResources().find((candidate) => candidate.name === name)
+    if (!skill) return undefined
+
+    const body = stripFrontmatter(readFileSync(skill.filePath, 'utf8')).trim()
+    return `<skill name="${skill.name}" location="${skill.filePath}">\nReferences are relative to ${skill.baseDir}.\n\n${body}\n</skill>`
+  }
   const configuredHttpIdleTimeoutMs = session.settingsManager.getHttpIdleTimeoutMs()
   const modelTurnNoProgressTimeoutMs =
     configuredHttpIdleTimeoutMs === 0
@@ -296,16 +310,18 @@ export async function createPiSessionRuntime(
         if (message.role !== 'user' && message.role !== 'assistant') return []
 
         const content = messageContent(message.content)
+        const projected =
+          message.role === 'user' ? projectPiUserMessage(content.text, getAvailableSkills()) : { text: content.text }
 
         if (message.role === 'assistant' && content.hasToolCalls) return []
-        if (content.text.length === 0) return []
+        if (projected.text.length === 0 && !projected.skills?.length) return []
 
         return [
           {
             type: 'conversation',
             id: entry.id,
             role: message.role,
-            text: content.text,
+            ...projected,
             timestamp: message.timestamp,
           },
         ]
@@ -329,6 +345,8 @@ export async function createPiSessionRuntime(
     appendActivityRecord(record) {
       session.sessionManager.appendCustomEntry(activityLayerCustomEntryType, record)
     },
+    getSkills: getAvailableSkills,
+    getSkillPrompt,
     loadRawOperation(toolCallId) {
       let input: unknown
       let result: unknown
@@ -524,6 +542,12 @@ export function initializeComposer(authority: ApplicationAuthority): void {
     const request = parseSessionRunStopRequest(value)
 
     return request ? registry.stop(request.sessionId) : Promise.resolve({ status: 'not-running' })
+  })
+
+  handleTrustedIpc(sessionSkillsIpcChannels.getAvailable, (_event, value: unknown) => {
+    const request = parseSessionSkillsRequest(value)
+
+    return request ? registry.getAvailableSkills(request.sessionId) : Promise.reject(new Error('Invalid Session.'))
   })
 
   handleTrustedIpc(sessionTranscriptIpcChannels.getSnapshot, (_event, value: unknown) => {

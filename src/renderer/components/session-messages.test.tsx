@@ -33,6 +33,70 @@ test('renders duplicate message text in canonical entry order', () => {
   assert.equal(view.getAllByText('Same text', { exact: true }).length, 2)
 })
 
+test('renders an invoked Skill inline with the user-authored transcript message', () => {
+  const view = render(
+    <SessionMessages
+      sessionId={id}
+      isWorking={false}
+      transcript={transcript([
+        {
+          type: 'message',
+          message: {
+            id: 'user-1',
+            role: 'user',
+            text: 'Review this change.',
+            skills: [
+              {
+                offset: 7,
+                skill: {
+                  name: 'code-review',
+                  description: 'Review code changes.',
+                  availability: 'available',
+                },
+              },
+            ],
+            state: 'complete',
+            revision: 1,
+          },
+        },
+      ])}
+    />,
+    { container: browser.document.body as unknown as HTMLElement }
+  )
+
+  assert.equal(view.getByText('code-review', { exact: true }).getAttribute('title'), 'Review code changes.')
+  assert.ok(view.getByText('Review this change.', { exact: true }))
+  assert.equal(view.queryByRole('button', { name: /Remove code-review Skill/ }), null)
+})
+
+test('keeps the name of an unavailable Skill in the transcript', () => {
+  const view = render(
+    <SessionMessages
+      sessionId={id}
+      isWorking={false}
+      transcript={transcript([
+        {
+          type: 'message',
+          message: {
+            id: 'user-1',
+            role: 'user',
+            text: '',
+            skills: [{ offset: 0, skill: { name: 'retired-skill', availability: 'unavailable' } }],
+            state: 'complete',
+            revision: 1,
+          },
+        },
+      ])}
+    />,
+    { container: browser.document.body as unknown as HTMLElement }
+  )
+
+  assert.equal(
+    view.getByText('retired-skill', { exact: true }).getAttribute('title'),
+    'This Skill is no longer available.'
+  )
+})
+
 test('keeps a streaming assistant message in one identity when it completes', () => {
   const view = render(
     <SessionMessages

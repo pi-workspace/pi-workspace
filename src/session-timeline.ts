@@ -1,4 +1,5 @@
 import type { SessionId } from '@/src/domain/session'
+import type { SessionSkillMention } from '@/src/session-skills'
 
 export const agentActivityKinds = [
   'exploration',
@@ -20,6 +21,7 @@ export type ConversationEntry = Readonly<{
   runId?: string
   role: 'user' | 'assistant'
   text: string
+  skills?: readonly SessionSkillMention[]
   timestamp: number
 }>
 

@@ -71,7 +71,7 @@ const brainstormRequest =
 const brainstormResponse =
   'A local-first flow fits Atlas Notes well: save edits locally immediately, sync them from a durable queue, and make queued or conflicted notes visible without interrupting writing. I mapped the current save path, the main failure cases, and an implementation order that keeps recovery testable.'
 const implementationRequest =
-  'Let’s build the offline editing flow. Save every edit locally first, sync in the background with bounded retries, and show a clear status when a note is queued or needs attention.'
+  ' Let’s build the offline editing flow. Save every edit locally first, sync in the background with bounded retries, and show a clear status when a note is queued or needs attention.'
 const implementationResponse =
   'Built the local-first editing flow with durable queued saves, background retries, and clear queued and conflict states. Added restart and recovery coverage, and the focused tests, typecheck, and lint all pass.'
 const workstreamScenarioBase = createEmptyScenario([
@@ -332,6 +332,16 @@ const workstreamScenario: DemoScenario = {
             id: 'implementation-request',
             role: 'user',
             text: implementationRequest,
+            skills: [
+              {
+                offset: 0,
+                skill: {
+                  name: 'frontend-design',
+                  description: 'Create intentional, distinctive interfaces and interactions.',
+                  availability: 'available',
+                },
+              },
+            ],
             state: 'complete',
             revision: 0,
           },
@@ -1245,7 +1255,16 @@ const quickSessionsScenario: DemoScenario = {
 export type DemoScenarioPresentation = Readonly<{
   activeSessionId: SessionId
   pinnedSessionIds: readonly SessionId[]
+  drafts?: ReadonlyMap<SessionId, string>
 }>
+
+const workstreamPresentation: DemoScenarioPresentation = {
+  activeSessionId: implementationSessionId,
+  pinnedSessionIds: [],
+  drafts: new Map([
+    [implementationSessionId, '/skill:code-review Review the offline editing changes before we wrap up.'],
+  ]),
+}
 
 const quickSessionsPresentation: DemoScenarioPresentation = {
   activeSessionId: apiQuickSessionId,
@@ -1265,5 +1284,8 @@ export function getDemoScenario(name: string | undefined): DemoScenario {
 }
 
 export function getDemoScenarioPresentation(name: string | undefined): DemoScenarioPresentation | undefined {
-  return name === 'quick-sessions' ? quickSessionsPresentation : undefined
+  if (name === 'workstream') return workstreamPresentation
+  if (name === 'quick-sessions') return quickSessionsPresentation
+
+  return undefined
 }

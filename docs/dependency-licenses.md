@@ -57,10 +57,10 @@ All declared production dependency licenses in this inventory are permissive and
 | `@babel/runtime@7.29.7`                                   | MIT                     |
 | `@braintree/sanitize-url@7.1.2`                           | MIT                     |
 | `@chevrotain/types@11.1.2`                                | Apache-2.0              |
-| `@earendil-works/pi-agent-core@0.80.10`                   | MIT                     |
-| `@earendil-works/pi-ai@0.80.10`                           | MIT                     |
-| `@earendil-works/pi-coding-agent@0.80.10`                 | MIT                     |
-| `@earendil-works/pi-tui@0.80.10`                          | MIT                     |
+| `@earendil-works/pi-agent-core@0.81.0`                    | MIT                     |
+| `@earendil-works/pi-ai@0.81.0`                            | MIT                     |
+| `@earendil-works/pi-coding-agent@0.81.0`                  | MIT                     |
+| `@earendil-works/pi-tui@0.81.0`                           | MIT                     |
 | `@floating-ui/core@1.8.0`                                 | MIT                     |
 | `@floating-ui/dom@1.8.0`                                  | MIT                     |
 | `@floating-ui/react-dom@2.1.9`                            | MIT                     |
@@ -387,9 +387,9 @@ All declared production dependency licenses in this inventory are permissive and
 | `property-information@7.2.0`                              | MIT                     |
 | `protobufjs@7.6.5`                                        | BSD-3-Clause            |
 | `react-aria@3.50.0`                                       | Apache-2.0              |
-| `react-dom@19.2.7`                                        | MIT                     |
+| `react-dom@19.2.8`                                        | MIT                     |
 | `react-stately@3.48.0`                                    | Apache-2.0              |
-| `react@19.2.7`                                            | MIT                     |
+| `react@19.2.8`                                            | MIT                     |
 | `regex-recursion@6.0.2`                                   | MIT                     |
 | `regex-utilities@2.3.0`                                   | MIT                     |
 | `regex@6.1.0`                                             | MIT                     |

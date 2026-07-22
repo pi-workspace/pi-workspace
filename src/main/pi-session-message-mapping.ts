@@ -1,6 +1,7 @@
 import type { AgentSessionEvent, SessionEntry } from '@earendil-works/pi-coding-agent'
 import type { AgentMessage } from '@earendil-works/pi-agent-core'
 import type { TextContent } from '@earendil-works/pi-ai'
+import { projectSessionSkillSelections, type SessionSkill } from '@/src/session-skills'
 import type { SessionTranscriptMessage } from '@/src/session-transcript'
 
 export type PiSessionMessageEvent = Readonly<{
@@ -13,13 +14,16 @@ type StreamedMessage = {
   text: string
 }
 
-export function mapPiSessionMessageHistory(entries: readonly SessionEntry[]): readonly SessionTranscriptMessage[] {
+export function mapPiSessionMessageHistory(
+  entries: readonly SessionEntry[],
+  skills: readonly SessionSkill[] = []
+): readonly SessionTranscriptMessage[] {
   return entries.flatMap((entry, index) => {
     if (entry.type !== 'message') {
       return []
     }
 
-    const message = toSessionMessage(entry.message, entry.id, 'complete', index + 1)
+    const message = toSessionMessage(entry.message, entry.id, 'complete', index + 1, skills)
 
     return message ? [message] : []
   })
@@ -118,25 +122,77 @@ function toSessionMessage(
   message: AgentMessage,
   id: string,
   state: SessionTranscriptMessage['state'],
-  revision: number
+  revision: number,
+  skills: readonly SessionSkill[]
 ): SessionTranscriptMessage | undefined {
   if (message.role !== 'user' && message.role !== 'assistant') {
     return undefined
   }
 
-  const text = textFromMessage(message)
+  const content = textFromMessage(message)
+  const projected = message.role === 'user' ? projectPiUserMessage(content, skills) : { text: content }
 
-  if (!text) {
+  if (!projected.text && !projected.skills?.length) {
     return undefined
   }
 
   return {
     id,
     role: message.role,
-    text,
+    ...projected,
     state,
     revision,
   }
+}
+
+export function projectPiUserMessage(
+  source: string,
+  skills: readonly SessionSkill[] = []
+): Pick<SessionTranscriptMessage, 'text' | 'skills'> {
+  const nativeInvocation = source.match(
+    /^<skill name="([^"]+)" location="[^"]+">\n[\s\S]*?\n<\/skill>(?:\n\n([\s\S]+))?$/
+  )
+  if (nativeInvocation) {
+    const name = nativeInvocation[1] ?? ''
+    return {
+      text: nativeInvocation[2]?.trim() ?? '',
+      skills: [{ offset: 0, skill: skillReference(name, skills) }],
+    }
+  }
+
+  const blockPattern = /<skill name="([^"]+)" location="[^"]+">\n[\s\S]*?\n<\/skill>/g
+  const mentions: NonNullable<SessionTranscriptMessage['skills']>[number][] = []
+  let text = ''
+  let sourceOffset = 0
+
+  for (const match of source.matchAll(blockPattern)) {
+    const block = match[0]
+    const name = match[1]
+    const matchOffset = match.index
+    if (!block || !name || matchOffset === undefined) continue
+
+    text += source.slice(sourceOffset, matchOffset)
+    mentions.push({ offset: text.length, skill: skillReference(name, skills) })
+    sourceOffset = matchOffset + block.length
+  }
+
+  if (mentions.length > 0) return { text: text + source.slice(sourceOffset), skills: mentions }
+
+  const projected = projectSessionSkillSelections(source)
+  if (projected.selections.length === 0) return { text: source }
+
+  return {
+    text: projected.text,
+    skills: projected.selections.map(({ name, offset }) => ({ offset, skill: skillReference(name, skills) })),
+  }
+}
+
+function skillReference(name: string, skills: readonly SessionSkill[]) {
+  const available = skills.find((skill) => skill.name === name)
+
+  return available
+    ? { ...available, availability: 'available' as const }
+    : { name, availability: 'unavailable' as const }
 }
 
 function textFromMessage(message: Extract<AgentMessage, { role: 'user' | 'assistant' }>): string {

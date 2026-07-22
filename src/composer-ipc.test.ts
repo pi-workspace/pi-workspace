@@ -18,7 +18,14 @@ test('accepts a narrow serializable Session message submission', () => {
   )
 })
 
-test('rejects whitespace-only Session message submissions at the IPC boundary', () => {
+test('accepts a Skill-only Session message submission', () => {
+  assert.deepEqual(
+    parseSessionMessageSubmission({ sessionId: 'session-a', text: '/skill:code-review', delivery: 'steer' }),
+    { sessionId: sessionId('session-a'), text: '/skill:code-review', delivery: 'steer' }
+  )
+})
+
+test('rejects whitespace-only Session message submissions without a Skill at the IPC boundary', () => {
   assert.equal(parseSessionMessageSubmission({ sessionId: 'session-a', text: ' \n ', delivery: 'steer' }), undefined)
 })
 

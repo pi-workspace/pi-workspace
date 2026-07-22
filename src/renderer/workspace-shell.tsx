@@ -42,6 +42,7 @@ type WorkspaceShellProperties = Readonly<{
   initialSessionDisplay?: Readonly<{
     activeSessionId: SessionId
     pinnedSessionIds: readonly SessionId[]
+    drafts?: ReadonlyMap<SessionId, string>
   }>
 }>
 
@@ -71,7 +72,7 @@ export function WorkspaceShell({ initialWorkspacesSnapshot, initialSessionDispla
   const initialSessionDisplayRef = useRef(initialSessionDisplay)
   const [mainContent, dispatchMainContent] = useReducer(updateMainContent, initialMainContentState)
   const changelogButtonRef = useRef<HTMLElement>(null)
-  const [drafts, setDrafts] = useState<ReadonlyMap<SessionId, string>>(() => new Map())
+  const [drafts, setDrafts] = useState<ReadonlyMap<SessionId, string>>(() => new Map(initialSessionDisplay?.drafts))
   const sessionTitleSavePending = useRef(false)
   const composerFocusRequestNumber = useRef(0)
   const [workstreamCreationRequest, setWorkstreamCreationRequest] = useState<number>()
@@ -461,6 +462,7 @@ export function WorkspaceShell({ initialWorkspacesSnapshot, initialSessionDispla
             submitMessage={submitMessage}
             stopRun={stopRun}
             sessionConfiguration={window.piWorkspace.sessionConfiguration}
+            sessionSkills={window.piWorkspace.sessionSkills}
             onToggleSessionPin={toggleSessionPin}
           />
         ) : mainContent.destination === 'changelog' ? (

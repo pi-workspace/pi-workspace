@@ -1,4 +1,5 @@
 import type { SessionId } from '@/src/domain/session'
+import type { SessionSkillMention } from '@/src/session-skills'
 
 const allowedExternalUrlProtocols = new Set(['http:', 'https:', 'mailto:'])
 export const maximumExternalUrlLength = 8_192
@@ -18,6 +19,7 @@ export type SessionTranscriptMessage = Readonly<{
   id: string
   role: 'user' | 'assistant'
   text: string
+  skills?: readonly SessionSkillMention[]
   state: 'complete' | 'streaming'
   revision: number
 }>

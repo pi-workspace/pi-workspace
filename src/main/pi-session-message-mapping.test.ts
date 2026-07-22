@@ -2,7 +2,11 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { SessionManager } from '@earendil-works/pi-coding-agent'
 import type { AssistantMessage } from '@earendil-works/pi-ai'
-import { createPiSessionMessageStream, mapPiSessionMessageHistory } from './pi-session-message-mapping'
+import {
+  createPiSessionMessageStream,
+  mapPiSessionMessageHistory,
+  projectPiUserMessage,
+} from './pi-session-message-mapping'
 
 test('maps every text message on the active branch, including messages before compaction', () => {
   const sessionManager = SessionManager.inMemory()
@@ -24,6 +28,75 @@ test('maps every text message on the active branch, including messages before co
       { role: 'assistant', text: 'Visible Pi response', state: 'complete' },
     ]
   )
+})
+
+test('projects a persisted Pi Skill invocation without exposing its expanded instructions or path', () => {
+  const projected = projectPiUserMessage(
+    '<skill name="code-review" location="/private/code-review/SKILL.md">\nExpanded instructions\n</skill>\n\nReview this change.',
+    [{ name: 'code-review', description: 'Review code changes.' }]
+  )
+
+  assert.deepEqual(projected, {
+    text: 'Review this change.',
+    skills: [
+      {
+        offset: 0,
+        skill: {
+          name: 'code-review',
+          description: 'Review code changes.',
+          availability: 'available',
+        },
+      },
+    ],
+  })
+})
+
+test('restores a persisted raw Skill token as an inline reference', () => {
+  const projected = projectPiUserMessage('/skill:code-review Review this change.', [
+    { name: 'code-review', description: 'Review code changes.' },
+  ])
+
+  assert.deepEqual(projected, {
+    text: ' Review this change.',
+    skills: [
+      {
+        offset: 0,
+        skill: {
+          name: 'code-review',
+          description: 'Review code changes.',
+          availability: 'available',
+        },
+      },
+    ],
+  })
+})
+
+test('projects multiple persisted Pi Skill invocations at their authored positions', () => {
+  const projected = projectPiUserMessage(
+    'Use <skill name="code-review" location="/private/code-review/SKILL.md">\nReview instructions\n</skill> and <skill name="tdd" location="/private/tdd/SKILL.md">\nTDD instructions\n</skill>.',
+    [
+      { name: 'code-review', description: 'Review code changes.' },
+      { name: 'tdd', description: 'Develop test first.' },
+    ]
+  )
+
+  assert.deepEqual(projected, {
+    text: 'Use  and .',
+    skills: [
+      {
+        offset: 4,
+        skill: {
+          name: 'code-review',
+          description: 'Review code changes.',
+          availability: 'available',
+        },
+      },
+      {
+        offset: 9,
+        skill: { name: 'tdd', description: 'Develop test first.', availability: 'available' },
+      },
+    ],
+  })
 })
 
 test('keeps one Pi message while text streams and completes it with its full source text', () => {
