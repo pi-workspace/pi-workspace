@@ -20,6 +20,16 @@ export function isSemanticVersion(version: string): boolean {
 
 export const bundledReleaseNotes: readonly ReleaseNote[] = [
   {
+    version: '0.2.0-beta.1',
+    releaseDate: '2026-07-22',
+    summary: 'This beta adds Skills to help guide Pi in a Session.',
+    changes: {
+      new: ['Choose an available Skill from Composer autocomplete to guide Pi in a Session.'],
+      improved: [],
+      fixed: [],
+    },
+  },
+  {
     version: '0.1.1-beta.1',
     releaseDate: '2026-07-21',
     summary: 'A focused beta update improves the visual clarity of dialogs.',
