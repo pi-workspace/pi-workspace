@@ -7,6 +7,6 @@ test('formats the latest bundled Release Note for a GitHub Release', () => {
   const markdown = formatReleaseNoteAsMarkdown(bundledReleaseNotes[0]!)
 
   assert.match(markdown, new RegExp(`^${bundledReleaseNotes[0]!.summary}`, 'm'))
-  assert.match(markdown, /^## Fixed$/m)
-  assert.match(markdown, /^- Dialogs now use an opaque background for clearer focus\./m)
+  assert.match(markdown, /^## New$/m)
+  assert.match(markdown, /^- Choose an available Skill from Composer autocomplete to guide Pi in a Session\./m)
 })
