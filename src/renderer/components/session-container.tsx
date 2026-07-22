@@ -3,6 +3,7 @@ import { LockKeyhole, Pencil, TriangleAlert } from 'lucide-react'
 import type { ComposerBridge } from '@/src/composer'
 import type { OwnedSession, WorkstreamLifecycle } from '@/src/domain/workstream'
 import type { SessionConfigurationBridge } from '@/src/session-configuration'
+import type { SessionSkillsBridge } from '@/src/session-skills'
 import { Composer } from '@/src/renderer/components/composer'
 import { SessionMessages } from '@/src/renderer/components/session-messages'
 import { SessionPinButton } from '@/src/renderer/components/session-pin-button'
@@ -27,6 +28,7 @@ type SessionContainerProperties = {
   submitMessage: ComposerBridge['submit']
   stopRun?: ComposerBridge['stop']
   sessionConfiguration?: SessionConfigurationBridge
+  sessionSkills?: SessionSkillsBridge
   onTogglePin: () => void
 }
 
@@ -47,6 +49,7 @@ export function SessionContainer({
   submitMessage,
   stopRun,
   sessionConfiguration,
+  sessionSkills,
   onTogglePin,
 }: SessionContainerProperties) {
   const headingId = useId()
@@ -160,6 +163,7 @@ export function SessionContainer({
           submitMessage={submitMessage}
           stopRun={stopRun}
           sessionConfiguration={sessionConfiguration}
+          sessionSkills={sessionSkills}
         />
       )}
     </section>

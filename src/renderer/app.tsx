@@ -19,6 +19,7 @@ export type AppProperties = Readonly<{
   initialSessionDisplay?: Readonly<{
     activeSessionId: SessionId
     pinnedSessionIds: readonly SessionId[]
+    drafts?: ReadonlyMap<SessionId, string>
   }>
 }>
 

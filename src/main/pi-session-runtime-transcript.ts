@@ -79,6 +79,7 @@ export function hydrateTimeline(timeline: SessionRuntimeTimeline, history: PiSes
       id: conversation.id,
       role: conversation.role,
       text: conversation.text,
+      skills: conversation.skills,
       state: 'complete',
       revision: 0,
     })

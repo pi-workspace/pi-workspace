@@ -55,6 +55,8 @@
   --color-composer-reference-foreground: var(--theme-composer-reference-foreground);
   --color-focus-ring: var(--theme-focus-ring);
   --color-form-error-foreground: var(--theme-form-error-foreground);
+  --color-skill-reference-foreground: var(--theme-skill-reference-foreground);
+  --color-skill-reference-underline: var(--theme-skill-reference-underline);
   --color-message-user-background: var(--theme-message-user-background);
   --color-foreground: var(--theme-session-message-code-foreground);
   --color-muted: var(--theme-session-message-code-background);
@@ -100,6 +102,8 @@
   --theme-dropdown-focus-foreground: var(--theme-accent-foreground);
   --theme-focus-ring: var(--theme-accent);
   --theme-form-error-foreground: var(--theme-danger-foreground);
+  --theme-skill-reference-foreground: var(--theme-link-foreground);
+  --theme-skill-reference-underline: var(--theme-link-foreground);
   --theme-message-user-background: var(--theme-content-subtle-background);
   --theme-session-header-active-background: var(--theme-content-subtle-background);
   --theme-session-interaction: var(--theme-content-interaction);

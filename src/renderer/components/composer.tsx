@@ -13,6 +13,7 @@ import type {
 } from '@/src/session-configuration'
 import { ComposerEditor, type ComposerEditorHandle } from '@/src/renderer/components/composer-editor'
 import { getComposerSubmissionState } from '@/src/renderer/composer-submission'
+import type { SessionSkill, SessionSkillsBridge } from '@/src/session-skills'
 import { useSessionConfiguration } from '@/src/renderer/session-configuration-state'
 
 type ComposerProperties = Readonly<{
@@ -25,6 +26,7 @@ type ComposerProperties = Readonly<{
   submitMessage: ComposerBridge['submit']
   stopRun?: ComposerBridge['stop']
   sessionConfiguration?: SessionConfigurationBridge
+  sessionSkills?: SessionSkillsBridge
 }>
 
 export function Composer({
@@ -37,6 +39,7 @@ export function Composer({
   submitMessage,
   stopRun,
   sessionConfiguration,
+  sessionSkills,
 }: ComposerProperties) {
   const descriptionId = useId()
   const statusId = useId()
@@ -50,11 +53,34 @@ export function Composer({
   const [configurationError, setConfigurationError] = useState<string>()
   const [stopping, setStopping] = useState(false)
   const [stopError, setStopError] = useState<string>()
+  const [availableSkills, setAvailableSkills] = useState<readonly SessionSkill[]>([])
+  const [skillsError, setSkillsError] = useState<string>()
   const configurationPending = pendingConfiguration.size > 0
 
   useEffect(() => {
     currentDraft.current = draft
   }, [draft])
+
+  useEffect(() => {
+    if (!sessionSkills) return
+
+    let active = true
+    setAvailableSkills([])
+    setSkillsError(undefined)
+
+    void sessionSkills.getAvailable(session.id).then(
+      (skills) => {
+        if (active) setAvailableSkills(skills)
+      },
+      () => {
+        if (active) setSkillsError('Skills could not be loaded for this Session.')
+      }
+    )
+
+    return () => {
+      active = false
+    }
+  }, [session.id, sessionSkills])
 
   useEffect(() => {
     if (focusRequest === undefined) {
@@ -88,7 +114,7 @@ export function Composer({
 
   const submit = useCallback(
     async (delivery: SessionMessageDelivery) => {
-      const submittedDraft = currentDraft.current
+      const submittedDraft = editorHandle.current?.getDraft() ?? currentDraft.current
 
       if (
         awaitingAcceptance.current ||
@@ -113,7 +139,6 @@ export function Composer({
       const nextSubmissionState = getComposerSubmissionState({ type: 'resolve', submittedDraft, result })
       currentDraft.current = nextSubmissionState.draft
       onDraftChange(nextSubmissionState.draft)
-
       awaitingAcceptance.current = false
       restoreFocusAfterAcceptance.current = true
       setSubmissionState(nextSubmissionState)
@@ -131,7 +156,7 @@ export function Composer({
     ? 'No Model is available. Install Pi CLI, sign in to a provider, then restart Pi Workspace.'
     : undefined
   const errorMessage =
-    error || stopError || configurationError || configurationMessage || configuration?.persistenceWarning
+    error || stopError || configurationError || skillsError || configurationMessage || configuration?.persistenceWarning
   const statusMessage = errorMessage || status
 
   const changeConfiguration = useCallback(
@@ -210,6 +235,7 @@ export function Composer({
       >
         <ComposerEditor
           ref={editorHandle}
+          availableSkills={availableSkills}
           describedBy={`${descriptionId} ${statusId}`}
           draft={draft}
           label={`Message for ${session.title}`}

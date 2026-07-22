@@ -3,6 +3,7 @@ import type { ComposerBridge } from '@/src/composer'
 import type { SessionId } from '@/src/domain/session'
 import type { OwnedSession, WorkstreamLifecycle } from '@/src/domain/workstream'
 import type { SessionConfigurationBridge } from '@/src/session-configuration'
+import type { SessionSkillsBridge } from '@/src/session-skills'
 import { SessionContainer } from '@/src/renderer/components/session-container'
 
 type SessionAreaProperties = {
@@ -30,6 +31,7 @@ type SessionAreaProperties = {
   submitMessage: ComposerBridge['submit']
   stopRun?: ComposerBridge['stop']
   sessionConfiguration?: SessionConfigurationBridge
+  sessionSkills?: SessionSkillsBridge
   onToggleSessionPin: (sessionId: SessionId) => void
 }
 
@@ -52,6 +54,7 @@ export function SessionArea({
   submitMessage,
   stopRun,
   sessionConfiguration,
+  sessionSkills,
   onToggleSessionPin,
 }: SessionAreaProperties) {
   const sessionPaneRefs = useRef(new Map<SessionId, HTMLDivElement>())
@@ -104,6 +107,7 @@ export function SessionArea({
             submitMessage={submitMessage}
             stopRun={stopRun}
             sessionConfiguration={sessionConfiguration}
+            sessionSkills={sessionSkills}
             onTogglePin={() => onToggleSessionPin(session.id)}
           />
         </div>

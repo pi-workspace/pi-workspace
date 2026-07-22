@@ -34,6 +34,7 @@ export function getComposerSubmissionState(event: ComposerSubmissionEvent): Comp
       'follow-up-capacity':
         'This Session already has 100 pending follow-ups. Wait for Pi to process one, then try again.',
       'runtime-unavailable': 'Pi couldn’t open this Session. Check its Repository and history, then try again.',
+      'skill-unavailable': 'That Skill is no longer available for this Session. Remove it and choose another.',
       'preflight-rejected': 'Pi couldn’t start this run. Check the selected Model and provider, then try again.',
       unexpected: 'Message wasn’t sent. Try again.',
     } as const

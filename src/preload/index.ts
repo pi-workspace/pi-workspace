@@ -5,6 +5,8 @@ import { applicationStateIpcChannels } from '@/src/application-state-ipc'
 import type { ComposerBridge, SessionMessageSubmissionResult, SessionRunStopResult } from '@/src/composer'
 import type { PiWorkspaceBridge } from '@/src/pi-workspace'
 import { composerIpcChannels } from '@/src/composer-ipc'
+import type { SessionSkillsBridge } from '@/src/session-skills'
+import { sessionSkillsIpcChannels } from '@/src/session-skills-ipc'
 import type {
   SessionConfigurationBridge,
   SessionConfigurationCommandResult,
@@ -154,6 +156,12 @@ const composerBridge: ComposerBridge = {
   },
 }
 
+const sessionSkillsBridge: SessionSkillsBridge = {
+  getAvailable(sessionId) {
+    return ipcRenderer.invoke(sessionSkillsIpcChannels.getAvailable, { sessionId })
+  },
+}
+
 const sessionConfigurationBridge: SessionConfigurationBridge = {
   getSnapshot(sessionId) {
     return ipcRenderer.invoke(sessionConfigurationIpcChannels.getSnapshot, {
@@ -218,6 +226,7 @@ const sessionTranscriptBridge: SessionTranscriptBridge = {
 const piWorkspaceBridge: PiWorkspaceBridge = {
   applicationState: applicationStateBridge,
   composer: composerBridge,
+  sessionSkills: sessionSkillsBridge,
   sessionConfiguration: sessionConfigurationBridge,
   transcript: sessionTranscriptBridge,
   settings: settingsBridge,

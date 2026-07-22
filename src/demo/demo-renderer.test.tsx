@@ -2,13 +2,15 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { act, fireEvent, waitFor } from '@testing-library/react'
 import { createDemoBridge } from '@/src/demo/demo-bridge'
+import { getDemoScenarioPresentation } from '@/src/demo/demo-scenarios'
 
 test('the normal renderer initializes against the selected demo scenario', async () => {
   document.body.innerHTML = '<div id="app"></div>'
   window.piWorkspace = createDemoBridge('workstream')
 
   await act(async () => {
-    await import('@/src/renderer/index')
+    const { renderApp } = await import('@/src/renderer/render-app')
+    renderApp({ initialSessionDisplay: getDemoScenarioPresentation('workstream') })
   })
 
   await waitFor(() => {
@@ -42,6 +44,10 @@ test('the normal renderer initializes against the selected demo scenario', async
     assert.ok(effortControl)
     assert.equal(effortControl.textContent, 'Medium')
     assert.match(document.body.textContent ?? '', /Let’s build the offline editing flow/)
+    assert.match(document.body.textContent ?? '', /frontend-design/)
+    assert.ok(document.querySelector('[data-skill-reference="frontend-design"]'))
+    assert.ok(document.querySelector('[data-skill-reference="code-review"]'))
+    assert.match(document.body.textContent ?? '', /Review the offline editing changes before we wrap up\./)
     assert.match(document.body.textContent ?? '', /Mapped the existing save pipeline/)
     assert.match(document.body.textContent ?? '', /Built reliable offline editing/)
     assert.match(document.body.textContent ?? '', /Validated offline recovery/)

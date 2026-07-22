@@ -8,6 +8,7 @@ import type { ComposerBridge } from '@/src/composer'
 import { sessionId, type Session, type SessionId } from '@/src/domain/session'
 import type { OwnedSession } from '@/src/domain/workstream'
 import type { SessionConfigurationBridge, SessionConfigurationSnapshot } from '@/src/session-configuration'
+import type { SessionSkillsBridge } from '@/src/session-skills'
 import { Composer } from './composer'
 import { SessionArea } from './session-area'
 
@@ -37,6 +38,30 @@ function StatefulComposer({
       onActivate={() => {}}
       onDraftChange={setDraft}
       submitMessage={submitMessage}
+    />
+  )
+}
+
+function SkillComposer({
+  initialDraft = '/',
+  submitMessage,
+  sessionSkills,
+}: {
+  initialDraft?: string
+  submitMessage: ComposerBridge['submit']
+  sessionSkills: SessionSkillsBridge
+}) {
+  const [draft, setDraft] = useState(initialDraft)
+
+  return (
+    <Composer
+      session={session}
+      draft={draft}
+      isWorking={false}
+      onActivate={() => {}}
+      onDraftChange={setDraft}
+      submitMessage={submitMessage}
+      sessionSkills={sessionSkills}
     />
   )
 }
@@ -112,6 +137,10 @@ function createUser() {
   return userEvent.setup({ document: browser.document as unknown as Document })
 }
 
+function composerText(editor: HTMLElement): string {
+  return (editor.textContent ?? '').replaceAll('\u00a0', ' ').trimEnd()
+}
+
 function sessionConfigurationSnapshot(): SessionConfigurationSnapshot {
   return {
     sessionId: session.id,
@@ -148,6 +177,412 @@ test('Enter submits the exact draft to the owning Session once', async () => {
   await user.keyboard('{Enter}')
 
   assert.deepEqual(submissions, [{ sessionId: session.id, text: 'Keep  internal spaces', delivery: 'steer' }])
+})
+
+test('selects a Skill from autocomplete and sends it without prompt text', async () => {
+  const submissions: unknown[] = []
+  const user = createUser()
+  const view = renderInBrowser(
+    <SkillComposer
+      sessionSkills={{
+        async getAvailable() {
+          return [{ name: 'code-review', description: 'Review code changes.' }]
+        },
+      }}
+      submitMessage={async (submission) => {
+        submissions.push(submission)
+        return { status: 'accepted', delivery: 'prompt' }
+      }}
+    />
+  )
+  const editor = view.getByRole('textbox', { name: 'Message for First Session' })
+
+  await user.click(editor)
+  await view.findByRole('option', { name: /code-review/ })
+  await user.keyboard('{Enter}')
+
+  assert.ok(view.getByRole('button', { name: 'Remove code-review Skill' }))
+  await user.keyboard('{Enter}')
+
+  assert.deepEqual(submissions, [{ sessionId: session.id, text: '/skill:code-review', delivery: 'steer' }])
+})
+
+test('inserts one visible space after a selected Skill', async () => {
+  const user = createUser()
+  const view = renderInBrowser(
+    <SkillComposer
+      initialDraft="Use "
+      sessionSkills={{
+        async getAvailable() {
+          return [{ name: 'code-review', description: 'Review code changes.' }]
+        },
+      }}
+      submitMessage={async () => ({ status: 'accepted', delivery: 'prompt' })}
+    />
+  )
+  const editor = view.getByRole('textbox', { name: 'Message for First Session' })
+
+  await user.click(editor)
+  await user.keyboard('/code')
+  await user.keyboard('{Enter}')
+
+  assert.equal(editor.textContent, 'Use code-review\u00a0')
+
+  await user.keyboard(' next')
+  assert.equal(editor.textContent?.replaceAll('\u00a0', ' '), 'Use code-review next')
+})
+
+test('keeps the caret after an inserted Skill', async () => {
+  const user = createUser()
+  const view = renderInBrowser(
+    <SkillComposer
+      initialDraft="Use "
+      sessionSkills={{
+        async getAvailable() {
+          return [{ name: 'code-review', description: 'Review code changes.' }]
+        },
+      }}
+      submitMessage={async () => ({ status: 'accepted', delivery: 'prompt' })}
+    />
+  )
+  const editor = view.getByRole('textbox', { name: 'Message for First Session' })
+
+  await user.click(editor)
+  await user.keyboard('/code')
+  await user.keyboard('{Enter}')
+  await user.keyboard(' next')
+
+  assert.equal(composerText(editor), 'Use code-review next')
+})
+
+test('keeps prompt text typed after a selected Skill', async () => {
+  const submissions: unknown[] = []
+  const user = createUser()
+  const view = renderInBrowser(
+    <SkillComposer
+      sessionSkills={{
+        async getAvailable() {
+          return [{ name: 'code-review', description: 'Review code changes.' }]
+        },
+      }}
+      submitMessage={async (submission) => {
+        submissions.push(submission)
+        return { status: 'accepted', delivery: 'prompt' }
+      }}
+    />
+  )
+  const editor = view.getByRole('textbox', { name: 'Message for First Session' })
+
+  await user.click(editor)
+  await user.keyboard('{Enter}')
+  await user.click(editor)
+  await user.keyboard('Review this change.')
+  await user.click(view.getByRole('button', { name: 'Send message' }))
+
+  assert.deepEqual(submissions, [
+    { sessionId: session.id, text: '/skill:code-review Review this change.', delivery: 'steer' },
+  ])
+})
+
+test('places a selected Skill where it was mentioned in the prompt', async () => {
+  const user = createUser()
+  const view = renderInBrowser(
+    <SkillComposer
+      initialDraft="Review with "
+      sessionSkills={{
+        async getAvailable() {
+          return [{ name: 'code-review', description: 'Review code changes.' }]
+        },
+      }}
+      submitMessage={async () => ({ status: 'accepted', delivery: 'prompt' })}
+    />
+  )
+  const editor = view.getByRole('textbox', { name: 'Message for First Session' })
+
+  await user.click(editor)
+  await user.keyboard('/code')
+  await user.click(await view.findByRole('option', { name: /code-review/ }))
+
+  assert.equal(composerText(editor), 'Review with code-review')
+})
+
+test('associates Skill autocomplete and its active option with the Composer', async () => {
+  const user = createUser()
+  const view = renderInBrowser(
+    <SkillComposer
+      sessionSkills={{
+        async getAvailable() {
+          return [
+            { name: 'code-review', description: 'Review code changes.' },
+            { name: 'tdd', description: 'Develop test first.' },
+          ]
+        },
+      }}
+      submitMessage={async () => ({ status: 'accepted', delivery: 'prompt' })}
+    />
+  )
+  const editor = view.getByRole('textbox', { name: 'Message for First Session' })
+
+  await user.click(editor)
+  const listbox = await view.findByRole('listbox', { name: 'Skills' })
+  const activeOption = view.getByRole('option', { name: /code-review/ })
+
+  assert.equal(editor.getAttribute('aria-autocomplete'), 'list')
+  assert.equal(editor.getAttribute('aria-expanded'), 'true')
+  assert.equal(editor.getAttribute('aria-controls'), listbox.id)
+  assert.equal(editor.getAttribute('aria-activedescendant'), activeOption.id)
+
+  await user.keyboard('{Escape}')
+  assert.equal(editor.getAttribute('aria-expanded'), 'false')
+  assert.equal(editor.hasAttribute('aria-activedescendant'), false)
+})
+
+test('scrolls the active Skill option into view during keyboard navigation', async () => {
+  const originalScrollIntoView = HTMLElement.prototype.scrollIntoView
+  const scrolledOptions: string[] = []
+  HTMLElement.prototype.scrollIntoView = function () {
+    scrolledOptions.push(this.textContent ?? '')
+  }
+
+  try {
+    const user = createUser()
+    const view = renderInBrowser(
+      <SkillComposer
+        sessionSkills={{
+          async getAvailable() {
+            return Array.from({ length: 12 }, (_, index) => ({
+              name: `skill-${index + 1}`,
+              description: `Skill ${index + 1}`,
+            }))
+          },
+        }}
+        submitMessage={async () => ({ status: 'accepted', delivery: 'prompt' })}
+      />
+    )
+    const editor = view.getByRole('textbox', { name: 'Message for First Session' })
+
+    await user.click(editor)
+    await view.findByText('skill-1', { exact: true })
+    await user.keyboard('{ArrowDown}{ArrowDown}{ArrowDown}{ArrowDown}{ArrowDown}{ArrowDown}{ArrowDown}')
+
+    assert.match(scrolledOptions.at(-1) ?? '', /^skill-8/)
+  } finally {
+    HTMLElement.prototype.scrollIntoView = originalScrollIntoView
+  }
+})
+
+test('places Skill autocomplete above the Composer', async () => {
+  const user = createUser()
+  const view = renderInBrowser(
+    <SkillComposer
+      sessionSkills={{
+        async getAvailable() {
+          return [{ name: 'code-review', description: 'Review code changes.' }]
+        },
+      }}
+      submitMessage={async () => ({ status: 'accepted', delivery: 'prompt' })}
+    />
+  )
+
+  await user.click(view.getByRole('textbox', { name: 'Message for First Session' }))
+
+  assert.equal((await view.findByRole('listbox', { name: 'Skills' })).getAttribute('data-placement'), 'top')
+})
+
+test('selects more than one Skill', async () => {
+  const submissions: unknown[] = []
+  const user = createUser()
+  const view = renderInBrowser(
+    <SkillComposer
+      initialDraft="Use "
+      sessionSkills={{
+        async getAvailable() {
+          return [
+            { name: 'code-review', description: 'Review code changes.' },
+            { name: 'tdd', description: 'Develop test first.' },
+          ]
+        },
+      }}
+      submitMessage={async (submission) => {
+        submissions.push(submission)
+        return { status: 'accepted', delivery: 'prompt' }
+      }}
+    />
+  )
+  const editor = view.getByRole('textbox', { name: 'Message for First Session' })
+
+  await user.click(editor)
+  await user.keyboard('/code')
+  await user.click(await view.findByRole('option', { name: /code-review/ }))
+  await user.click(editor)
+  await user.keyboard(' and /tdd')
+  await user.click(await view.findByRole('option', { name: /^tdd/ }))
+
+  assert.equal(view.getAllByRole('button', { name: /Remove .* Skill/ }).length, 2)
+  assert.equal(composerText(editor), 'Use code-review and tdd')
+
+  await user.click(view.getByRole('button', { name: 'Send message' }))
+  assert.deepEqual(submissions, [
+    { sessionId: session.id, text: 'Use /skill:code-review and /skill:tdd', delivery: 'steer' },
+  ])
+})
+
+test('selects a Skill at the caret without removing existing prompt text', async () => {
+  const submissions: unknown[] = []
+  const user = createUser()
+  const view = renderInBrowser(
+    <SkillComposer
+      initialDraft="Review this change "
+      sessionSkills={{
+        async getAvailable() {
+          return [{ name: 'code-review', description: 'Review code changes.' }]
+        },
+      }}
+      submitMessage={async (submission) => {
+        submissions.push(submission)
+        return { status: 'accepted', delivery: 'prompt' }
+      }}
+    />
+  )
+  const editor = view.getByRole('textbox', { name: 'Message for First Session' })
+
+  await user.click(editor)
+  await user.keyboard('/code')
+  await view.findByRole('option', { name: /code-review/ })
+  await user.keyboard('{Enter}')
+  await user.keyboard('{Enter}')
+
+  assert.deepEqual(submissions, [
+    { sessionId: session.id, text: 'Review this change /skill:code-review', delivery: 'steer' },
+  ])
+})
+
+test('selecting a Skill preserves multiline prompt text', async () => {
+  const submissions: unknown[] = []
+  const user = createUser()
+  const view = renderInBrowser(
+    <SkillComposer
+      initialDraft={'First line\nSecond line '}
+      sessionSkills={{
+        async getAvailable() {
+          return [{ name: 'code-review', description: 'Review code changes.' }]
+        },
+      }}
+      submitMessage={async (submission) => {
+        submissions.push(submission)
+        return { status: 'accepted', delivery: 'prompt' }
+      }}
+    />
+  )
+  const editor = view.getByRole('textbox', { name: 'Message for First Session' })
+
+  await user.click(editor)
+  await user.keyboard('/code')
+  await view.findByRole('option', { name: /code-review/ })
+  await user.keyboard('{Enter}')
+  await user.keyboard('{Enter}')
+
+  assert.deepEqual(submissions, [
+    { sessionId: session.id, text: 'First line\nSecond line /skill:code-review', delivery: 'steer' },
+  ])
+})
+
+test('Backspace removes a selected Skill from an empty Composer', async () => {
+  const user = createUser()
+  const view = renderInBrowser(
+    <SkillComposer
+      sessionSkills={{
+        async getAvailable() {
+          return [{ name: 'code-review', description: 'Review code changes.' }]
+        },
+      }}
+      submitMessage={async () => ({ status: 'accepted', delivery: 'prompt' })}
+    />
+  )
+  const editor = view.getByRole('textbox', { name: 'Message for First Session' })
+
+  await user.click(editor)
+  await user.keyboard('{Enter}')
+  await user.keyboard('{Backspace}')
+
+  assert.equal(view.queryByRole('button', { name: 'Remove code-review Skill' }), null)
+  assert.equal(view.getByRole('button', { name: 'Send message' }).hasAttribute('disabled'), true)
+  assert.equal(browser.document.activeElement, editor)
+})
+
+test('removes a selected Skill with Enter without submitting the prompt', async () => {
+  const submissions: unknown[] = []
+  const user = createUser()
+  const view = renderInBrowser(
+    <SkillComposer
+      sessionSkills={{
+        async getAvailable() {
+          return [{ name: 'code-review', description: 'Review code changes.' }]
+        },
+      }}
+      submitMessage={async (submission) => {
+        submissions.push(submission)
+        return { status: 'accepted', delivery: 'prompt' }
+      }}
+    />
+  )
+
+  await user.click(view.getByRole('textbox', { name: 'Message for First Session' }))
+  await user.click(await view.findByRole('option', { name: /code-review/ }))
+
+  view.getByRole('button', { name: 'Remove code-review Skill' }).focus()
+  await user.keyboard('{Enter}')
+
+  assert.deepEqual(submissions, [])
+  assert.equal(view.queryByRole('button', { name: 'Remove code-review Skill' }), null)
+})
+
+test('removes a selected Skill with Space without submitting the prompt', async () => {
+  const submissions: unknown[] = []
+  const user = createUser()
+  const view = renderInBrowser(
+    <SkillComposer
+      sessionSkills={{
+        async getAvailable() {
+          return [{ name: 'code-review', description: 'Review code changes.' }]
+        },
+      }}
+      submitMessage={async (submission) => {
+        submissions.push(submission)
+        return { status: 'accepted', delivery: 'prompt' }
+      }}
+    />
+  )
+
+  await user.click(view.getByRole('textbox', { name: 'Message for First Session' }))
+  await user.click(await view.findByRole('option', { name: /code-review/ }))
+
+  view.getByRole('button', { name: 'Remove code-review Skill' }).focus()
+  await user.keyboard(' ')
+
+  assert.deepEqual(submissions, [])
+  assert.equal(view.queryByRole('button', { name: 'Remove code-review Skill' }), null)
+})
+
+test('removes the selected Skill from its inline remove button', async () => {
+  const user = createUser()
+  const view = renderInBrowser(
+    <SkillComposer
+      sessionSkills={{
+        async getAvailable() {
+          return [{ name: 'code-review', description: 'Review code changes.' }]
+        },
+      }}
+      submitMessage={async () => ({ status: 'accepted', delivery: 'prompt' })}
+    />
+  )
+
+  await user.click(view.getByRole('textbox', { name: 'Message for First Session' }))
+  await user.click(await view.findByRole('option', { name: /code-review/ }))
+  await user.click(view.getByRole('button', { name: 'Remove code-review Skill' }))
+
+  assert.equal(view.queryByRole('button', { name: 'Remove code-review Skill' }), null)
+  assert.equal(view.getByRole('button', { name: 'Send message' }).hasAttribute('disabled'), true)
 })
 
 test('focuses the Composer when a new focus request arrives', async () => {

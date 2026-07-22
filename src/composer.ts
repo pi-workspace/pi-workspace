@@ -4,11 +4,23 @@ export const sessionMessageDeliveries = ['steer', 'follow-up'] as const
 
 export type SessionMessageDelivery = (typeof sessionMessageDeliveries)[number]
 
+export const maximumSessionSkillNameLength = 64
+const sessionSkillNamePattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
+
 export type SessionMessageSubmission = Readonly<{
   sessionId: SessionId
   text: string
   delivery: SessionMessageDelivery
 }>
+
+export function isSessionSkillName(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    value.length > 0 &&
+    value.length <= maximumSessionSkillNameLength &&
+    sessionSkillNamePattern.test(value)
+  )
+}
 
 export type AcceptedSessionMessageDelivery = 'prompt' | SessionMessageDelivery
 
@@ -21,6 +33,7 @@ export const sessionMessageRejectionReasons = [
   'agent-run-capacity',
   'follow-up-capacity',
   'runtime-unavailable',
+  'skill-unavailable',
   'preflight-rejected',
   'unexpected',
 ] as const

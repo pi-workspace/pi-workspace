@@ -132,6 +132,15 @@ export function createDemoBridge(scenarioName?: string): PiWorkspaceBridge {
         return { status: 'not-running' }
       },
     },
+    sessionSkills: {
+      async getAvailable() {
+        return [
+          { name: 'code-review', description: 'Review code changes for correctness and maintainability.' },
+          { name: 'frontend-design', description: 'Create intentional, distinctive interfaces and interactions.' },
+          { name: 'planning', description: 'Turn a goal into a focused implementation plan.' },
+        ]
+      },
+    },
     sessionConfiguration: {
       async getSnapshot(sessionId) {
         return {
