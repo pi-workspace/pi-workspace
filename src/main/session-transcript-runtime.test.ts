@@ -179,6 +179,30 @@ test('publishes updated context usage to transcript subscribers', async () => {
   assert.deepEqual(snapshots, [{ tokens: null, contextWindow: 200_000, percent: null }])
 })
 
+test('keeps published context usage when the runtime cannot report it', async () => {
+  let emit: (event: Parameters<Parameters<PiSessionRuntime['subscribe']>[0]>[0]) => void = () => {}
+  const runtime: PiSessionRuntime = {
+    isStreaming: false,
+    async prompt() {},
+    subscribe(listener) {
+      emit = listener
+      return () => {}
+    },
+    dispose() {},
+  }
+  const registry = createPiSessionRuntimeRegistry({
+    findSession: () => ({ directoryPath: '/tmp', sessionPath: '/tmp/session.jsonl' }),
+    createSession: async () => runtime,
+  })
+  const id = sessionId('retained-context-session')
+
+  await registry.getTranscript(id)
+  emit({ type: 'context_usage', usage: { tokens: 48_000, contextWindow: 200_000, percent: 24 } })
+  const snapshot = await registry.getTranscript(id)
+
+  assert.deepEqual(snapshot.contextUsage, { tokens: 48_000, contextWindow: 200_000, percent: 24 })
+})
+
 test('publishes a failed transcript run without a parallel failure stream', async () => {
   let emit: (event: Parameters<Parameters<PiSessionRuntime['subscribe']>[0]>[0]) => void = () => {}
   const runtime: PiSessionRuntime = {

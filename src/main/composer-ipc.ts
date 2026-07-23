@@ -245,6 +245,9 @@ export async function createPiSessionRuntime(
     rename(title) {
       session.sessionManager.appendSessionInfo(title)
     },
+    getContextUsage() {
+      return session.getContextUsage()
+    },
     subscribe(listener) {
       runtimeListeners.add(listener)
 

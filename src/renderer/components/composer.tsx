@@ -248,22 +248,18 @@ export function Composer({
           onSubmit={(delivery) => void submit(delivery)}
         />
         <div className="flex items-end justify-between gap-2 px-3 pt-1 pb-2" data-slot="composer-control-row">
-          {(contextUsage || sessionConfiguration) && (
-            <div className="flex min-w-0 items-end gap-3">
-              {contextUsage && <ContextWindowUsage usage={contextUsage} />}
-              {sessionConfiguration && (
-                <ComposerConfigurationControls
-                  snapshot={configuration}
-                  disabled={configurationDisabled || modelConfigurationRequired}
-                  pending={pendingConfiguration}
-                  describedBy={statusId}
-                  onModelChange={changeModel}
-                  onEffortChange={changeEffort}
-                />
-              )}
-            </div>
+          {sessionConfiguration && (
+            <ComposerConfigurationControls
+              snapshot={configuration}
+              disabled={configurationDisabled || modelConfigurationRequired}
+              pending={pendingConfiguration}
+              describedBy={statusId}
+              onModelChange={changeModel}
+              onEffortChange={changeEffort}
+            />
           )}
           <div className="ml-auto flex items-end gap-1">
+            {contextUsage && <ContextWindowUsage usage={contextUsage} />}
             {isWorking && stopRun && (
               <button
                 type="button"
@@ -328,56 +324,78 @@ type ContextWindowUsageProperties = Readonly<{
   usage: SessionContextUsage
 }>
 
+type ContextUsageLevel = 'nominal' | 'caution' | 'critical'
+
+function contextUsageLevel(percent: number): ContextUsageLevel {
+  if (percent >= 90) return 'critical'
+  if (percent >= 75) return 'caution'
+
+  return 'nominal'
+}
+
 function ContextWindowUsage({ usage }: ContextWindowUsageProperties) {
   const contextWindow = formatTokenCount(usage.contextWindow)
 
   if (usage.tokens === null || usage.percent === null) {
     return (
-      <div aria-live="polite" className="min-w-28 text-xs/4 text-composer-muted-foreground">
-        <p className="font-medium text-composer-foreground">Context</p>
-        <p>Updating after compaction…</p>
-        <p className="sr-only">Context window usage is unavailable until Pi finishes its next response.</p>
-        <p className="mt-1 h-1 overflow-hidden rounded-full bg-content-subtle-background">
-          <span className="block h-full w-1/3 animate-pulse rounded-full bg-content-muted-foreground motion-reduce:animate-none" />
-        </p>
-        <p className="mt-1">? / {contextWindow}</p>
+      <div className="flex h-11 items-end pb-3">
+        <span
+          className="context-usage"
+          data-level="nominal"
+          role="status"
+          title="Context window usage is updating after compaction"
+        >
+          <span aria-hidden="true" className="context-usage-track" />
+          <span aria-hidden="true" className="context-usage-value">
+            —
+          </span>
+          <span className="sr-only">
+            Context window usage is updating after compaction, and is unavailable until Pi finishes its next response.
+          </span>
+        </span>
       </div>
     )
   }
 
-  const percent = Math.max(0, Math.min(100, usage.percent))
+  // The runtime reports an unrounded float. The bar is drawn from it directly so
+  // sub-percent growth still moves;
+  const fraction = Math.max(0, Math.min(100, usage.percent))
+  const percent = Math.round(fraction)
   const remaining = Math.max(0, usage.contextWindow - usage.tokens)
   const used = formatTokenCount(usage.tokens)
-  const remainingText = `${formatTokenCount(remaining)} left`
-  const valueText = `${used} used of ${contextWindow} tokens; ${remainingText}`
+  const valueText = `${used} used of ${contextWindow} tokens; ${formatTokenCount(remaining)} left`
 
   return (
-    <div aria-live="polite" className="min-w-28 text-xs/4 text-composer-muted-foreground">
-      <div className="flex items-center justify-between gap-2">
-        <span className="font-medium text-composer-foreground">Context</span>
-        <span>{remainingText}</span>
-      </div>
-      <div
+    <div className="flex h-11 items-end pb-3">
+      <span
         aria-label="Context window"
         aria-valuemax={100}
         aria-valuemin={0}
         aria-valuenow={percent}
         aria-valuetext={valueText}
-        className="mt-1 h-1 overflow-hidden rounded-full bg-content-subtle-background"
+        className="context-usage"
+        data-level={contextUsageLevel(percent)}
         role="progressbar"
+        title={valueText}
       >
-        <div className="h-full rounded-full bg-content-foreground" style={{ width: `${percent}%` }} />
-      </div>
-      <p className="mt-1">
-        {used} / {contextWindow}
-      </p>
+        <span aria-hidden="true" className="context-usage-track">
+          <span className="context-usage-fill" data-slot="context-usage-fill" style={{ width: `${fraction}%` }} />
+        </span>
+        <span aria-hidden="true" className="context-usage-value">
+          {percent}%
+        </span>
+      </span>
     </div>
   )
 }
 
 function formatTokenCount(tokens: number): string {
-  if (tokens >= 1_000_000) return `${Math.round((tokens / 1_000_000) * 10) / 10}m`
-  if (tokens >= 1_000) return `${Math.round(tokens / 1_000)}k`
+  const thousands = Math.round(tokens / 1_000)
+
+  // Roll over to millions once the rounded thousands would reach four digits,
+  // so a count just short of a million does not read as "1000k".
+  if (thousands >= 1_000) return `${Math.round((tokens / 1_000_000) * 10) / 10}m`
+  if (tokens >= 1_000) return `${thousands}k`
 
   return String(tokens)
 }

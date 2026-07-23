@@ -908,6 +908,9 @@ export function createPiSessionRuntimeRegistry({
     timeline.runtimeDirectory = runtimeDirectory
     timeline.persist = runtime.appendActivityRecord?.bind(runtime)
     timeline.loadRawOperation = runtime.loadRawOperation?.bind(runtime)
+    // The attaching runtime is authoritative for the Model's context window;
+    // context_usage events keep it current from here.
+    timeline.contextUsage = runtime.getContextUsage?.()
     hydrateTimeline(timeline, runtime.loadHistory?.())
 
     const unsubscribes = [runtime.subscribe((event) => handleRuntimeEvent(sessionId, event))]
@@ -1267,9 +1270,7 @@ export function createPiSessionRuntimeRegistry({
       }
     },
     async getTranscript(sessionId) {
-      const runtime = await getRuntime(sessionId)
-      const timeline = getTimeline(sessionId)
-      timeline.contextUsage = runtime?.getContextUsage?.()
+      await getRuntime(sessionId)
 
       return transcriptSnapshot(sessionId)
     },
