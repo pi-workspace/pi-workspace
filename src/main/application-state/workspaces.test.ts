@@ -24,8 +24,16 @@ const bunSqlite: SqliteModule = {
 }
 
 afterEach(async () => {
-  await Promise.all(temporaryDirectories.splice(0).map((directory) => rm(directory, { force: true, recursive: true })))
+  await Promise.all(
+    temporaryDirectories.splice(0).map((directory) => rm(directory, { force: true, recursive: true, maxRetries: 5 }))
+  )
 })
+
+async function assertPrivateMode(path: string, expectedMode: number): Promise<void> {
+  if (process.platform === 'win32') return
+
+  assert.equal((await stat(path)).mode & 0o777, expectedMode)
+}
 
 async function createRepository(parentDirectory: string, name: string): Promise<string> {
   const directoryPath = join(parentDirectory, name)
@@ -62,9 +70,9 @@ async function createWorkspaceWithTwoRepositories() {
 test('stores application state with owner-only permissions', async () => {
   const { storageDirectory } = await createAuthority()
 
-  assert.equal((await stat(storageDirectory)).mode & 0o777, 0o700)
-  assert.equal((await stat(join(storageDirectory, 'application-state.json'))).mode & 0o777, 0o600)
-  assert.equal((await stat(join(storageDirectory, 'application-state.sqlite'))).mode & 0o777, 0o600)
+  await assertPrivateMode(storageDirectory, 0o700)
+  await assertPrivateMode(join(storageDirectory, 'application-state.json'), 0o600)
+  await assertPrivateMode(join(storageDirectory, 'application-state.sqlite'), 0o600)
 })
 
 test('reuses one Repository identity across two Workspaces', async () => {

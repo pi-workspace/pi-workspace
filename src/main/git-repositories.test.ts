@@ -22,7 +22,7 @@ async function createRepository(): Promise<string> {
   const rootPath = await mkdtemp(join(tmpdir(), 'pi-workspace-repository-'))
   const directoryPath = join(rootPath, 'repository')
   await exec('git', ['init', directoryPath])
-  return directoryPath
+  return realpath(directoryPath)
 }
 
 test('resolves a selected Repository subdirectory to its canonical Git root and common directory', async () => {

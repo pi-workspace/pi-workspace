@@ -8,8 +8,16 @@ import { createPiSessionFileStore } from './pi-session-files'
 const temporaryDirectories: string[] = []
 
 afterEach(async () => {
-  await Promise.all(temporaryDirectories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })))
+  await Promise.all(
+    temporaryDirectories.splice(0).map((directory) => rm(directory, { recursive: true, force: true, maxRetries: 5 }))
+  )
 })
+
+async function assertPrivateMode(path: string, expectedMode: number): Promise<void> {
+  if (process.platform === 'win32') return
+
+  assert.equal((await stat(path)).mode & 0o777, expectedMode)
+}
 
 async function createStore() {
   const storageDirectory = await mkdtemp(join(tmpdir(), 'pi-workspace-session-files-'))
@@ -24,14 +32,14 @@ test('creates an app-owned Session at its deterministic path', async () => {
 
   await store.create(intent)
 
-  assert.equal(intent.sessionPath.endsWith('/sessions/session-a.jsonl'), true)
+  assert.equal(intent.sessionPath.endsWith(join('sessions', 'session-a.jsonl')), true)
   assert.deepEqual(await store.resolve(intent), {
     directoryPath: intent.directoryPath,
     sessionPath: intent.sessionPath,
   })
-  assert.equal((await stat(intent.directoryPath)).mode & 0o777, 0o700)
-  assert.equal((await stat(dirname(intent.sessionPath))).mode & 0o777, 0o700)
-  assert.equal((await stat(intent.sessionPath)).mode & 0o777, 0o600)
+  await assertPrivateMode(intent.directoryPath, 0o700)
+  await assertPrivateMode(dirname(intent.sessionPath), 0o700)
+  await assertPrivateMode(intent.sessionPath, 0o600)
 })
 
 test('does not derive identity from a mismatched Session header', async () => {

@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
-import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { access, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { promisify } from 'node:util'
 import { afterEach, test } from 'node:test'
 import { SessionManager } from '@earendil-works/pi-coding-agent'
@@ -27,11 +27,13 @@ const bunSqlite: SqliteModule = {
 }
 
 afterEach(async () => {
-  await Promise.all(temporaryDirectories.splice(0).map((directory) => rm(directory, { force: true, recursive: true })))
+  await Promise.all(
+    temporaryDirectories.splice(0).map((directory) => rm(directory, { force: true, recursive: true, maxRetries: 5 }))
+  )
 })
 
 async function createFixture(sessionFiles?: PiSessionFileStore, inspectRepository?: RepositoryInspector) {
-  const storageDirectory = await mkdtemp(join(tmpdir(), 'pi-workspace-workstreams-'))
+  const storageDirectory = await realpath(await mkdtemp(join(tmpdir(), 'pi-workspace-workstreams-')))
   temporaryDirectories.push(storageDirectory)
   const repositoryPath = join(storageDirectory, 'repository')
   await exec('git', ['init', repositoryPath])
@@ -142,7 +144,7 @@ test('creates and reopens Workstream worktrees as every managed Session working 
     workstreamId: preview.workstreamId,
   })
   const workstream = created.snapshot.workstreams[0]!
-  const expectedPath = join(storageDirectory, '.worktrees', worktreeName(workstream.id), repository.id)
+  const expectedPath = join(dirname(repository.directoryPath), '.worktrees', worktreeName(workstream.id), repository.id)
 
   assert.match(workstream.id, /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i)
   assert.equal(preview.repositories[0]?.workingPath, expectedPath)
@@ -662,7 +664,7 @@ test('previews a Quick Session worktree for only the selected Repository', async
 })
 
 test('creates a Quick Session in its selected Repository worktree', async () => {
-  const { authority, storageDirectory, workspace } = await createFixture()
+  const { authority, workspace } = await createFixture()
   const repository = workspace.repositories[0]!
   await writeFile(join(repository.directoryPath, 'tracked.txt'), 'committed')
   await exec('git', ['-C', repository.directoryPath, 'add', 'tracked.txt'])
@@ -686,7 +688,7 @@ test('creates a Quick Session in its selected Repository worktree', async () => 
   })
   const workstream = created.snapshot.workstreams[0]!
   const resolution = await authority.resolveOwnedSession(created.sessionId)
-  const expectedPath = join(storageDirectory, '.worktrees', worktreeName(workstream.id), repository.id)
+  const expectedPath = join(dirname(repository.directoryPath), '.worktrees', worktreeName(workstream.id), repository.id)
 
   assert.equal(preview.repositories[0]?.workingPath, expectedPath)
   assert.equal(workstream.workingLocation, 'worktrees')
