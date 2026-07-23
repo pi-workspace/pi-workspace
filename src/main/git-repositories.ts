@@ -142,7 +142,6 @@ function isWithin(candidatePath: string, parentPath: string): boolean {
   const relativePath = relative(parentPath, candidatePath)
 
   return (
-    relativePath === '' ||
-    (!relativePath.startsWith(`..${sep}`) && relativePath !== '..' && !isAbsolute(relativePath))
+    relativePath === '' || (!relativePath.startsWith(`..${sep}`) && relativePath !== '..' && !isAbsolute(relativePath))
   )
 }
