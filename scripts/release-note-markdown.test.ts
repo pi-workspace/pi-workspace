@@ -8,5 +8,8 @@ test('formats the latest bundled Release Note for a GitHub Release', () => {
 
   assert.match(markdown, new RegExp(`^${bundledReleaseNotes[0]!.summary}`, 'm'))
   assert.match(markdown, /^## New$/m)
-  assert.match(markdown, /^- Choose an available Skill from Composer autocomplete to guide Pi in a Session\./m)
+  assert.match(
+    markdown,
+    /^- See current Session context-window usage in Composer, including used and remaining capacity\./m
+  )
 })
