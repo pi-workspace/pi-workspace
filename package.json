@@ -92,6 +92,7 @@
     },
     "win": {
       "artifactName": "pi-workspace-${version}-win-${arch}-setup.${ext}",
+      "icon": "assets/icons/pi-workspace.ico",
       "target": [
         {
           "target": "nsis",
