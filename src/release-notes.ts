@@ -20,6 +20,16 @@ export function isSemanticVersion(version: string): boolean {
 
 export const bundledReleaseNotes: readonly ReleaseNote[] = [
   {
+    version: '0.3.0-beta.1',
+    releaseDate: '2026-07-23',
+    summary: 'This beta makes it easier to keep track of available context during a Session.',
+    changes: {
+      new: ['See current Session context-window usage in Composer, including used and remaining capacity.'],
+      improved: [],
+      fixed: [],
+    },
+  },
+  {
     version: '0.2.0-beta.1',
     releaseDate: '2026-07-22',
     summary: 'This beta adds Skills to help guide Pi in a Session.',
