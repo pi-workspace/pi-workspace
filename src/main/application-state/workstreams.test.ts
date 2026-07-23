@@ -118,7 +118,7 @@ test('creates a Workstream with exactly one default Implement Session', async ()
   assert.equal(workstream?.sessions[0]?.availability, 'available')
 })
 
-test('creates and reopens Workstream worktrees as every managed Session working location', async () => {
+test('gives each managed Session an isolated worktree', async () => {
   const { authority, storageDirectory, workspace } = await createFixture()
   const repository = workspace.repositories[0]!
   await writeFile(join(repository.directoryPath, 'tracked.txt'), 'committed')
@@ -163,8 +163,10 @@ test('creates and reopens Workstream worktrees as every managed Session working 
 
   const second = await authority.createWorkstreamSession(workstream.id, { mode: 'brainstorm' })
   const secondRepository = (await authority.resolveOwnedSession(second.sessionId))?.managedPolicy?.repositories[0]
+  const secondExpectedPath = join(storageDirectory, '.worktrees', worktreeName(second.sessionId), repository.id)
   assert.equal(secondRepository?.availability, 'available')
-  if (secondRepository?.availability === 'available') assert.equal(secondRepository.workingPath, expectedPath)
+  if (secondRepository?.availability === 'available') assert.equal(secondRepository.workingPath, secondExpectedPath)
+  assert.notEqual(secondRepository?.workingPath, expectedPath)
 
   const restarted = await initializeApplicationAuthority(storageDirectory, { sqlite: bunSqlite })
   const reopenedRepository = (await restarted.resolveOwnedSession(created.sessionId))?.managedPolicy?.repositories[0]
@@ -1527,9 +1529,43 @@ test('renaming a Session cannot change its permanent owner or mode', async () =>
   assert.equal(after?.mode, before.mode)
 })
 
-test('allows only one Session Agent Run per Workstream', async () => {
+test('allows concurrent Session Agent Runs in isolated Session worktrees', async () => {
   const { authority, workspace } = await createFixture()
+  const repository = workspace.repositories[0]!
+  await writeFile(join(repository.directoryPath, 'tracked.txt'), 'committed')
+  await exec('git', ['-C', repository.directoryPath, 'add', 'tracked.txt'])
+  await exec('git', [
+    '-C',
+    repository.directoryPath,
+    '-c',
+    'user.name=Pi Workspace tests',
+    '-c',
+    'user.email=tests@pi-workspace.invalid',
+    'commit',
+    '-m',
+    'Initial commit',
+  ])
+
   const created = await authority.createWorkstream(workspace.id, { goal: 'Coordinate the work' })
+  const workstream = created.snapshot.workstreams[0]!
+  const second = await authority.createWorkstreamSession(workstream.id, { mode: 'implement' })
+
+  assert.equal(await authority.acquireSessionRunLease(created.sessionId), true)
+  assert.equal(await authority.acquireSessionRunLease(second.sessionId), true)
+
+  await authority.settleSessionRunLease(created.sessionId)
+  assert.equal(await authority.acquireSessionRunLease(created.sessionId), true)
+
+  await authority.settleSessionRunLease(created.sessionId)
+  assert.equal(await authority.acquireSessionRunLease(second.sessionId), false)
+
+  await authority.settleSessionRunLease(second.sessionId)
+  assert.equal(await authority.acquireSessionRunLease(second.sessionId), true)
+})
+
+test('blocks concurrent Agent Runs that share a Repository working path', async () => {
+  const { authority, workspace } = await createFixture()
+  const created = await authority.createWorkstream(workspace.id, { goal: 'Protect shared checkouts' })
   const workstream = created.snapshot.workstreams[0]!
   const second = await authority.createWorkstreamSession(workstream.id, { mode: 'brainstorm' })
 
@@ -1537,8 +1573,34 @@ test('allows only one Session Agent Run per Workstream', async () => {
   assert.equal(await authority.acquireSessionRunLease(second.sessionId), false)
 
   await authority.settleSessionRunLease(created.sessionId)
+})
 
-  assert.equal(await authority.acquireSessionRunLease(second.sessionId), true)
+test('migrates prior application state to Session work locations', async () => {
+  const { authority, storageDirectory, workspace } = await createFixture()
+  const created = await authority.createWorkstream(workspace.id, { goal: 'Migrate Session locations' })
+  const database = new Database(join(storageDirectory, 'application-state.sqlite'))
+  database.exec('ALTER TABLE session_run_leases RENAME TO workstream_run_leases')
+  database.exec('DROP TABLE workstream_run_leases')
+  database.exec(
+    'CREATE TABLE workstream_run_leases (workstream_id TEXT PRIMARY KEY REFERENCES workstreams(id), lease_id TEXT NOT NULL UNIQUE, session_id TEXT NOT NULL REFERENCES sessions(id), purpose TEXT NOT NULL, acquired_at INTEGER NOT NULL)'
+  )
+  database.exec('DROP TABLE session_repository_locations')
+  database
+    .prepare(
+      `INSERT INTO workstream_run_leases (workstream_id, lease_id, session_id, purpose, acquired_at)
+       SELECT workstream_id, ?, id, 'agent-run', ? FROM sessions WHERE id = ?`
+    )
+    .run('interrupted-agent-run', Date.now(), created.sessionId)
+  database.prepare("UPDATE metadata SET value = '3' WHERE key = 'schema_version'").run()
+  database.close()
+
+  const restarted = await initializeApplicationAuthority(storageDirectory, { sqlite: bunSqlite })
+
+  assert.equal(restarted.startup.status, 'ready')
+  assert.equal((await restarted.resolveOwnedSession(created.sessionId))?.canSubmit, true)
+  assert.equal(await restarted.acquireSessionRunLease(created.sessionId), true)
+
+  await restarted.settleSessionRunLease(created.sessionId)
 })
 
 test('releases an interrupted ordinary Agent Run lease during startup', async () => {
@@ -1639,8 +1701,8 @@ test('does not reject Session lookup for a malformed recorded working location',
   const database = new Database(join(storageDirectory, 'application-state.sqlite'))
   database.prepare("UPDATE workstreams SET working_location = 'worktrees' WHERE id = ?").run(workstream.id)
   database
-    .prepare("UPDATE workstream_repository_locations SET kind = 'unknown' WHERE workstream_id = ?")
-    .run(workstream.id)
+    .prepare("UPDATE session_repository_locations SET kind = 'unknown' WHERE session_id = ?")
+    .run(created.sessionId)
   database.close()
 
   assert.equal(await authority.resolveOwnedSession(created.sessionId), undefined)
