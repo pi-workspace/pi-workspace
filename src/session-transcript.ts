@@ -28,10 +28,17 @@ export type SessionTranscriptEntry =
   | Readonly<{ type: 'message'; message: SessionTranscriptMessage }>
   | Readonly<{ type: 'activity'; activity: AgentActivity }>
 
+export type SessionContextUsage = Readonly<{
+  tokens: number | null
+  contextWindow: number
+  percent: number | null
+}>
+
 export type SessionTranscriptSnapshot = Readonly<{
   sessionId: SessionId
   revision: number
   isWorking: boolean
+  contextUsage?: SessionContextUsage
   runs: readonly AgentRun[]
   entries: readonly SessionTranscriptEntry[]
   runFailureReason?: 'failed' | 'cancelled'

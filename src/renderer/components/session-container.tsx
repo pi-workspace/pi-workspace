@@ -158,6 +158,7 @@ export function SessionContainer({
           draft={draft}
           focusRequest={composerFocusRequest}
           isWorking={isWorking}
+          contextUsage={transcriptState.snapshot?.contextUsage}
           onActivate={onActivate}
           onDraftChange={onDraftChange}
           submitMessage={submitMessage}
