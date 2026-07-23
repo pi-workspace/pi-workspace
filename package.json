@@ -37,6 +37,7 @@
     "format:check": "prettier --check .",
     "package:linux": "bun run build && electron-builder --linux deb --x64 --publish never",
     "package:mac": "bun run build && electron-builder --mac dmg --universal --publish never",
+    "package:win": "bun run build && electron-builder --win nsis --x64 --publish never",
     "release:notes": "bun run scripts/release-note-markdown.ts",
     "release:validate": "bun run scripts/validate-release.ts",
     "security:scan": "bash scripts/security-scan.sh",
@@ -85,6 +86,17 @@
           "target": "dmg",
           "arch": [
             "universal"
+          ]
+        }
+      ]
+    },
+    "win": {
+      "artifactName": "pi-workspace-${version}-win-${arch}-setup.${ext}",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
           ]
         }
       ]
