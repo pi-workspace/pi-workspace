@@ -20,6 +20,7 @@ function policy(mode: 'brainstorm' | 'implement' = 'brainstorm'): ManagedSession
         id: 'repository-a',
         name: 'Available Repository',
         workingPath: '/workspaces/available',
+        workingLocation: 'source-checkout',
         commonDirectoryPath: '/workspaces/available/.git',
         availability: 'available',
         role: 'Application',
@@ -43,6 +44,7 @@ test('Workspace overview supplies working paths only for available Repositories'
   const overview = projectWorkspaceOverview(policy())
 
   assert.equal(overview.repositories[0]?.workingPath, '/workspaces/available')
+  assert.equal(overview.repositories[0]?.workingLocation, 'source-checkout')
   assert.equal('workingPath' in overview.repositories[1]!, false)
   assert.deepEqual(overview.repositories[0]?.relationships, ['repository-b'])
 })
@@ -64,9 +66,9 @@ test('Implement methodology directs implementation from shared knowledge and rec
     managedSessionMethodology('implement'),
     [
       'You are operating a Pi Workspace Implement Session.',
-      'Call workspace_overview before Repository work, then use the supplied Repository working paths.',
+      'Call workspace_overview before Repository work. Source checkout paths are for inspection only.',
       'Read workstream_knowledge before implementing. Use update_workstream_knowledge to preserve relevant implementation progress and newly discovered Workstream knowledge.',
-      'Change and validate Repository content as needed to pursue the Workstream goal.',
+      'Before modifying a Repository, call prepare_repository with its id. Make and validate all changes in the returned Session worktree path.',
     ].join('\n')
   )
 })

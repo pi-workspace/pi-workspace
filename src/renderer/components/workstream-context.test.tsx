@@ -44,32 +44,20 @@ test('shows the selected Workstream goal as a single-line header with its full t
   assert.match(markup, /class="[^"]*truncate[^"]*" title="Ship cancellation reasons"/)
 })
 
-test('hides the Working location section when no locations are available to show', () => {
+test('hides the Repository checkouts section when no locations are available to show', () => {
   const markup = renderToStaticMarkup(
     <WorkstreamContext workstream={{ ...workstream, repositoryWorkingLocations: [] }} />
   )
 
-  assert.doesNotMatch(markup, /Working location/)
+  assert.doesNotMatch(markup, /Repository checkouts/)
 })
 
-test('shows recorded working locations and opens one in the native file manager', async () => {
+test('shows Repository checkouts and opens one in the native file manager', async () => {
   const requests: string[][] = []
   const user = userEvent.setup({ document: browser.document as unknown as Document })
   const view = render(
     <WorkstreamContext
-      workstream={{
-        ...workstream,
-        workingLocation: 'worktrees',
-        repositoryWorkingLocations: [
-          {
-            repositoryId: 'repository-a',
-            repositoryName: 'Repository A',
-            kind: 'worktree',
-            availability: 'available',
-            workingPath: '/home/ozzy/projects/github.com/pi-workspace/.worktrees/workstream-a/repository-a',
-          },
-        ],
-      }}
+      workstream={workstream}
       onShowWorkingLocation={async (...ids) => {
         requests.push(ids)
       }}
@@ -77,9 +65,8 @@ test('shows recorded working locations and opens one in the native file manager'
     { container: browser.document.body as unknown as HTMLElement }
   )
 
-  assert.equal(view.queryByText('Separate worktrees'), null)
-  assert.ok(view.getByText('…/pi-workspace/.worktrees/workstream-a/repository-a'))
-  assert.ok(view.getByTitle('/home/ozzy/projects/github.com/pi-workspace/.worktrees/workstream-a/repository-a'))
+  assert.ok(view.getByText('/repositories/a'))
+  assert.ok(view.getByTitle('/repositories/a'))
 
   await user.click(view.getByRole('button', { name: 'Show Repository A in file manager' }))
 

@@ -61,6 +61,11 @@ export function assertRepositoryMembershipRemovalAllowed(
                 SELECT location.repository_id
                   FROM workstream_repository_locations location
                  WHERE location.workstream_id = w.id AND location.kind = 'worktree'
+                UNION
+                SELECT location.repository_id
+                  FROM session_repository_locations location
+                  JOIN sessions owner ON owner.id = location.session_id
+                 WHERE owner.workstream_id = w.id AND location.kind = 'worktree'
               ) current_repositories
              WHERE current_repositories.repository_id = ?
           )
@@ -87,11 +92,16 @@ export function readCurrentWorkstreamRepositorySet(database: SqliteDatabase, wor
            SELECT location.repository_id
              FROM workstream_repository_locations location
             WHERE location.workstream_id = ? AND location.kind = 'worktree'
+           UNION
+           SELECT location.repository_id
+             FROM session_repository_locations location
+             JOIN sessions owner ON owner.id = location.session_id
+            WHERE owner.workstream_id = ? AND location.kind = 'worktree'
          )
         WHERE repository_id IS NOT NULL
         ORDER BY repository_id`
     )
-    .all(workstreamId, workstreamId, workstreamId)
+    .all(workstreamId, workstreamId, workstreamId, workstreamId)
 
   return rows.map((row) => String(row.repository_id))
 }

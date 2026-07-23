@@ -41,7 +41,7 @@ export type WorkstreamNavigationProperties = Readonly<{
   onCreateWorkstream(options: CreateWorkstreamOptions): Promise<void>
   onCreateQuickSession(options: CreateQuickSessionOptions): Promise<void>
   onCreateSession(workstreamId: string, options: CreateSessionOptions): Promise<void>
-  onPreviewWorktreeLocations(repositoryId?: string): Promise<WorktreeLocationsPreview>
+  onPreviewWorktreeLocations(repositoryId: string): Promise<WorktreeLocationsPreview>
   onSetWorkstreamLifecycle(workstreamId: string, lifecycle: WorkstreamLifecycle): Promise<void>
   onSelectWorkstream(workstreamId: string): void
   onToggleSessionPin(sessionId: SessionId): void
@@ -159,7 +159,7 @@ export function WorkstreamNavigation({
     if (createRequest !== undefined) openWorkstreamDialog()
   }, [createRequest])
 
-  const previewWorkingLocations = (repositoryId?: string) => {
+  const previewWorkingLocations = (repositoryId: string) => {
     const request = worktreePreviewRequest.current + 1
     worktreePreviewRequest.current = request
     setWorktreePreview(undefined)
@@ -180,7 +180,7 @@ export function WorkstreamNavigation({
       })
   }
 
-  const selectWorkingLocation = (location: WorkstreamWorkingLocation, repositoryId?: string) => {
+  const selectWorkingLocation = (location: WorkstreamWorkingLocation, repositoryId: string) => {
     setWorkingLocation(location)
     setError(undefined)
 
@@ -517,52 +517,6 @@ export function WorkstreamNavigation({
                   onChange={(event) => setGoal(event.target.value)}
                 />
               </Field>
-              <Field className="min-w-0">
-                <Label>Working location</Label>
-                <Description>
-                  Every Brainstorm and Implement Session in this Workstream uses these locations.
-                </Description>
-                <RadioGroup
-                  aria-label="Working location"
-                  className="space-y-2!"
-                  value={workingLocation}
-                  onChange={(value) => {
-                    if (value === 'current-checkouts' || value === 'worktrees') selectWorkingLocation(value)
-                  }}
-                >
-                  <RadioField
-                    className="rounded-lg border border-content-border bg-content-background p-2.5"
-                    onClick={(event) => {
-                      if (event.target instanceof Element && event.target.closest('[role="radio"]')) return
-
-                      event.preventDefault()
-                      event.stopPropagation()
-                      selectWorkingLocation('current-checkouts')
-                    }}
-                  >
-                    <Radio value="current-checkouts" />
-                    <Label>Current checkouts</Label>
-                    <Description>Use each registered Repository’s existing checkout.</Description>
-                  </RadioField>
-                  <RadioField
-                    className="rounded-lg border border-content-border bg-content-background p-2.5"
-                    onClick={(event) => {
-                      if (event.target instanceof Element && event.target.closest('[role="radio"]')) return
-
-                      event.preventDefault()
-                      event.stopPropagation()
-                      selectWorkingLocation('worktrees')
-                    }}
-                  >
-                    <Radio value="worktrees" />
-                    <Label className="flex items-center gap-2">
-                      <GitBranch aria-hidden="true" className="size-4 text-content-muted-foreground" />
-                      New worktrees
-                    </Label>
-                    <Description>Create a separate ordinary Git worktree for each available Repository.</Description>
-                  </RadioField>
-                </RadioGroup>
-              </Field>
               <Field>
                 <Label>First Session mode</Label>
                 <Description>The mode is permanent for this Session.</Description>
@@ -582,19 +536,8 @@ export function WorkstreamNavigation({
           </Button>
           <Button
             color="accent"
-            disabled={
-              saving || !goal.trim() || previewingWorktrees || (workingLocation === 'worktrees' && !worktreePreview)
-            }
-            onClick={() =>
-              void run(() =>
-                onCreateWorkstream({
-                  goal,
-                  mode,
-                  workingLocation,
-                  ...(worktreePreview ? { workstreamId: worktreePreview.workstreamId } : {}),
-                })
-              )
-            }
+            disabled={saving || !goal.trim()}
+            onClick={() => void run(() => onCreateWorkstream({ goal, mode }))}
           >
             {saving ? 'Creating…' : 'Create Workstream'}
           </Button>

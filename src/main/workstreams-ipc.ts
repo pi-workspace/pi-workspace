@@ -31,7 +31,7 @@ export function initializeWorkstreams(authority: ApplicationAuthority, options: 
 
     return request
       ? authority.previewWorktreeLocations(request.workspaceId, request.repositoryId)
-      : Promise.reject(new TypeError('A Workspace and optional Repository are required.'))
+      : Promise.reject(new TypeError('A Workspace and selected Repository are required.'))
   })
 
   handleTrustedIpc(workstreamsIpcChannels.createWorkstream, (_event, value: unknown) => {

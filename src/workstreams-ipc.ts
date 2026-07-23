@@ -19,17 +19,15 @@ export const workstreamsIpcChannels = {
 
 export function parsePreviewWorktreeLocationsRequest(
   value: unknown
-): Readonly<{ workspaceId: string; repositoryId?: string }> | undefined {
+): Readonly<{ workspaceId: string; repositoryId: string }> | undefined {
   if (typeof value !== 'object' || value === null) return undefined
 
   const workspaceId = (value as { workspaceId?: unknown }).workspaceId
   const repositoryId = (value as { repositoryId?: unknown }).repositoryId
 
-  if (typeof workspaceId !== 'string' || (repositoryId !== undefined && typeof repositoryId !== 'string')) {
-    return undefined
-  }
+  if (typeof workspaceId !== 'string' || typeof repositoryId !== 'string' || !repositoryId) return undefined
 
-  return { workspaceId, ...(repositoryId ? { repositoryId } : {}) }
+  return { workspaceId, repositoryId }
 }
 
 export function parseCreateWorkstreamRequest(
@@ -40,17 +38,8 @@ export function parseCreateWorkstreamRequest(
   const workspaceId = (value as { workspaceId?: unknown }).workspaceId
   const goal = (value as { goal?: unknown }).goal
   const mode = (value as { mode?: unknown }).mode
-  const workingLocation = (value as { workingLocation?: unknown }).workingLocation
-  const workstreamId = (value as { workstreamId?: unknown }).workstreamId
 
-  if (
-    typeof workspaceId !== 'string' ||
-    typeof goal !== 'string' ||
-    !isOptionalSessionMode(mode) ||
-    !isOptionalWorkingLocation(workingLocation) ||
-    (workingLocation === 'worktrees' && (typeof workstreamId !== 'string' || !isUuid(workstreamId))) ||
-    (workstreamId !== undefined && (typeof workstreamId !== 'string' || !isUuid(workstreamId)))
-  ) {
+  if (typeof workspaceId !== 'string' || typeof goal !== 'string' || !isOptionalSessionMode(mode)) {
     return undefined
   }
 
@@ -59,8 +48,6 @@ export function parseCreateWorkstreamRequest(
     options: {
       goal,
       ...(mode ? { mode } : {}),
-      ...(workingLocation ? { workingLocation } : {}),
-      ...(workstreamId ? { workstreamId } : {}),
     },
   }
 }
@@ -152,7 +139,7 @@ function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-7][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
 }
 
-function isOptionalWorkingLocation(value: unknown): value is CreateWorkstreamOptions['workingLocation'] {
+function isOptionalWorkingLocation(value: unknown): value is CreateQuickSessionOptions['workingLocation'] {
   return value === undefined || value === 'current-checkouts' || value === 'worktrees'
 }
 

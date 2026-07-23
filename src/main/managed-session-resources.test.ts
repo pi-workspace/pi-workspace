@@ -48,6 +48,7 @@ test('managed Sessions load normal global and Workspace Repository resources', a
         id: 'repository-a',
         name: 'Repository',
         workingPath: repositoryPath,
+        workingLocation: 'source-checkout',
         commonDirectoryPath: join(repositoryPath, '.git'),
         availability: 'available',
         role: '',
