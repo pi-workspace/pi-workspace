@@ -1,11 +1,12 @@
 import type { ActivityLayerRecord } from '@/src/main/activity-records'
 import type { AgentActivity, AgentRun, SessionTimelineEntry, ToolExecution } from '@/src/session-timeline'
-import type { SessionTranscriptMessage } from '@/src/session-transcript'
+import type { SessionContextUsage, SessionTranscriptMessage } from '@/src/session-transcript'
 import type { PiSessionRuntime, PiSessionRuntimeHistory } from './pi-session-runtimes'
 
 export type SessionRuntimeTimeline = {
   revision: number
   runtimeDirectory?: string
+  contextUsage?: SessionContextUsage
   runs: AgentRun[]
   entries: SessionTimelineEntry[]
   messages: Map<string, SessionTranscriptMessage>

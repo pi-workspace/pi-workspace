@@ -154,6 +154,8 @@
   --theme-success-background: color-mix(in oklab, #16a34a 15%, transparent);
   --theme-success-foreground: #15803d;
   --theme-activity-blocked: #b45309;
+  --theme-warning-foreground: #b45309;
+  --theme-warning-border: #b45309;
   --theme-activity-completed: #047857;
   --theme-activity-failed: #b91c1c;
   --theme-activity-running: var(--theme-content-foreground);
@@ -186,6 +188,8 @@
   --theme-success-background: color-mix(in oklab, #22c55e 10%, transparent);
   --theme-success-foreground: #4ade80;
   --theme-activity-blocked: #fcd34d;
+  --theme-warning-foreground: #fcd34d;
+  --theme-warning-border: #fcd34d;
   --theme-activity-completed: #6ee7b7;
   --theme-activity-failed: #f87171;
   --theme-activity-running: var(--theme-content-foreground);
@@ -218,6 +222,8 @@
   --theme-success-background: color-mix(in oklab, #50a14f 15%, transparent);
   --theme-success-foreground: #367a36;
   --theme-activity-blocked: #986801;
+  --theme-warning-foreground: #986801;
+  --theme-warning-border: #986801;
   --theme-activity-completed: #3d843c;
   --theme-activity-failed: #c43e34;
   --theme-activity-running: #4078f2;
@@ -251,6 +257,8 @@
   --theme-success-background: color-mix(in oklab, #98c379 12%, transparent);
   --theme-success-foreground: #98c379;
   --theme-activity-blocked: #e5c07b;
+  --theme-warning-foreground: #e5c07b;
+  --theme-warning-border: #e5c07b;
   --theme-activity-completed: #98c379;
   --theme-activity-failed: #e06c75;
   --theme-activity-running: #61afef;
@@ -306,6 +314,61 @@ body,
 
   .session-messages-reading-column {
     padding-inline: 1.5rem;
+  }
+}
+
+.context-usage {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  --context-usage-fill: var(--theme-accent);
+  --context-usage-foreground: var(--theme-composer-muted-foreground);
+}
+
+.context-usage[data-level='caution'] {
+  --context-usage-fill: var(--theme-warning-border);
+  --context-usage-foreground: var(--theme-warning-foreground);
+}
+
+.context-usage[data-level='critical'] {
+  --context-usage-fill: var(--theme-danger-border);
+  --context-usage-foreground: var(--theme-danger-foreground);
+}
+
+.context-usage-track {
+  width: 3.5rem;
+  height: 0.25rem;
+  overflow: hidden;
+  border-radius: 9999px;
+  background-color: color-mix(in oklab, var(--theme-content-border) 65%, transparent);
+}
+
+.context-usage-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background-color: var(--context-usage-fill);
+  /* An even ease reads as the bar filling; a sharply front-loaded curve makes
+     small increments snap and then crawl to a stop. */
+  transition:
+    width 340ms cubic-bezier(0.4, 0, 0.2, 1),
+    background-color 240ms ease-out;
+}
+
+/* Fixed width and tabular figures keep the bar from shifting as the count grows. */
+.context-usage-value {
+  width: 2rem;
+  font-size: 0.6875rem;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--context-usage-foreground);
+  transition: color 240ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .context-usage-fill,
+  .context-usage-value {
+    transition: none;
   }
 }
 

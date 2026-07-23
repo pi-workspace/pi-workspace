@@ -655,6 +655,144 @@ test('prevents Agent Run acceptance while a Model change is pending', async () =
   )
 })
 
+test('shows the current context window usage in the Composer action cluster', () => {
+  const view = renderInBrowser(
+    <Composer
+      session={session}
+      draft=""
+      isWorking={false}
+      contextUsage={{ tokens: 48_000, contextWindow: 200_000, percent: 24 }}
+      onActivate={() => {}}
+      onDraftChange={() => {}}
+      submitMessage={async () => ({ status: 'accepted', delivery: 'prompt' })}
+    />
+  )
+
+  const contextWindow = view.getByRole('progressbar', { name: 'Context window' })
+
+  const fill = contextWindow.querySelector('[data-slot="context-usage-fill"]') as HTMLElement
+
+  assert.equal(fill.style.width, '24%')
+  assert.match(contextWindow.textContent ?? '', /24%/)
+  assert.equal(contextWindow.getAttribute('aria-valuenow'), '24')
+  assert.equal(contextWindow.getAttribute('aria-valuetext'), '48k used of 200k tokens; 152k left')
+  assert.equal(contextWindow.getAttribute('title'), '48k used of 200k tokens; 152k left')
+  assert.equal(contextWindow.getAttribute('data-level'), 'nominal')
+})
+
+test('grows the context window fill in place so increments animate', () => {
+  const composer = (percent: number) => (
+    <Composer
+      session={session}
+      draft=""
+      isWorking={false}
+      contextUsage={{ tokens: 2_000 * percent, contextWindow: 200_000, percent }}
+      onActivate={() => {}}
+      onDraftChange={() => {}}
+      submitMessage={async () => ({ status: 'accepted', delivery: 'prompt' })}
+    />
+  )
+  const view = renderInBrowser(composer(24))
+  const fill = view.container.querySelector('[data-slot="context-usage-fill"]')
+
+  assert.ok(fill)
+  assert.equal((fill as HTMLElement).style.width, '24%')
+
+  view.rerender(composer(62))
+
+  // The same element must survive the update; a replaced node would jump
+  // straight to the new width with no transition to run.
+  assert.equal(view.container.querySelector('[data-slot="context-usage-fill"]'), fill)
+  assert.equal((fill as HTMLElement).style.width, '62%')
+})
+
+test('rounds the reported context window fraction for display', () => {
+  const view = renderInBrowser(
+    <Composer
+      session={session}
+      draft=""
+      isWorking={false}
+      contextUsage={{ tokens: 47_483, contextWindow: 200_000, percent: 23.7415 }}
+      onActivate={() => {}}
+      onDraftChange={() => {}}
+      submitMessage={async () => ({ status: 'accepted', delivery: 'prompt' })}
+    />
+  )
+
+  const contextWindow = view.getByRole('progressbar', { name: 'Context window' })
+
+  const fill = contextWindow.querySelector('[data-slot="context-usage-fill"]') as HTMLElement
+
+  assert.match(contextWindow.textContent ?? '', /^24%$/)
+  assert.equal(contextWindow.getAttribute('aria-valuenow'), '24')
+  assert.equal(fill.style.width, '23.7415%')
+})
+
+test('rolls a token count just short of a million over to millions', () => {
+  const view = renderInBrowser(
+    <Composer
+      session={session}
+      draft=""
+      isWorking={false}
+      contextUsage={{ tokens: 999_600, contextWindow: 1_000_000, percent: 99.96 }}
+      onActivate={() => {}}
+      onDraftChange={() => {}}
+      submitMessage={async () => ({ status: 'accepted', delivery: 'prompt' })}
+    />
+  )
+
+  const contextWindow = view.getByRole('progressbar', { name: 'Context window' })
+
+  assert.equal(contextWindow.getAttribute('aria-valuetext'), '1m used of 1m tokens; 400 left')
+})
+
+test('escalates the context window usage level as the window fills', () => {
+  const levels = [
+    { percent: 74, level: 'nominal' },
+    { percent: 75, level: 'caution' },
+    { percent: 89, level: 'caution' },
+    { percent: 90, level: 'critical' },
+  ] as const
+
+  for (const { percent, level } of levels) {
+    const view = renderInBrowser(
+      <Composer
+        session={session}
+        draft=""
+        isWorking={false}
+        contextUsage={{ tokens: 2_000 * percent, contextWindow: 200_000, percent }}
+        onActivate={() => {}}
+        onDraftChange={() => {}}
+        submitMessage={async () => ({ status: 'accepted', delivery: 'prompt' })}
+      />
+    )
+
+    const contextWindow = view.getByRole('progressbar', { name: 'Context window' })
+
+    assert.equal(contextWindow.getAttribute('data-level'), level)
+  }
+})
+
+test('explains when context usage is recalculating after compaction', () => {
+  const view = renderInBrowser(
+    <Composer
+      session={session}
+      draft=""
+      isWorking={false}
+      contextUsage={{ tokens: null, contextWindow: 200_000, percent: null }}
+      onActivate={() => {}}
+      onDraftChange={() => {}}
+      submitMessage={async () => ({ status: 'accepted', delivery: 'prompt' })}
+    />
+  )
+
+  const updating = view.getByRole('status')
+
+  assert.equal(updating.querySelector('[data-slot="context-usage-fill"]'), null)
+  assert.equal(updating.getAttribute('title'), 'Context window usage is updating after compaction')
+  assert.equal(view.queryByRole('progressbar', { name: 'Context window' }), null)
+})
+
 test('explains how to configure Pi when no Model is available while preserving the draft', async () => {
   const configuration = {
     sessionId: session.id,

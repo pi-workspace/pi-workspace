@@ -30,6 +30,7 @@ import {
   type ToolExecution,
 } from '@/src/session-timeline'
 import type {
+  SessionContextUsage,
   SessionTranscriptEntry,
   SessionTranscriptMessage,
   SessionTranscriptMutation,
@@ -70,6 +71,7 @@ export interface PiSessionRuntime {
   loadRawOperation?(toolCallId: string): Readonly<{ input: unknown; result?: unknown }> | undefined
   getSkills?(): readonly SessionSkill[]
   getSkillPrompt?(name: string): string | undefined
+  getContextUsage?(): SessionContextUsage | undefined
   getConfiguration?(): Promise<Omit<SessionConfigurationSnapshot, 'sessionId' | 'revision' | 'persistenceWarning'>>
   setConfigurationModel?(model: SessionConfigurationModelSelection): Promise<void>
   setConfigurationEffort?(effort: SessionConfigurationEffort): Promise<void>
@@ -84,6 +86,7 @@ export type PiSessionRuntimeHistory = Readonly<{
 }>
 
 export type PiSessionRuntimeEvent =
+  | Readonly<{ type: 'context_usage'; usage?: SessionContextUsage }>
   | Readonly<{ type: 'tool_execution_start'; toolCallId: string; toolName: string; input: unknown }>
   | Readonly<{
       type: 'activity_control_accepted'
@@ -251,6 +254,7 @@ export function createPiSessionRuntimeRegistry({
       sessionId,
       revision: timeline.revision,
       isWorking: timeline.runs.some((run) => run.status === 'running'),
+      contextUsage: timeline.contextUsage,
       runs: timeline.runs,
       entries,
       runFailureReason:
@@ -519,6 +523,13 @@ export function createPiSessionRuntimeRegistry({
 
   function handleRuntimeEvent(sessionId: SessionId, event: PiSessionRuntimeEvent): void {
     const timeline = getTimeline(sessionId)
+
+    if (event.type === 'context_usage') {
+      timeline.contextUsage = event.usage
+      publishTimeline(sessionId)
+
+      return
+    }
 
     if (event.type === 'tool_execution_start') {
       clearNoProgressTimeout(sessionId)
@@ -897,6 +908,9 @@ export function createPiSessionRuntimeRegistry({
     timeline.runtimeDirectory = runtimeDirectory
     timeline.persist = runtime.appendActivityRecord?.bind(runtime)
     timeline.loadRawOperation = runtime.loadRawOperation?.bind(runtime)
+    // The attaching runtime is authoritative for the Model's context window;
+    // context_usage events keep it current from here.
+    timeline.contextUsage = runtime.getContextUsage?.()
     hydrateTimeline(timeline, runtime.loadHistory?.())
 
     const unsubscribes = [runtime.subscribe((event) => handleRuntimeEvent(sessionId, event))]

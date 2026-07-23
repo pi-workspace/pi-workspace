@@ -2,7 +2,21 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { act, fireEvent, waitFor } from '@testing-library/react'
 import { createDemoBridge } from '@/src/demo/demo-bridge'
-import { getDemoScenarioPresentation } from '@/src/demo/demo-scenarios'
+import { getDemoScenario, getDemoScenarioPresentation } from '@/src/demo/demo-scenarios'
+
+test('the multi-Session demo includes empty, half-full, and full context windows', () => {
+  const scenario = getDemoScenario('multi-session')
+  const usages = scenario.workstreams.workstreams
+    .flatMap((workstream) => workstream.sessions)
+    .slice(0, 3)
+    .map((session) => scenario.transcriptsBySessionId[session.id]?.contextUsage)
+
+  assert.deepEqual(usages, [
+    { tokens: 0, contextWindow: 200_000, percent: 0 },
+    { tokens: 100_000, contextWindow: 200_000, percent: 50 },
+    { tokens: 200_000, contextWindow: 200_000, percent: 100 },
+  ])
+})
 
 test('the normal renderer initializes against the selected demo scenario', async () => {
   document.body.innerHTML = '<div id="app"></div>'

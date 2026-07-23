@@ -4,6 +4,7 @@ import { Combobox, ComboboxDescription, ComboboxLabel, ComboboxOption } from '@/
 import { Listbox, ListboxOption } from '@/components/ui-kit/listbox'
 import type { ComposerBridge, SessionMessageDelivery } from '@/src/composer'
 import type { Session } from '@/src/domain/session'
+import type { SessionContextUsage } from '@/src/session-transcript'
 import type {
   SessionConfigurationBridge,
   SessionConfigurationCommandResult,
@@ -21,6 +22,7 @@ type ComposerProperties = Readonly<{
   draft: string
   focusRequest?: number
   isWorking: boolean
+  contextUsage?: SessionContextUsage
   onActivate: () => void
   onDraftChange: (draft: string) => void
   submitMessage: ComposerBridge['submit']
@@ -34,6 +36,7 @@ export function Composer({
   draft,
   focusRequest,
   isWorking,
+  contextUsage,
   onActivate,
   onDraftChange,
   submitMessage,
@@ -256,6 +259,7 @@ export function Composer({
             />
           )}
           <div className="ml-auto flex items-end gap-1">
+            {contextUsage && <ContextWindowUsage usage={contextUsage} />}
             {isWorking && stopRun && (
               <button
                 type="button"
@@ -314,6 +318,86 @@ export function Composer({
       </div>
     </div>
   )
+}
+
+type ContextWindowUsageProperties = Readonly<{
+  usage: SessionContextUsage
+}>
+
+type ContextUsageLevel = 'nominal' | 'caution' | 'critical'
+
+function contextUsageLevel(percent: number): ContextUsageLevel {
+  if (percent >= 90) return 'critical'
+  if (percent >= 75) return 'caution'
+
+  return 'nominal'
+}
+
+function ContextWindowUsage({ usage }: ContextWindowUsageProperties) {
+  const contextWindow = formatTokenCount(usage.contextWindow)
+
+  if (usage.tokens === null || usage.percent === null) {
+    return (
+      <div className="flex h-11 items-end pb-3">
+        <span
+          className="context-usage"
+          data-level="nominal"
+          role="status"
+          title="Context window usage is updating after compaction"
+        >
+          <span aria-hidden="true" className="context-usage-track" />
+          <span aria-hidden="true" className="context-usage-value">
+            —
+          </span>
+          <span className="sr-only">
+            Context window usage is updating after compaction, and is unavailable until Pi finishes its next response.
+          </span>
+        </span>
+      </div>
+    )
+  }
+
+  // The runtime reports an unrounded float. The bar is drawn from it directly so
+  // sub-percent growth still moves;
+  const fraction = Math.max(0, Math.min(100, usage.percent))
+  const percent = Math.round(fraction)
+  const remaining = Math.max(0, usage.contextWindow - usage.tokens)
+  const used = formatTokenCount(usage.tokens)
+  const valueText = `${used} used of ${contextWindow} tokens; ${formatTokenCount(remaining)} left`
+
+  return (
+    <div className="flex h-11 items-end pb-3">
+      <span
+        aria-label="Context window"
+        aria-valuemax={100}
+        aria-valuemin={0}
+        aria-valuenow={percent}
+        aria-valuetext={valueText}
+        className="context-usage"
+        data-level={contextUsageLevel(percent)}
+        role="progressbar"
+        title={valueText}
+      >
+        <span aria-hidden="true" className="context-usage-track">
+          <span className="context-usage-fill" data-slot="context-usage-fill" style={{ width: `${fraction}%` }} />
+        </span>
+        <span aria-hidden="true" className="context-usage-value">
+          {percent}%
+        </span>
+      </span>
+    </div>
+  )
+}
+
+function formatTokenCount(tokens: number): string {
+  const thousands = Math.round(tokens / 1_000)
+
+  // Roll over to millions once the rounded thousands would reach four digits,
+  // so a count just short of a million does not read as "1000k".
+  if (thousands >= 1_000) return `${Math.round((tokens / 1_000_000) * 10) / 10}m`
+  if (tokens >= 1_000) return `${thousands}k`
+
+  return String(tokens)
 }
 
 type ComposerConfigurationControlsProperties = Readonly<{
