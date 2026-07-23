@@ -5,9 +5,18 @@ import { tmpdir } from 'node:os'
 import { join, parse } from 'node:path'
 import { promisify } from 'node:util'
 import test from 'node:test'
-import { createWorktree, inspectGitRepository, proposeWorktree } from './git-repositories'
+import { createWorktree, inspectGitRepository, proposeWorktree, repositoryRootsOverlap } from './git-repositories'
 
 const exec = promisify(execFile)
+
+test('recognizes a Repository nested within another Repository path', () => {
+  const parentDirectoryPath = join(tmpdir(), 'Pi Workspace')
+  const childDirectoryPath = join(parentDirectoryPath, 'nested', 'Repository')
+
+  assert.equal(repositoryRootsOverlap(parentDirectoryPath, childDirectoryPath), true)
+  assert.equal(repositoryRootsOverlap(childDirectoryPath, parentDirectoryPath), true)
+  assert.equal(repositoryRootsOverlap(parentDirectoryPath, join(tmpdir(), 'Pi Workspace Other')), false)
+})
 
 async function createRepository(): Promise<string> {
   const rootPath = await mkdtemp(join(tmpdir(), 'pi-workspace-repository-'))

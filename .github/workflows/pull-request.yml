@@ -15,9 +15,13 @@ concurrency:
 
 jobs:
   checks:
-    name: Quality gate
-    runs-on: ubuntu-latest
+    name: Quality gate (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-2025]
 
     steps:
       - name: Check out repository
