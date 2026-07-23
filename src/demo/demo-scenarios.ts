@@ -2,7 +2,7 @@ import { sessionId, type SessionId } from '@/src/domain/session'
 import type { OwnedSession, WorkstreamsSnapshot } from '@/src/domain/workstream'
 import type { WorkstreamKnowledgeRecord } from '@/src/domain/workstream-knowledge'
 import type { WorkstreamKnowledge } from '@/src/domain/workstream-knowledge-transitions'
-import type { SessionTranscriptSnapshot } from '@/src/session-transcript'
+import type { SessionContextUsage, SessionTranscriptSnapshot } from '@/src/session-transcript'
 import type { AgentActivityDetails } from '@/src/session-timeline'
 
 export type DemoScenario = Readonly<{
@@ -14,6 +14,16 @@ export type DemoScenario = Readonly<{
 
 const completedRunSessionId = sessionId('northstar-release-overview')
 const completedRunStartedAt = Date.UTC(2026, 6, 15, 9, 30)
+const demoContextWindow = 200_000
+const demoContextUsageFractions = [0, 0.5, 1] as const
+
+function demoContextUsage(fraction: (typeof demoContextUsageFractions)[number]): SessionContextUsage {
+  return {
+    tokens: demoContextWindow * fraction,
+    contextWindow: demoContextWindow,
+    percent: fraction * 100,
+  }
+}
 
 function ownedSession(id: string, title: string): OwnedSession {
   return {
@@ -30,11 +40,12 @@ function createEmptyScenario(sessionValues: ReadonlyArray<readonly [string, stri
   const sessions = sessionValues.map(([id, title]) => ownedSession(id, title))
   const transcriptsBySessionId: Record<string, SessionTranscriptSnapshot> = {}
 
-  for (const session of sessions) {
+  for (const [index, session] of sessions.entries()) {
     transcriptsBySessionId[session.id] = {
       sessionId: session.id,
       revision: 0,
       isWorking: false,
+      contextUsage: demoContextUsage(demoContextUsageFractions[index % demoContextUsageFractions.length]!),
       runs: [],
       entries: [],
     }
@@ -217,6 +228,7 @@ const workstreamScenario: DemoScenario = {
       sessionId: brainstormSessionId,
       revision: 6,
       isWorking: false,
+      contextUsage: demoContextUsage(0),
       runs: [
         {
           id: 'offline-brainstorm-run',
@@ -315,6 +327,7 @@ const workstreamScenario: DemoScenario = {
       sessionId: implementationSessionId,
       revision: 6,
       isWorking: false,
+      contextUsage: demoContextUsage(0.5),
       runs: [
         {
           id: 'offline-implementation-run',
@@ -631,6 +644,7 @@ const completedRunScenario: DemoScenario = {
       sessionId: completedRunSessionId,
       revision: 6,
       isWorking: false,
+      contextUsage: demoContextUsage(1),
       runs: [
         {
           id: 'release-run',
@@ -903,6 +917,7 @@ const quickSessionsScenario: DemoScenario = {
       sessionId: frontendQuickSessionId,
       revision: 10,
       isWorking: false,
+      contextUsage: demoContextUsage(0.5),
       runs: [
         {
           id: 'frontend-build-run',
@@ -1074,6 +1089,7 @@ const quickSessionsScenario: DemoScenario = {
       sessionId: apiQuickSessionId,
       revision: 10,
       isWorking: false,
+      contextUsage: demoContextUsage(1),
       runs: [
         {
           id: 'api-events-run',
