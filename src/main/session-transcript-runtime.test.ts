@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { sessionId } from '@/src/domain/session'
+import type { ActivityLayerRecord } from './activity-records'
 import { createPiSessionRuntimeRegistry, type PiSessionRuntime } from './pi-session-runtimes'
 
 test('keeps duplicate messages ordered and updates one streaming identity', async () => {
@@ -130,6 +131,50 @@ test('rejects a selected Skill that is unavailable to the Session runtime', asyn
 
   assert.deepEqual(result, { status: 'rejected', reason: 'skill-unavailable' })
   assert.equal(prompted, false)
+})
+
+test('persists command resource usage and termination in its Tool Execution', async () => {
+  let emit: (event: Parameters<Parameters<PiSessionRuntime['subscribe']>[0]>[0]) => void = () => {}
+  const records: ActivityLayerRecord[] = []
+  const runtime: PiSessionRuntime = {
+    isStreaming: false,
+    async prompt(_text, options) {
+      options.preflightResult(true)
+    },
+    subscribe(listener) {
+      emit = listener
+      return () => {}
+    },
+    appendActivityRecord(record) {
+      records.push(record)
+    },
+    dispose() {},
+  }
+  const registry = createPiSessionRuntimeRegistry({
+    findSession: () => ({ directoryPath: '/tmp', sessionPath: '/tmp/session.jsonl' }),
+    createSession: async () => runtime,
+  })
+  const id = sessionId('command-outcome-session')
+
+  await registry.submit({ sessionId: id, text: 'run it', delivery: 'steer' })
+  emit({ type: 'tool_execution_start', toolCallId: 'tool-1', toolName: 'bash', input: { command: 'bun test' } })
+  emit({
+    type: 'tool_execution_end',
+    toolCallId: 'tool-1',
+    toolName: 'bash',
+    result: { content: [{ type: 'text', text: 'memory limit exceeded' }] },
+    isError: true,
+    commandOutcome: { termination: 'memory-limit', peakMemoryBytes: 2_147_483_648, signal: 'KILL' },
+  })
+
+  const operation = records.findLast((record) => record.type === 'operation')
+
+  assert.equal(operation?.type, 'operation')
+  assert.deepEqual(operation?.type === 'operation' ? operation.execution.commandOutcome : undefined, {
+    termination: 'memory-limit',
+    peakMemoryBytes: 2_147_483_648,
+    signal: 'KILL',
+  })
 })
 
 test('publishes a failed transcript run without a parallel failure stream', async () => {

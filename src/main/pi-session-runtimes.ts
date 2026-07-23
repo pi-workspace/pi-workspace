@@ -28,6 +28,7 @@ import {
   type ConversationEntry,
   type SessionWorkingStateSnapshot,
   type ToolExecution,
+  type ToolExecutionCommandOutcome,
 } from '@/src/session-timeline'
 import type {
   SessionTranscriptEntry,
@@ -97,6 +98,7 @@ export type PiSessionRuntimeEvent =
       result: unknown
       isError: boolean
       rawResultReference?: string
+      commandOutcome?: ToolExecutionCommandOutcome
     }>
   | Readonly<{ type: 'message_upsert'; message: SessionTranscriptMessage }>
   | Readonly<{ type: 'model_turn_started'; noProgressTimeoutMs: number }>
@@ -738,6 +740,7 @@ export function createPiSessionRuntimeRegistry({
         ...operation.execution,
         status: event.isError ? 'failed' : 'completed',
         rawResultReference: event.rawResultReference ?? event.toolCallId,
+        commandOutcome: event.commandOutcome,
       }
       operation.result = event.result
 
@@ -1251,6 +1254,7 @@ export function createPiSessionRuntimeRegistry({
             input: input.text,
             output: output?.text,
             truncated: input.truncated || (output?.truncated ?? false),
+            commandOutcome: execution.commandOutcome,
           }
         }),
       }

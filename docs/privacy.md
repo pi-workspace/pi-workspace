@@ -45,8 +45,9 @@ resolution:
 
 A Session can contain prompts, assistant responses and reasoning, provider and model identifiers, token and cost
 metadata, tool calls, tool input and output, command output, errors, summaries, timestamps, absolute paths, and Pi
-Workspace Agent Activity metadata. Session history is append-only and tree-shaped; compacting the model context does
-not remove earlier records from the Session file.
+Workspace Agent Activity metadata. Agent `bash` Tool Executions also retain their peak observed memory and termination
+outcome. Session history is append-only and tree-shaped; compacting the model context does not remove earlier records
+from the Session file.
 
 User-level Pi resources remain available in every Session. Managed Brainstorm and Implement Sessions also aggregate
 conventional instruction, extension, skill, prompt-template, and theme paths from every current Workspace Repository.
@@ -105,14 +106,26 @@ not confined by Brainstorm mode, Workspace membership, Repository routing, or ma
 inspect, create, change, or delete files and run programs with the permissions of the user who launched Pi Workspace.
 Only install extensions and packages whose authority is appropriate for the Workspace.
 
+Pi Workspace applies a default 2 GiB aggregate memory limit to each built-in Agent `bash` Tool Execution and records
+its peak observed memory and termination outcome. On Debian, the command runs in a transient user-systemd control group
+with swap disabled; the kernel enforces the limit across the control group, and Pi Workspace stops the complete control
+group when the Tool Execution ends. If user-systemd isolation is unavailable, the command fails rather than running
+without the limit.
+
+On macOS, where an equivalent unprivileged control-group facility is unavailable, Pi Workspace uses best-effort
+containment. It polls aggregate resident memory for the command's process group and observable descendants, then stops
+those processes when the Tool Execution ends or the observed total exceeds 2 GiB. A process can allocate beyond the
+limit between samples or deliberately evade observation by changing its process identity and environment. Treat this as
+protection against ordinary runaway commands, not as a security sandbox.
+
 Review prompts and Agent operations as carefully as shell commands. Use an operating-system account, container,
-virtual machine, filesystem permissions, and network controls appropriate to the sensitivity of the work. Pi Workspace
-does not currently provide per-command approval, repository-only filesystem confinement, process isolation, or network
-isolation for the Agent.
+virtual machine, filesystem permissions, and network controls appropriate to the sensitivity of the work. The built-in
+`bash` containment does not provide per-command approval, repository-only filesystem confinement, or network isolation,
+and it does not constrain processes started directly by user-installed extensions or other tools.
 
 Electron's renderer is separately sandboxed with context isolation, no Node integration, restricted navigation, and a
-narrow validated IPC bridge. This protects the privileged main process from renderer content; it does **not** sandbox
-the Pi Agent or its tools.
+narrow validated IPC bridge. This protects the privileged main process from renderer content; it does **not** turn the
+Pi Agent or its tools into a security sandbox.
 
 ## Logging and telemetry
 

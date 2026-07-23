@@ -112,7 +112,26 @@ function isToolExecution(value: unknown): value is Omit<ToolExecution, 'input'> 
     isNonEmptyString(value.label) &&
     (value.status === 'running' || value.status === 'completed' || value.status === 'failed') &&
     isOptionalString(value.rawResultReference) &&
-    isOptionalString(value.inputPreview)
+    isOptionalString(value.inputPreview) &&
+    isOptionalCommandOutcome(value.commandOutcome)
+  )
+}
+
+function isOptionalCommandOutcome(value: unknown): boolean {
+  if (value === undefined) return true
+  if (!isRecord(value)) return false
+
+  return (
+    (value.termination === 'exited' ||
+      value.termination === 'exit-code' ||
+      value.termination === 'signaled' ||
+      value.termination === 'memory-limit' ||
+      value.termination === 'timeout' ||
+      value.termination === 'aborted' ||
+      value.termination === 'isolation-failure') &&
+    isCount(value.peakMemoryBytes) &&
+    (value.exitCode === undefined || isCount(value.exitCode)) &&
+    isOptionalString(value.signal)
   )
 }
 

@@ -55,6 +55,7 @@ export function operationRecord(execution: ToolExecution): Omit<ToolExecution, '
     status: execution.status,
     rawResultReference: execution.rawResultReference,
     inputPreview: execution.inputPreview,
+    commandOutcome: execution.commandOutcome,
   }
 }
 

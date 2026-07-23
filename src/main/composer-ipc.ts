@@ -36,6 +36,8 @@ import {
 } from '@/src/main/pi-session-runtimes'
 import { classifyPersistedAgentState } from '@/src/main/pi-session-history'
 import { createManagedSessionServices } from '@/src/main/managed-session-resources'
+import { createIsolatedBashTool } from '@/src/main/isolated-bash-tool'
+import type { IsolatedCommandResult } from '@/src/main/isolated-command'
 import {
   managedSessionMethodology,
   parsePiWorkstreamKnowledgeMutation,
@@ -77,6 +79,7 @@ export async function createPiSessionRuntime(
   ])
 
   const runtimeListeners = new Set<(event: PiSessionRuntimeEvent) => void>()
+  const commandOutcomes = new Map<string, IsolatedCommandResult>()
   let managedPolicyFailure: string | undefined
   const managedRunControl: { abort?: () => void } = {}
 
@@ -193,7 +196,12 @@ export async function createPiSessionRuntime(
           }),
         ]
       : []
-  const customTools = [startActivity, completeActivity, ...managedTools]
+  const isolatedBash = createIsolatedBashTool(directoryPath, {
+    onExecutionFinished(toolCallId, outcome) {
+      commandOutcomes.set(toolCallId, outcome)
+    },
+  })
+  const customTools = [isolatedBash, startActivity, completeActivity, ...managedTools]
   const managedServices =
     options.kind === 'managed'
       ? await createManagedSessionServices(
@@ -286,7 +294,7 @@ export async function createPiSessionRuntime(
           }
         }
 
-        const normalized = normalizePiSessionEvent(event, modelTurnNoProgressTimeoutMs)
+        const normalized = normalizePiSessionEvent(event, modelTurnNoProgressTimeoutMs, commandOutcomes)
 
         if (normalized) listener(normalized)
       })
@@ -414,6 +422,7 @@ export async function createPiSessionRuntime(
       return session.settingsManager.drainErrors().map(({ error }) => error.message)
     },
     dispose() {
+      commandOutcomes.clear()
       session.dispose()
     },
   }
@@ -458,7 +467,8 @@ function messageContent(content: unknown): { text: string; hasToolCalls: boolean
 
 function normalizePiSessionEvent(
   event: { type: string; [key: string]: unknown },
-  modelTurnNoProgressTimeoutMs: number
+  modelTurnNoProgressTimeoutMs: number,
+  commandOutcomes?: Map<string, IsolatedCommandResult>
 ): PiSessionRuntimeEvent | undefined {
   if (event.type === 'tool_execution_start') {
     return {
@@ -469,13 +479,18 @@ function normalizePiSessionEvent(
     }
   }
   if (event.type === 'tool_execution_end') {
+    const toolCallId = String(event.toolCallId)
+    const commandOutcome = commandOutcomes?.get(toolCallId)
+    commandOutcomes?.delete(toolCallId)
+
     return {
       type: event.type,
-      toolCallId: String(event.toolCallId),
+      toolCallId,
       toolName: String(event.toolName),
       result: event.result,
       isError: event.isError === true,
-      rawResultReference: String(event.toolCallId),
+      rawResultReference: toolCallId,
+      commandOutcome,
     }
   }
   if (event.type === 'turn_start') {

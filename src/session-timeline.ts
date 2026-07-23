@@ -14,6 +14,15 @@ export type AgentActivityKind = (typeof agentActivityKinds)[number] | 'other'
 export type AgentRunStatus = 'running' | 'completed' | 'failed' | 'cancelled'
 export type AgentActivityStatus = 'pending' | 'running' | 'completed' | 'failed' | 'blocked'
 export type ToolExecutionStatus = 'running' | 'completed' | 'failed'
+export type ToolExecutionCommandTermination =
+  'exited' | 'exit-code' | 'signaled' | 'memory-limit' | 'timeout' | 'aborted' | 'isolation-failure'
+
+export type ToolExecutionCommandOutcome = Readonly<{
+  termination: ToolExecutionCommandTermination
+  peakMemoryBytes: number
+  exitCode?: number
+  signal?: string
+}>
 
 export type ConversationEntry = Readonly<{
   type: 'conversation'
@@ -64,6 +73,7 @@ export type ToolExecution = Readonly<{
   input: unknown
   rawResultReference?: string
   inputPreview?: string
+  commandOutcome?: ToolExecutionCommandOutcome
 }>
 
 export type AgentActivity = Readonly<{
@@ -108,6 +118,7 @@ export type ActivityOperationDetail = Readonly<{
   input: string
   output?: string
   truncated: boolean
+  commandOutcome?: ToolExecutionCommandOutcome
 }>
 
 export type AgentActivityDetails = Readonly<{

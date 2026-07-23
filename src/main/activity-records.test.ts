@@ -62,6 +62,18 @@ test('rejects malformed operation records', () => {
         inputPreview: 1,
       },
     },
+    {
+      version: 1,
+      type: 'operation',
+      execution: {
+        toolCallId: 'tool-1',
+        activityId: 'activity-1',
+        toolName: 'bash',
+        label: 'bash',
+        status: 'failed',
+        commandOutcome: { termination: 'memory-limit', peakMemoryBytes: -1 },
+      },
+    },
   ]
 
   for (const record of malformedOperations) assert.equal(isActivityLayerRecord(record), false)
@@ -138,6 +150,11 @@ test('accepts complete historical records', () => {
         status: 'completed',
         rawResultReference: 'tool-1',
         inputPreview: 'src/main/activity-records.ts',
+        commandOutcome: {
+          termination: 'exited',
+          peakMemoryBytes: 1_048_576,
+          exitCode: 0,
+        },
       },
     },
     { version: 1, type: 'activity-removed', activityId: 'activity-1' },
