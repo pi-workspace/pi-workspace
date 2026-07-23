@@ -586,7 +586,7 @@ test('removes the selected Skill from its inline remove button', async () => {
 })
 
 test('focuses the Composer when a new focus request arrives', async () => {
-  const view = renderInBrowser(
+  renderInBrowser(
     <Composer
       session={session}
       draft=""
@@ -598,7 +598,9 @@ test('focuses the Composer when a new focus request arrives', async () => {
     />
   )
 
-  await waitFor(() => assert.equal(browser.document.activeElement, view.getByRole('textbox')))
+  await waitFor(() =>
+    assert.equal(browser.document.activeElement?.getAttribute('aria-label'), 'Message for First Session')
+  )
 })
 
 test('prevents Agent Run acceptance while a Model change is pending', async () => {

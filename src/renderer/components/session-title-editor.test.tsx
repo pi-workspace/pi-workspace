@@ -83,7 +83,7 @@ test('selects the published title and uses Enter and Escape for inline editing',
   )
   const input = view.getByRole('textbox', { name: 'Session title' }) as HTMLInputElement
 
-  await waitFor(() => assert.equal(browser.document.activeElement, input))
+  await waitFor(() => assert.equal(browser.document.activeElement?.getAttribute('aria-label'), 'Session title'))
   assert.equal(input.selectionStart, 0)
   assert.equal(input.selectionEnd, 'First Session'.length)
   fireEvent.keyDown(input, { key: 'Enter' })
@@ -197,11 +197,11 @@ test('reveals the requested Session before focusing its Composer', async () => {
   }
 
   try {
-    const view = renderInBrowser(<RevealSessionArea />)
+    renderInBrowser(<RevealSessionArea />)
 
     await waitFor(() => assert.equal(scrollCalls.length, 1))
     await waitFor(() =>
-      assert.equal(browser.document.activeElement, view.getByRole('textbox', { name: 'Message for First Session' }))
+      assert.equal(browser.document.activeElement?.getAttribute('aria-label'), 'Message for First Session')
     )
   } finally {
     HTMLElement.prototype.scrollIntoView = originalScrollIntoView

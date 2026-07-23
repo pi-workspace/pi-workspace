@@ -5,6 +5,11 @@ import { Window } from 'happy-dom'
 
 export const browser = new Window({ url: 'http://localhost' })
 
+const requestAnimationFrame = (callback: FrameRequestCallback): number =>
+  setTimeout(() => callback(Date.now()), 0) as unknown as number
+
+const cancelAnimationFrame = (handle: number) => clearTimeout(handle)
+
 Object.assign(browser.Element.prototype, {
   getAnimations: () => [],
 })
@@ -29,7 +34,7 @@ Object.assign(globalThis, {
   Node: browser.Node,
   NodeFilter: browser.NodeFilter,
   Range: browser.Range,
-  requestAnimationFrame: browser.requestAnimationFrame.bind(browser),
-  cancelAnimationFrame: browser.cancelAnimationFrame.bind(browser),
+  requestAnimationFrame,
+  cancelAnimationFrame,
   getComputedStyle: browser.getComputedStyle.bind(browser),
 })
