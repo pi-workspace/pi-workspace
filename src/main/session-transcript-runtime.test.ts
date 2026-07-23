@@ -132,6 +132,53 @@ test('rejects a selected Skill that is unavailable to the Session runtime', asyn
   assert.equal(prompted, false)
 })
 
+test('includes the Session context window usage in its transcript snapshot', async () => {
+  const runtime: PiSessionRuntime = {
+    isStreaming: false,
+    async prompt() {},
+    getContextUsage() {
+      return { tokens: 48_000, contextWindow: 200_000, percent: 24 }
+    },
+    subscribe() {
+      return () => {}
+    },
+    dispose() {},
+  }
+  const registry = createPiSessionRuntimeRegistry({
+    findSession: () => ({ directoryPath: '/tmp', sessionPath: '/tmp/session.jsonl' }),
+    createSession: async () => runtime,
+  })
+
+  const snapshot = await registry.getTranscript(sessionId('context-session'))
+
+  assert.deepEqual(snapshot.contextUsage, { tokens: 48_000, contextWindow: 200_000, percent: 24 })
+})
+
+test('publishes updated context usage to transcript subscribers', async () => {
+  let emit: (event: Parameters<Parameters<PiSessionRuntime['subscribe']>[0]>[0]) => void = () => {}
+  const runtime: PiSessionRuntime = {
+    isStreaming: false,
+    async prompt() {},
+    subscribe(listener) {
+      emit = listener
+      return () => {}
+    },
+    dispose() {},
+  }
+  const registry = createPiSessionRuntimeRegistry({
+    findSession: () => ({ directoryPath: '/tmp', sessionPath: '/tmp/session.jsonl' }),
+    createSession: async () => runtime,
+  })
+  const snapshots: unknown[] = []
+  registry.subscribeTranscript((mutation) => snapshots.push(mutation.snapshot.contextUsage))
+  const id = sessionId('live-context-session')
+
+  await registry.getTranscript(id)
+  emit({ type: 'context_usage', usage: { tokens: null, contextWindow: 200_000, percent: null } })
+
+  assert.deepEqual(snapshots, [{ tokens: null, contextWindow: 200_000, percent: null }])
+})
+
 test('publishes a failed transcript run without a parallel failure stream', async () => {
   let emit: (event: Parameters<Parameters<PiSessionRuntime['subscribe']>[0]>[0]) => void = () => {}
   const runtime: PiSessionRuntime = {

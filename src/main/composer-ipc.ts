@@ -289,6 +289,10 @@ export async function createPiSessionRuntime(
         const normalized = normalizePiSessionEvent(event, modelTurnNoProgressTimeoutMs)
 
         if (normalized) listener(normalized)
+
+        if (event.type === 'message_end' || event.type === 'compaction_end') {
+          listener({ type: 'context_usage', usage: session.getContextUsage() })
+        }
       })
 
       return () => {
@@ -398,6 +402,7 @@ export async function createPiSessionRuntime(
 
       await session.setModel(model)
       session.settingsManager.setDefaultModelAndProvider(model.provider, model.id)
+      runtimeListeners.forEach((listener) => listener({ type: 'context_usage', usage: session.getContextUsage() }))
     },
     async setConfigurationEffort(effort: SessionConfigurationEffort) {
       if (!session.supportsThinking() && effort === 'off') return

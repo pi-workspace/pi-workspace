@@ -4,6 +4,7 @@ import { Combobox, ComboboxDescription, ComboboxLabel, ComboboxOption } from '@/
 import { Listbox, ListboxOption } from '@/components/ui-kit/listbox'
 import type { ComposerBridge, SessionMessageDelivery } from '@/src/composer'
 import type { Session } from '@/src/domain/session'
+import type { SessionContextUsage } from '@/src/session-transcript'
 import type {
   SessionConfigurationBridge,
   SessionConfigurationCommandResult,
@@ -21,6 +22,7 @@ type ComposerProperties = Readonly<{
   draft: string
   focusRequest?: number
   isWorking: boolean
+  contextUsage?: SessionContextUsage
   onActivate: () => void
   onDraftChange: (draft: string) => void
   submitMessage: ComposerBridge['submit']
@@ -34,6 +36,7 @@ export function Composer({
   draft,
   focusRequest,
   isWorking,
+  contextUsage,
   onActivate,
   onDraftChange,
   submitMessage,
@@ -245,15 +248,20 @@ export function Composer({
           onSubmit={(delivery) => void submit(delivery)}
         />
         <div className="flex items-end justify-between gap-2 px-3 pt-1 pb-2" data-slot="composer-control-row">
-          {sessionConfiguration && (
-            <ComposerConfigurationControls
-              snapshot={configuration}
-              disabled={configurationDisabled || modelConfigurationRequired}
-              pending={pendingConfiguration}
-              describedBy={statusId}
-              onModelChange={changeModel}
-              onEffortChange={changeEffort}
-            />
+          {(contextUsage || sessionConfiguration) && (
+            <div className="flex min-w-0 items-end gap-3">
+              {contextUsage && <ContextWindowUsage usage={contextUsage} />}
+              {sessionConfiguration && (
+                <ComposerConfigurationControls
+                  snapshot={configuration}
+                  disabled={configurationDisabled || modelConfigurationRequired}
+                  pending={pendingConfiguration}
+                  describedBy={statusId}
+                  onModelChange={changeModel}
+                  onEffortChange={changeEffort}
+                />
+              )}
+            </div>
           )}
           <div className="ml-auto flex items-end gap-1">
             {isWorking && stopRun && (
@@ -314,6 +322,64 @@ export function Composer({
       </div>
     </div>
   )
+}
+
+type ContextWindowUsageProperties = Readonly<{
+  usage: SessionContextUsage
+}>
+
+function ContextWindowUsage({ usage }: ContextWindowUsageProperties) {
+  const contextWindow = formatTokenCount(usage.contextWindow)
+
+  if (usage.tokens === null || usage.percent === null) {
+    return (
+      <div aria-live="polite" className="min-w-28 text-xs/4 text-composer-muted-foreground">
+        <p className="font-medium text-composer-foreground">Context</p>
+        <p>Updating after compaction…</p>
+        <p className="sr-only">Context window usage is unavailable until Pi finishes its next response.</p>
+        <p className="mt-1 h-1 overflow-hidden rounded-full bg-content-subtle-background">
+          <span className="block h-full w-1/3 animate-pulse rounded-full bg-content-muted-foreground motion-reduce:animate-none" />
+        </p>
+        <p className="mt-1">? / {contextWindow}</p>
+      </div>
+    )
+  }
+
+  const percent = Math.max(0, Math.min(100, usage.percent))
+  const remaining = Math.max(0, usage.contextWindow - usage.tokens)
+  const used = formatTokenCount(usage.tokens)
+  const remainingText = `${formatTokenCount(remaining)} left`
+  const valueText = `${used} used of ${contextWindow} tokens; ${remainingText}`
+
+  return (
+    <div aria-live="polite" className="min-w-28 text-xs/4 text-composer-muted-foreground">
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-medium text-composer-foreground">Context</span>
+        <span>{remainingText}</span>
+      </div>
+      <div
+        aria-label="Context window"
+        aria-valuemax={100}
+        aria-valuemin={0}
+        aria-valuenow={percent}
+        aria-valuetext={valueText}
+        className="mt-1 h-1 overflow-hidden rounded-full bg-content-subtle-background"
+        role="progressbar"
+      >
+        <div className="h-full rounded-full bg-content-foreground" style={{ width: `${percent}%` }} />
+      </div>
+      <p className="mt-1">
+        {used} / {contextWindow}
+      </p>
+    </div>
+  )
+}
+
+function formatTokenCount(tokens: number): string {
+  if (tokens >= 1_000_000) return `${Math.round((tokens / 1_000_000) * 10) / 10}m`
+  if (tokens >= 1_000) return `${Math.round(tokens / 1_000)}k`
+
+  return String(tokens)
 }
 
 type ComposerConfigurationControlsProperties = Readonly<{

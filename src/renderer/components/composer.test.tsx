@@ -655,6 +655,44 @@ test('prevents Agent Run acceptance while a Model change is pending', async () =
   )
 })
 
+test('shows the current context window usage and remaining capacity', () => {
+  const view = renderInBrowser(
+    <Composer
+      session={session}
+      draft=""
+      isWorking={false}
+      contextUsage={{ tokens: 48_000, contextWindow: 200_000, percent: 24 }}
+      onActivate={() => {}}
+      onDraftChange={() => {}}
+      submitMessage={async () => ({ status: 'accepted', delivery: 'prompt' })}
+    />
+  )
+
+  const contextWindow = view.getByRole('progressbar', { name: 'Context window' })
+
+  assert.equal(contextWindow.getAttribute('aria-valuenow'), '24')
+  assert.equal(contextWindow.getAttribute('aria-valuetext'), '48k used of 200k tokens; 152k left')
+  assert.match(view.getByText('152k left').textContent ?? '', /152k left/)
+})
+
+test('explains when context usage is recalculating after compaction', () => {
+  const view = renderInBrowser(
+    <Composer
+      session={session}
+      draft=""
+      isWorking={false}
+      contextUsage={{ tokens: null, contextWindow: 200_000, percent: null }}
+      onActivate={() => {}}
+      onDraftChange={() => {}}
+      submitMessage={async () => ({ status: 'accepted', delivery: 'prompt' })}
+    />
+  )
+
+  assert.ok(view.getByText('Updating after compaction…'))
+  assert.match(view.getByText('? / 200k').textContent ?? '', /\? \/ 200k/)
+  assert.equal(view.queryByRole('progressbar', { name: 'Context window' }), null)
+})
+
 test('explains how to configure Pi when no Model is available while preserving the draft', async () => {
   const configuration = {
     sessionId: session.id,
