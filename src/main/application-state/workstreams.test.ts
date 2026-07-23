@@ -27,9 +27,11 @@ const bunSqlite: SqliteModule = {
 }
 
 afterEach(async () => {
-  await Promise.all(
-    temporaryDirectories.splice(0).map((directory) => rm(directory, { force: true, recursive: true, maxRetries: 5 }))
-  )
+  const directories = temporaryDirectories.splice(0)
+  // Bun's SQLite adapter retains database handles until the test process ends on Windows.
+  if (process.platform === 'win32') return
+
+  await Promise.all(directories.map((directory) => rm(directory, { force: true, recursive: true, maxRetries: 5 })))
 })
 
 async function createFixture(sessionFiles?: PiSessionFileStore, inspectRepository?: RepositoryInspector) {
