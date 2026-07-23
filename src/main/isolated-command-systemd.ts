@@ -17,8 +17,9 @@ export function executeInSystemdUnit(
   const unitName = `pi-workspace-tool-${randomUUID()}`
   const loaderScript = [
     "IFS= read -r -d '' command",
+    "IFS= read -r -d '' shell",
     'while IFS= read -r -d \'\' assignment; do export "$assignment"; done',
-    'exec /bin/bash -c "$command"',
+    'exec "$shell" -c "$command"',
   ]
     .join('\n')
     .replaceAll('$', '$$')
@@ -50,6 +51,7 @@ export function executeInSystemdUnit(
   const environment = options.env ?? process.env
   const payload = [
     command,
+    options.shellPath ?? '/bin/bash',
     ...Object.entries(environment).flatMap(([name, value]) => (value === undefined ? [] : [`${name}=${value}`])),
   ]
     .map((value) => `${value}\0`)

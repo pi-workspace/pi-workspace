@@ -1,10 +1,21 @@
 import assert from 'node:assert/strict'
+import { randomUUID } from 'node:crypto'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { test } from 'node:test'
 import { createIsolatedBashTool } from './isolated-bash-tool'
 import { defaultToolExecutionMemoryLimitBytes, executeIsolatedCommand } from './isolated-command'
 
 const mebibyte = 1024 * 1024
 const memoryExhaustionCommand = `${JSON.stringify(process.execPath)} -e 'const value = new Uint8Array(256 * 1024 * 1024); value.fill(1); setTimeout(() => console.log(value.length), 10_000)'`
+
+function firstTextContent(
+  result: Awaited<ReturnType<ReturnType<typeof createIsolatedBashTool>['execute']>>
+): string | undefined {
+  const content = result.content[0]
+
+  return content?.type === 'text' ? content.text : undefined
+}
 
 async function waitForProcessExit(pid: number): Promise<void> {
   for (let attempt = 0; attempt < 20; attempt += 1) {
@@ -34,6 +45,45 @@ const userSystemdAvailable = await canUseUserSystemd()
 
 test('Agent bash commands default to a 2 GiB memory limit', () => {
   assert.equal(defaultToolExecutionMemoryLimitBytes, 2 * 1024 * mebibyte)
+})
+
+test('the bash tool retains Pi timeout validation', async () => {
+  const tool = createIsolatedBashTool(process.cwd())
+
+  await assert.rejects(
+    () => tool.execute('tool-1', { command: 'true', timeout: 0 }),
+    /Invalid timeout: must be a finite number of seconds/
+  )
+})
+
+test('the bash tool retains Pi working-directory errors', async () => {
+  const missingDirectory = join(tmpdir(), `pi-workspace-missing-${randomUUID()}`)
+  const tool = createIsolatedBashTool(missingDirectory)
+
+  await assert.rejects(
+    () => tool.execute('tool-1', { command: 'true' }),
+    new RegExp(`Working directory does not exist: ${missingDirectory}`)
+  )
+})
+
+test('the bash tool retains Pi shell command prefixes', { skip: !userSystemdAvailable }, async () => {
+  const tool = createIsolatedBashTool(process.cwd(), {
+    getShellOptions: () => ({ commandPrefix: 'export PI_WORKSPACE_PREFIX=retained' }),
+  })
+
+  const result = await tool.execute('tool-1', { command: 'printf %s "$PI_WORKSPACE_PREFIX"' })
+
+  assert.equal(firstTextContent(result), 'retained')
+})
+
+test('the bash tool retains Pi configured shell paths', { skip: !userSystemdAvailable }, async () => {
+  const tool = createIsolatedBashTool(process.cwd(), {
+    getShellOptions: () => ({ shellPath: '/bin/sh' }),
+  })
+
+  const result = await tool.execute('tool-1', { command: 'printf %s "$0"' })
+
+  assert.equal(firstTextContent(result), '/bin/sh')
 })
 
 test(

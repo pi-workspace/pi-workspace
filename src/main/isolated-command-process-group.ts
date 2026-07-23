@@ -16,7 +16,7 @@ export function executeInProcessGroup(
   const markerName = `PI_WORKSPACE_TOOL_${randomUUID().replaceAll('-', '')}`
   const markerValue = '1'
   const executionMarker = `${markerName}=${markerValue}`
-  const child = spawn('/bin/bash', ['-c', command], {
+  const child = spawn(options.shellPath ?? '/bin/bash', ['-c', command], {
     cwd,
     detached: true,
     env: { [markerName]: markerValue, ...(options.env ?? process.env) },

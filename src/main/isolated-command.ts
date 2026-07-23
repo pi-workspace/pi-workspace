@@ -9,6 +9,7 @@ export type IsolatedCommandOptions = Readonly<{
   timeoutSeconds?: number
   signal?: AbortSignal
   env?: NodeJS.ProcessEnv
+  shellPath?: string
   onData?: (data: Buffer) => void
   platform?: NodeJS.Platform
 }>

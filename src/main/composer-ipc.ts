@@ -36,7 +36,7 @@ import {
 } from '@/src/main/pi-session-runtimes'
 import { classifyPersistedAgentState } from '@/src/main/pi-session-history'
 import { createManagedSessionServices } from '@/src/main/managed-session-resources'
-import { createIsolatedBashTool } from '@/src/main/isolated-bash-tool'
+import { createIsolatedBashTool, type IsolatedShellOptions } from '@/src/main/isolated-bash-tool'
 import type { IsolatedCommandResult } from '@/src/main/isolated-command'
 import {
   managedSessionMethodology,
@@ -80,6 +80,7 @@ export async function createPiSessionRuntime(
 
   const runtimeListeners = new Set<(event: PiSessionRuntimeEvent) => void>()
   const commandOutcomes = new Map<string, IsolatedCommandResult>()
+  let resolveShellOptions: () => IsolatedShellOptions = () => ({})
   let managedPolicyFailure: string | undefined
   const managedRunControl: { abort?: () => void } = {}
 
@@ -197,6 +198,7 @@ export async function createPiSessionRuntime(
         ]
       : []
   const isolatedBash = createIsolatedBashTool(directoryPath, {
+    getShellOptions: () => resolveShellOptions(),
     onExecutionFinished(toolCallId, outcome) {
       commandOutcomes.set(toolCallId, outcome)
     },
@@ -216,6 +218,10 @@ export async function createPiSessionRuntime(
     customTools,
     resourceLoader: managedServices?.resourceLoader,
     settingsManager: managedServices?.settingsManager,
+  })
+  resolveShellOptions = () => ({
+    commandPrefix: session.settingsManager.getShellCommandPrefix(),
+    shellPath: session.settingsManager.getShellPath(),
   })
   const getAvailableSkillResources = () =>
     session.settingsManager.getEnableSkillCommands()
