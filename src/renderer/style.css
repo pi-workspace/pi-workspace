@@ -300,10 +300,6 @@ body,
 }
 
 @container session-pane (min-width: 520px) {
-  .composer-tray {
-    padding-inline: 1.5rem;
-  }
-
   .composer-editable {
     max-height: 13.75rem;
   }

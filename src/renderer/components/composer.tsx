@@ -233,7 +233,7 @@ export function Composer({
     <div className="composer-tray shrink-0 border-t border-content-border p-3">
       <div
         aria-busy={agentRunDisabled ? 'true' : undefined}
-        className="group flex min-h-[52px] flex-col rounded-xl border border-composer-border bg-composer-background transition-colors motion-reduce:transition-none hover:border-composer-interaction focus-within:border-composer-interaction"
+        className="group flex min-h-[52px] flex-col rounded-xl bg-composer-background"
         onClick={onActivate}
       >
         <ComposerEditor
