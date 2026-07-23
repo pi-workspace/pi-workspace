@@ -23,7 +23,7 @@ export type WorktreeProposal = Readonly<{
 export async function proposeWorktree(options: {
   repositoryId: string
   repositoryPath: string
-  workstreamId: string
+  worktreeId: string
 }): Promise<WorktreeProposal> {
   const repository = await inspectGitRepository(options.repositoryPath)
   const { stdout } = await exec('git', ['-C', repository.directoryPath, 'rev-parse', 'HEAD']).catch(() => {
@@ -40,10 +40,10 @@ export async function proposeWorktree(options: {
     worktreePath: join(
       dirname(repository.directoryPath),
       '.worktrees',
-      worktreeName(options.workstreamId),
+      worktreeName(options.worktreeId),
       options.repositoryId
     ),
-    branch: `pi-workspace/${worktreeName(options.workstreamId)}/${options.repositoryId}`,
+    branch: `pi-workspace/${worktreeName(options.worktreeId)}/${options.repositoryId}`,
     baseCommit,
   }
 }
@@ -68,20 +68,35 @@ export async function inspectWorktree(options: {
 }
 
 export async function createWorktree(proposal: WorktreeProposal): Promise<WorktreeProposal> {
+  return addWorktree(proposal, ['-b', proposal.branch, proposal.worktreePath, proposal.baseCommit])
+}
+
+export async function restoreWorktree(proposal: WorktreeProposal): Promise<WorktreeProposal> {
+  const branchExists = await exec('git', [
+    '-C',
+    proposal.sourcePath,
+    'show-ref',
+    '--verify',
+    '--quiet',
+    `refs/heads/${proposal.branch}`,
+  ]).then(
+    () => true,
+    () => false
+  )
+
+  if (!branchExists) return createWorktree(proposal)
+
+  return addWorktree(proposal, [proposal.worktreePath, proposal.branch])
+}
+
+async function addWorktree(
+  proposal: WorktreeProposal,
+  worktreeArguments: readonly string[]
+): Promise<WorktreeProposal> {
   try {
-    await exec('git', [
-      '-C',
-      proposal.sourcePath,
-      'worktree',
-      'add',
-      '-b',
-      proposal.branch,
-      proposal.worktreePath,
-      proposal.baseCommit,
-    ])
+    await exec('git', ['-C', proposal.sourcePath, 'worktree', 'add', ...worktreeArguments])
   } catch (error) {
-    const detail = error instanceof Error && 'stderr' in error ? String(error.stderr).trim() : ''
-    throw new Error(detail || `Git could not create the worktree at ${proposal.worktreePath}.`, { cause: error })
+    throw worktreeCreationError(proposal, error)
   }
 
   const availability = await inspectWorktree({
@@ -94,6 +109,12 @@ export async function createWorktree(proposal: WorktreeProposal): Promise<Worktr
   }
 
   return proposal
+}
+
+function worktreeCreationError(proposal: WorktreeProposal, error: unknown): Error {
+  const detail = error instanceof Error && 'stderr' in error ? String(error.stderr).trim() : ''
+
+  return new Error(detail || `Git could not create the worktree at ${proposal.worktreePath}.`, { cause: error })
 }
 
 export async function inspectGitRepository(selectedDirectoryPath: string): Promise<InspectedGitRepository> {

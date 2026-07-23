@@ -300,7 +300,7 @@ export function WorkspaceShell({ initialWorkspacesSnapshot, initialSessionDispla
     }
   }
 
-  const previewWorktreeLocations = (repositoryId?: string) => {
+  const previewWorktreeLocations = (repositoryId: string) => {
     const authorityToken = selectedWorkspaceAuthorityToken()
 
     return window.piWorkspace.workstreams.previewWorktreeLocations(authorityToken.workspaceId, repositoryId)

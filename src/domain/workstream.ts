@@ -77,8 +77,6 @@ export type WorktreeLocationsPreview = Readonly<{
 export type CreateWorkstreamOptions = Readonly<{
   goal: string
   mode?: ManagedSessionMode
-  workingLocation?: WorkstreamWorkingLocation
-  workstreamId?: string
 }>
 
 export type CreateQuickSessionOptions = Readonly<{

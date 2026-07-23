@@ -36,6 +36,7 @@ import {
 } from '@/src/main/pi-session-runtimes'
 import { classifyPersistedAgentState } from '@/src/main/pi-session-history'
 import { createManagedSessionServices } from '@/src/main/managed-session-resources'
+import { createManagedSessionRuntimePolicyGuard } from '@/src/main/managed-session-runtime-policy'
 import {
   managedSessionMethodology,
   parsePiWorkstreamKnowledgeMutation,
@@ -64,6 +65,9 @@ type PiSessionRuntimeOptions =
       applyWorkstreamKnowledgeCommand: (
         command: WorkstreamKnowledgeCommand
       ) => Promise<WorkstreamKnowledgeMutationResult>
+      prepareSessionRepository: (
+        repositoryId: string
+      ) => Promise<Readonly<{ repositoryId: string; workingPath: string; resourcePolicyRevision: number }>>
     }>
 
 export async function createPiSessionRuntime(
@@ -79,20 +83,26 @@ export async function createPiSessionRuntime(
   const runtimeListeners = new Set<(event: PiSessionRuntimeEvent) => void>()
   let managedPolicyFailure: string | undefined
   const managedRunControl: { abort?: () => void } = {}
+  const managedPolicyGuard =
+    options.kind === 'managed'
+      ? createManagedSessionRuntimePolicyGuard(options, (error) => {
+          if (managedPolicyFailure) return
 
-  const validateManagedPolicy = async (
-    managedOptions: Extract<PiSessionRuntimeOptions, { kind: 'managed' }>
-  ): Promise<ManagedSessionRuntimePolicy> => {
-    try {
-      return await requireCurrentManagedPolicy(managedOptions)
-    } catch (error) {
-      if (!managedPolicyFailure) {
-        managedPolicyFailure = error instanceof Error ? error.message : 'The managed Session runtime policy failed.'
-        managedRunControl.abort?.()
-      }
+          managedPolicyFailure = error instanceof Error ? error.message : 'The managed Session runtime policy failed.'
+          managedRunControl.abort?.()
+        })
+      : undefined
 
-      throw error
-    }
+  const validateManagedPolicy = (): Promise<ManagedSessionRuntimePolicy> => {
+    if (!managedPolicyGuard) throw new Error('The managed Session runtime policy is unavailable.')
+
+    return managedPolicyGuard.validate()
+  }
+
+  const prepareManagedRepository = (repositoryId: string) => {
+    if (!managedPolicyGuard) throw new Error('The managed Session runtime policy is unavailable.')
+
+    return managedPolicyGuard.prepareRepository(repositoryId)
   }
 
   const startActivity = defineTool({
@@ -110,7 +120,7 @@ export async function createPiSessionRuntime(
       expectedOutcome: Type.Optional(Type.String({ minLength: 1 })),
     }),
     async execute(toolCallId) {
-      if (options.kind === 'managed') await validateManagedPolicy(options)
+      if (options.kind === 'managed') await validateManagedPolicy()
 
       runtimeListeners.forEach((listener) =>
         listener({ type: 'activity_control_accepted', toolCallId, toolName: 'start_activity' })
@@ -130,7 +140,7 @@ export async function createPiSessionRuntime(
       summary: Type.String({ minLength: 1, description: 'A concise summary of the achieved or observed outcome' }),
     }),
     async execute(toolCallId) {
-      if (options.kind === 'managed') await validateManagedPolicy(options)
+      if (options.kind === 'managed') await validateManagedPolicy()
 
       runtimeListeners.forEach((listener) =>
         listener({ type: 'activity_control_accepted', toolCallId, toolName: 'complete_activity' })
@@ -149,19 +159,48 @@ export async function createPiSessionRuntime(
             description: 'Read metadata about the current Workspace and its Repositories without Repository content.',
             parameters: Type.Object({}),
             async execute() {
-              const policy = await validateManagedPolicy(options)
+              const policy = await validateManagedPolicy()
               const overview = projectWorkspaceOverview(policy)
 
               return { content: [{ type: 'text' as const, text: JSON.stringify(overview) }], details: {} }
             },
           }),
+          ...(options.policy.mode === 'implement'
+            ? [
+                defineTool({
+                  name: 'prepare_repository',
+                  label: 'Prepare Repository',
+                  description:
+                    'Create or reuse this Implement Session’s isolated worktree for one Workspace Repository before modifying it.',
+                  parameters: Type.Object({
+                    repositoryId: Type.String({ minLength: 1, description: 'Repository id from workspace_overview' }),
+                  }),
+                  async execute(_toolCallId, input) {
+                    const prepared = await prepareManagedRepository(input.repositoryId)
+
+                    return {
+                      content: [
+                        {
+                          type: 'text' as const,
+                          text: JSON.stringify({
+                            repositoryId: prepared.repositoryId,
+                            workingPath: prepared.workingPath,
+                          }),
+                        },
+                      ],
+                      details: {},
+                    }
+                  },
+                }),
+              ]
+            : []),
           defineTool({
             name: 'workstream_knowledge',
             label: 'Workstream knowledge',
             description: 'Read the current durable knowledge owned by this Workstream.',
             parameters: Type.Object({}),
             async execute() {
-              await validateManagedPolicy(options)
+              await validateManagedPolicy()
               const state = await options.getWorkstreamKnowledge()
 
               return { content: [{ type: 'text' as const, text: JSON.stringify(state) }], details: {} }
@@ -182,7 +221,7 @@ export async function createPiSessionRuntime(
               ),
             }),
             async execute(_toolCallId, input) {
-              await validateManagedPolicy(options)
+              await validateManagedPolicy()
               const command = parsePiWorkstreamKnowledgeMutation(input)
               if (!command) throw new TypeError('A valid Pi-authorized Workstream knowledge mutation is required.')
 
@@ -427,25 +466,6 @@ export async function createPiSessionRuntime(
   }
 }
 
-async function requireCurrentManagedPolicy(
-  options: Extract<PiSessionRuntimeOptions, { kind: 'managed' }>
-): Promise<ManagedSessionRuntimePolicy> {
-  const current = await options.resolvePolicy()
-
-  if (
-    !current ||
-    current.sessionId !== options.policy.sessionId ||
-    current.mode !== options.policy.mode ||
-    current.lifecycle !== options.policy.lifecycle ||
-    current.resourcePolicyRevision !== options.policy.resourcePolicyRevision ||
-    current.runLeaseId !== options.policy.runLeaseId
-  ) {
-    throw new Error('The managed Session runtime policy is stale.')
-  }
-
-  return current
-}
-
 function messageContent(content: unknown): { text: string; hasToolCalls: boolean } {
   if (typeof content === 'string') return { text: content, hasToolCalls: false }
   if (!Array.isArray(content)) return { text: '', hasToolCalls: false }
@@ -533,6 +553,8 @@ export function initializeComposer(authority: ApplicationAuthority): void {
         getWorkstreamKnowledge: () => authority.getWorkstreamKnowledge(managedPolicy.workstreamId),
         applyWorkstreamKnowledgeCommand: (command) =>
           authority.applyPiWorkstreamKnowledgeCommand(managedPolicy.workstreamId, command, managedPolicy.sessionId),
+        prepareSessionRepository: (repositoryId) =>
+          authority.prepareSessionRepository(managedPolicy.sessionId, repositoryId),
       })
     },
   })

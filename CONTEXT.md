@@ -46,11 +46,14 @@ The Session mode for investigating every Repository in its Workspace, asking que
 _Avoid_: Research Mode
 
 **Implement**:
-The Session mode for changing and validating Workspace Repositories with Pi's normal tools across supplied Repository working paths.
+The Session mode for changing and validating Workspace Repositories with Pi's normal tools. It can inspect every current Workspace Repository checkout and lazily creates an isolated Implement Session Worktree before changing a Repository.
 _Avoid_: Implementation Mode, Execution Mode
 
+**Implement Session Worktree**:
+An ordinary Git worktree owned by one Implement Session for one Repository. It is created only when that Session prepares to modify the Repository, starts from the Repository's current local `HEAD`, and is never shared with another Session.
+
 **Session**:
-A persistent Pi interaction associated with one Workstream. Each Session has an immutable mode and Repository access: direct access to one selected Repository working location for Default or automatic access to every current Workspace Repository working location for Brainstorm and Implement.
+A persistent Pi interaction associated with one Workstream. Each Session has an immutable mode and Repository access: direct access to one selected Repository working location for Default or automatic access to every current Workspace Repository for Brainstorm and Implement. Implement changes use that Session's lazily created Implement Session Worktrees.
 _Avoid_: Chat, thread
 
 **Changelog**:

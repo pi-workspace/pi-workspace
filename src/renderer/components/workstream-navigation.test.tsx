@@ -220,14 +220,6 @@ test('keeps working state independent from Workstream selection', () => {
   assert.match(markup, /Pi is working/)
 })
 
-test('quietly identifies a Workstream that uses separate worktrees', () => {
-  const markup = renderToStaticMarkup(
-    createNavigation({ workstreams: [{ ...workstreams[0]!, workingLocation: 'worktrees' }] })
-  )
-
-  assert.match(markup, /Uses separate worktrees/)
-})
-
 test('replaces a working Quick Session mode icon with a spinner', () => {
   const quickWorkstream = {
     ...unavailableQuickWorkstream,
@@ -837,67 +829,11 @@ test('creates a Workstream with Implement selected by default', async () => {
 
   await openNewWorkstreamDialog(view, user)
   assert.equal(view.queryByText('Default'), null)
+  assert.equal(view.queryByRole('radiogroup', { name: 'Working location' }), null)
   await user.type(view.getByRole('textbox', { name: 'Goal' }), 'Ship cancellation reasons')
   await user.click(view.getByRole('button', { name: 'Create Workstream' }))
 
-  assert.deepEqual(creations, [
-    { goal: 'Ship cancellation reasons', mode: 'implement', workingLocation: 'current-checkouts' },
-  ])
-})
-
-test('previews exact worktree paths and creates the Workstream with that identity', async () => {
-  const creations: unknown[] = []
-  const user = createUser()
-  const view = renderInBrowser({
-    workstreams: [],
-    onPreviewWorktreeLocations: async () => ({
-      workstreamId: 'workstream-preview',
-      repositories: [
-        {
-          repositoryId: 'repository-a',
-          repositoryName: 'Repository A',
-          workingPath: '/repositories/.worktrees/workstream-preview/repository-a',
-          branch: 'pi-workspace/workstream-preview/repository-a',
-          baseCommit: 'abc123',
-        },
-      ],
-    }),
-    onCreateWorkstream: async (options) => {
-      creations.push(options)
-    },
-  })
-
-  await openNewWorkstreamDialog(view, user)
-  await user.type(view.getByRole('textbox', { name: 'Goal' }), 'Work separately')
-  await user.click(view.getByRole('radio', { name: /Current checkouts/ }))
-  await user.keyboard('{ArrowDown}')
-
-  await waitFor(() =>
-    assert.equal((view.getByRole('button', { name: 'Create Workstream' }) as HTMLButtonElement).disabled, false)
-  )
-  assert.equal(view.queryByText('.worktrees/workstream-preview/repository-a'), null)
-  await user.click(view.getByRole('button', { name: 'Create Workstream' }))
-
-  assert.deepEqual(creations, [
-    {
-      goal: 'Work separately',
-      mode: 'implement',
-      workingLocation: 'worktrees',
-      workstreamId: 'workstream-preview',
-    },
-  ])
-})
-
-test('selects Workstream working-location cards', async () => {
-  const user = createUser()
-  const view = renderInBrowser({ workstreams: [] })
-
-  await openNewWorkstreamDialog(view, user)
-  await user.click(view.getByText('Create a separate ordinary Git worktree for each available Repository.'))
-  assert.equal(view.getByRole('radio', { name: /New worktrees/ }).getAttribute('aria-checked'), 'true')
-
-  await user.click(view.getByText('Use each registered Repository’s existing checkout.'))
-  assert.equal(view.getByRole('radio', { name: /Current checkouts/ }).getAttribute('aria-checked'), 'true')
+  assert.deepEqual(creations, [{ goal: 'Ship cancellation reasons', mode: 'implement' }])
 })
 
 test('allows an explicit Brainstorm mode when creating a Workstream', async () => {
@@ -915,9 +851,7 @@ test('allows an explicit Brainstorm mode when creating a Workstream', async () =
   await user.click(view.getByRole('radio', { name: /Brainstorm/ }))
   await user.click(view.getByRole('button', { name: 'Create Workstream' }))
 
-  assert.deepEqual(creations, [
-    { goal: 'Understand current behavior', mode: 'brainstorm', workingLocation: 'current-checkouts' },
-  ])
+  assert.deepEqual(creations, [{ goal: 'Understand current behavior', mode: 'brainstorm' }])
 })
 
 test('keeps Workstream creation open and announces a failure', async () => {

@@ -190,9 +190,7 @@ export function createDemoBridge(scenarioName?: string): PiWorkspaceBridge {
       },
       async previewWorktreeLocations(_workspaceId, repositoryId) {
         const workstreamId = '00000000-0000-4000-8000-000000000052'
-        const repositories = repositoryId
-          ? demoRepositories.filter((repository) => repository.id === repositoryId)
-          : demoRepositories
+        const repositories = demoRepositories.filter((repository) => repository.id === repositoryId)
 
         return {
           workstreamId,
@@ -208,8 +206,7 @@ export function createDemoBridge(scenarioName?: string): PiWorkspaceBridge {
       async createWorkstream(workspaceId, options) {
         createdSessionNumber += 1
         const createdSessionId = sessionId(`workstream-session-${createdSessionNumber}`)
-        const workstreamId = options.workstreamId ?? `workstream-${createdSessionNumber}`
-        const workingLocation = options.workingLocation ?? ('current-checkouts' as const)
+        const workstreamId = `workstream-${createdSessionNumber}`
         workstreamsSnapshot = {
           revision: workstreamsSnapshot.revision + 1,
           workstreams: [
@@ -219,16 +216,13 @@ export function createDemoBridge(scenarioName?: string): PiWorkspaceBridge {
               workspaceId,
               goal: options.goal.trim(),
               lifecycle: 'active' as const,
-              workingLocation,
+              workingLocation: 'current-checkouts' as const,
               repositoryWorkingLocations: demoRepositories.map((repository) => ({
                 repositoryId: repository.id,
                 repositoryName: repository.name,
-                kind: workingLocation === 'worktrees' ? ('worktree' as const) : ('current-checkout' as const),
+                kind: 'current-checkout' as const,
                 availability: 'available' as const,
-                workingPath:
-                  workingLocation === 'worktrees'
-                    ? `/Users/maya/Projects/.worktrees/${workstreamId}/${repository.id}`
-                    : repository.directoryPath,
+                workingPath: repository.directoryPath,
               })),
               sessions: [
                 {
