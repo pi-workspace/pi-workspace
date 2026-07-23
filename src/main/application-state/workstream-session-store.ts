@@ -385,12 +385,11 @@ export function createWorkstreamSessionStore({
   }
 
   async function prepareDedicatedSessionWorktreesNow(sessionId: SessionId): Promise<void> {
-    const database = openDatabase()
-    let workspaceId: string
-    let workstreamId: string
+    const sessionDatabase = openDatabase()
+    let session: Readonly<{ workstreamId: string; workspaceId: string }> | undefined
 
     try {
-      const session = database
+      const row = sessionDatabase
         .prepare(
           `SELECT session.workstream_id, workstream.workspace_id
              FROM sessions session
@@ -401,19 +400,18 @@ export function createWorkstreamSessionStore({
               AND workstream.lifecycle = 'active'`
         )
         .get(sessionId)
-      if (!session) return
-
-      workstreamId = String(session.workstream_id)
-      workspaceId = String(session.workspace_id)
+      session = row ? { workstreamId: String(row.workstream_id), workspaceId: String(row.workspace_id) } : undefined
     } finally {
-      database.close()
+      sessionDatabase.close()
     }
 
-    const repositories = openDatabase()
-    let repositoryRows: readonly Readonly<{ id: string; directoryPath: string }>[]
+    if (!session) return
+
+    const repositoryDatabase = openDatabase()
+    let repositories: readonly Readonly<{ id: string; directoryPath: string }>[]
 
     try {
-      repositoryRows = repositories
+      repositories = repositoryDatabase
         .prepare(
           `SELECT repository.id, repository.directory_path
              FROM workspace_repositories membership
@@ -421,126 +419,123 @@ export function createWorkstreamSessionStore({
             WHERE membership.workspace_id = ? AND repository.availability = 'available'
             ORDER BY membership.rowid`
         )
-        .all(workspaceId)
+        .all(session.workspaceId)
         .map((row) => ({ id: String(row.id), directoryPath: String(row.directory_path) }))
     } finally {
-      repositories.close()
+      repositoryDatabase.close()
     }
 
-    for (const repository of repositoryRows) {
-      const existing = openDatabase()
-      let existingLocation: Readonly<{ kind: string; availability: string }> | undefined
+    for (const repository of repositories) {
+      await prepareDedicatedSessionRepositoryWorktree(sessionId, session.workstreamId, repository)
+    }
+  }
 
+  async function prepareDedicatedSessionRepositoryWorktree(
+    sessionId: SessionId,
+    workstreamId: string,
+    repository: Readonly<{ id: string; directoryPath: string }>
+  ): Promise<void> {
+    const existing = openDatabase()
+
+    try {
+      const location = existing
+        .prepare('SELECT 1 FROM session_repository_locations WHERE session_id = ? AND repository_id = ?')
+        .get(sessionId, repository.id)
+      if (location) return
+    } finally {
+      existing.close()
+    }
+
+    let proposal: WorktreeProposal
+
+    try {
+      proposal = await proposeWorktree({
+        repositoryId: repository.id,
+        repositoryPath: repository.directoryPath,
+        workstreamId: sessionId,
+      })
+    } catch {
+      const fallback = openDatabase()
       try {
-        const location = existing
-          .prepare(
-            'SELECT kind, availability FROM session_repository_locations WHERE session_id = ? AND repository_id = ?'
-          )
-          .get(sessionId, repository.id)
-        existingLocation = location
-          ? { kind: String(location.kind), availability: String(location.availability) }
-          : undefined
-      } finally {
-        existing.close()
-      }
-
-      if (existingLocation) continue
-
-      let proposal: WorktreeProposal
-
-      try {
-        proposal = await proposeWorktree({
-          repositoryId: repository.id,
-          repositoryPath: repository.directoryPath,
-          workstreamId: sessionId,
-        })
-      } catch {
-        const fallback = openDatabase()
-        try {
-          fallback.exec('BEGIN IMMEDIATE;')
-          fallback
-            .prepare(
-              `INSERT INTO session_repository_locations
-                (session_id, repository_id, kind, working_path, availability)
-               VALUES (?, ?, 'current-checkout', ?, 'available')
-               ON CONFLICT (session_id, repository_id) DO NOTHING`
-            )
-            .run(sessionId, repository.id, repository.directoryPath)
-          fallback.exec('COMMIT;')
-        } catch {
-          try {
-            fallback.exec('ROLLBACK;')
-          } catch {
-            // The transaction may already have rolled back.
-          }
-        } finally {
-          fallback.close()
-        }
-        continue
-      }
-
-      const recorded = openDatabase()
-      try {
-        recorded.exec('BEGIN IMMEDIATE;')
-        recorded
+        fallback.exec('BEGIN IMMEDIATE;')
+        fallback
           .prepare(
             `INSERT INTO session_repository_locations
-              (session_id, repository_id, kind, working_path, branch, base_commit, availability)
-             VALUES (?, ?, 'worktree', ?, ?, ?, 'unavailable')
+              (session_id, repository_id, kind, working_path, availability)
+             VALUES (?, ?, 'current-checkout', ?, 'available')
              ON CONFLICT (session_id, repository_id) DO NOTHING`
           )
-          .run(sessionId, repository.id, proposal.worktreePath, proposal.branch, proposal.baseCommit)
-        recorded.exec('COMMIT;')
+          .run(sessionId, repository.id, repository.directoryPath)
+        fallback.exec('COMMIT;')
       } catch {
         try {
-          recorded.exec('ROLLBACK;')
-        } catch {
-          // The transaction may already have rolled back.
-        }
-        recorded.close()
-        continue
-      }
-      recorded.close()
-
-      const available = await (async () => {
-        try {
-          const exists =
-            (await inspectWorktree({
-              worktreePath: proposal.worktreePath,
-              commonDirectoryPath: proposal.commonDirectoryPath,
-              expectedBranch: proposal.branch,
-            })) === 'available'
-
-          if (!exists) await createWorktree(proposal)
-
-          return true
-        } catch {
-          return false
-        }
-      })()
-
-      const updated = openDatabase()
-      try {
-        updated.exec('BEGIN IMMEDIATE;')
-        updated
-          .prepare(
-            'UPDATE session_repository_locations SET availability = ? WHERE session_id = ? AND repository_id = ?'
-          )
-          .run(available ? 'available' : 'unavailable', sessionId, repository.id)
-        updated
-          .prepare('UPDATE workstreams SET working_location_revision = working_location_revision + 1 WHERE id = ?')
-          .run(workstreamId)
-        incrementRevision(updated)
-        updated.exec('COMMIT;')
-      } catch {
-        try {
-          updated.exec('ROLLBACK;')
+          fallback.exec('ROLLBACK;')
         } catch {
           // The transaction may already have rolled back.
         }
       } finally {
-        updated.close()
+        fallback.close()
       }
+      return
+    }
+
+    const recorded = openDatabase()
+    try {
+      recorded.exec('BEGIN IMMEDIATE;')
+      recorded
+        .prepare(
+          `INSERT INTO session_repository_locations
+            (session_id, repository_id, kind, working_path, branch, base_commit, availability)
+           VALUES (?, ?, 'worktree', ?, ?, ?, 'unavailable')
+           ON CONFLICT (session_id, repository_id) DO NOTHING`
+        )
+        .run(sessionId, repository.id, proposal.worktreePath, proposal.branch, proposal.baseCommit)
+      recorded.exec('COMMIT;')
+    } catch {
+      try {
+        recorded.exec('ROLLBACK;')
+      } catch {
+        // The transaction may already have rolled back.
+      }
+      return
+    } finally {
+      recorded.close()
+    }
+
+    let available: boolean
+
+    try {
+      const exists =
+        (await inspectWorktree({
+          worktreePath: proposal.worktreePath,
+          commonDirectoryPath: proposal.commonDirectoryPath,
+          expectedBranch: proposal.branch,
+        })) === 'available'
+      if (!exists) await createWorktree(proposal)
+      available = true
+    } catch {
+      available = false
+    }
+
+    const updated = openDatabase()
+    try {
+      updated.exec('BEGIN IMMEDIATE;')
+      updated
+        .prepare('UPDATE session_repository_locations SET availability = ? WHERE session_id = ? AND repository_id = ?')
+        .run(available ? 'available' : 'unavailable', sessionId, repository.id)
+      updated
+        .prepare('UPDATE workstreams SET working_location_revision = working_location_revision + 1 WHERE id = ?')
+        .run(workstreamId)
+      incrementRevision(updated)
+      updated.exec('COMMIT;')
+    } catch {
+      try {
+        updated.exec('ROLLBACK;')
+      } catch {
+        // The transaction may already have rolled back.
+      }
+    } finally {
+      updated.close()
     }
   }
 
