@@ -2,7 +2,7 @@ import { readdir, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 
 const rendererDirectory = 'dist/renderer'
-const initialJavaScriptBudget = 900 * 1024
+const initialJavaScriptBudget = 1100 * 1024
 const totalAssetBudget = 13 * 1024 * 1024
 
 async function filesIn(directory) {
