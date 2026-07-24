@@ -266,6 +266,115 @@
   --theme-sidebar-background: #21252b;
 }
 
+:root:is([data-theme='github'], [data-theme='dracula'], [data-theme='night-owl'], [data-theme='tokyo-night']) {
+  --theme-content-border: color-mix(in oklab, var(--theme-content-foreground) 12%, transparent);
+  --theme-content-hover-border: color-mix(in oklab, var(--theme-content-foreground) 25%, transparent);
+  --theme-content-interaction: color-mix(in oklab, var(--theme-content-foreground) 7%, transparent);
+  --theme-content-interaction-strong: color-mix(in oklab, var(--theme-content-foreground) 12%, transparent);
+  --theme-content-subtle-background: color-mix(in oklab, var(--theme-content-foreground) 6%, transparent);
+  --theme-session-message-code-background: color-mix(in oklab, var(--theme-content-foreground) 4%, transparent);
+  --theme-session-message-code-border: color-mix(in oklab, var(--theme-content-foreground) 8%, transparent);
+  --theme-control-disabled-background: color-mix(in oklab, var(--theme-content-foreground) 5%, transparent);
+  --theme-dropdown-background: color-mix(in oklab, var(--theme-content-background) 92%, transparent);
+  --theme-success-background: color-mix(in oklab, var(--theme-success-foreground) 14%, transparent);
+  --theme-activity-blocked: var(--theme-warning-foreground);
+  --theme-warning-border: var(--theme-warning-foreground);
+  --theme-activity-completed: var(--theme-success-foreground);
+  --theme-activity-failed: var(--theme-danger-foreground);
+  --theme-activity-running: var(--theme-accent);
+  --theme-changelog-list-marker: var(--theme-accent);
+}
+
+:root[data-theme='github'][data-color-scheme='light'] {
+  color-scheme: light;
+  --theme-accent: #0969da;
+  --theme-accent-foreground: #ffffff;
+  --theme-content-background: #ffffff;
+  --theme-content-foreground: #1f2328;
+  --theme-content-muted-foreground: #59636e;
+  --theme-control-background: #ffffff;
+  --theme-danger-background: #cf222e;
+  --theme-danger-border: #a40e26;
+  --theme-danger-foreground: #cf222e;
+  --theme-danger-on-background: #ffffff;
+  --theme-link-foreground: #0969da;
+  --theme-overlay-background: color-mix(in oklab, #1f2328 28%, transparent);
+  --theme-success-foreground: #1a7f37;
+  --theme-warning-foreground: #9a6700;
+}
+
+:root[data-theme='github'][data-color-scheme='dark'] {
+  color-scheme: dark;
+  --theme-accent: #2f81f7;
+  --theme-accent-foreground: #ffffff;
+  --theme-content-background: #0d1117;
+  --theme-content-foreground: #f0f6fc;
+  --theme-content-muted-foreground: #8b949e;
+  --theme-control-background: #161b22;
+  --theme-danger-background: #da3633;
+  --theme-danger-border: #f85149;
+  --theme-danger-foreground: #ff7b72;
+  --theme-danger-on-background: #ffffff;
+  --theme-link-foreground: #58a6ff;
+  --theme-overlay-background: color-mix(in oklab, #010409 60%, transparent);
+  --theme-success-foreground: #3fb950;
+  --theme-warning-foreground: #d29922;
+}
+
+:root[data-theme='dracula'][data-color-scheme='dark'] {
+  color-scheme: dark;
+  --theme-accent: #bd93f9;
+  --theme-accent-foreground: #282a36;
+  --theme-content-background: #282a36;
+  --theme-content-foreground: #f8f8f2;
+  --theme-content-muted-foreground: #bfbfc3;
+  --theme-control-background: #343746;
+  --theme-danger-background: #ff5555;
+  --theme-danger-border: #ff6e6e;
+  --theme-danger-foreground: #ff6e6e;
+  --theme-danger-on-background: #282a36;
+  --theme-link-foreground: #8be9fd;
+  --theme-overlay-background: color-mix(in oklab, #191a21 62%, transparent);
+  --theme-success-foreground: #50fa7b;
+  --theme-warning-foreground: #f1fa8c;
+}
+
+:root[data-theme='night-owl'][data-color-scheme='dark'] {
+  color-scheme: dark;
+  --theme-accent: #82aaff;
+  --theme-accent-foreground: #011627;
+  --theme-content-background: #011627;
+  --theme-content-foreground: #d6deeb;
+  --theme-content-muted-foreground: #9fb3c8;
+  --theme-control-background: #0b2942;
+  --theme-danger-background: #ef5350;
+  --theme-danger-border: #ff6b6b;
+  --theme-danger-foreground: #ff6b6b;
+  --theme-danger-on-background: #011627;
+  --theme-link-foreground: #82aaff;
+  --theme-overlay-background: color-mix(in oklab, #000b14 65%, transparent);
+  --theme-success-foreground: #addb67;
+  --theme-warning-foreground: #ecc48d;
+}
+
+:root[data-theme='tokyo-night'][data-color-scheme='dark'] {
+  color-scheme: dark;
+  --theme-accent: #7aa2f7;
+  --theme-accent-foreground: #1a1b26;
+  --theme-content-background: #1a1b26;
+  --theme-content-foreground: #c0caf5;
+  --theme-content-muted-foreground: #a9b1d6;
+  --theme-control-background: #24283b;
+  --theme-danger-background: #f7768e;
+  --theme-danger-border: #ff899d;
+  --theme-danger-foreground: #ff899d;
+  --theme-danger-on-background: #1a1b26;
+  --theme-link-foreground: #7aa2f7;
+  --theme-overlay-background: color-mix(in oklab, #101014 65%, transparent);
+  --theme-success-foreground: #9ece6a;
+  --theme-warning-foreground: #e0af68;
+}
+
 [data-streamdown='code-block'] {
   border-color: var(--theme-session-message-code-border);
   background: var(--theme-session-message-code-background);

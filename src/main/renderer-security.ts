@@ -33,16 +33,16 @@ export function denyWindowOpen(): Readonly<{ action: 'deny' }> {
   return { action: 'deny' }
 }
 
-export function denyBrowserPermissionCheck(): boolean {
-  return false
+export function allowBrowserPermissionCheck(_webContents: unknown, permission: unknown): boolean {
+  return permission === 'clipboard-sanitized-write'
 }
 
-export function denyBrowserPermissionRequest(
+export function allowBrowserPermissionRequest(
   _webContents: unknown,
-  _permission: unknown,
+  permission: unknown,
   callback: (permissionGranted: boolean) => void
 ): void {
-  callback(false)
+  callback(permission === 'clipboard-sanitized-write')
 }
 
 export function resolveRendererAssetPath(requestUrl: string, rendererDirectory: string): string | undefined {

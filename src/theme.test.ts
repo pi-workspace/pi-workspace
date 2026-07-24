@@ -2,21 +2,43 @@ import assert from 'node:assert/strict'
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import test from 'node:test'
-import { activeTheme, oneTheme, piWorkspaceTheme, themes } from './theme'
+import {
+  draculaTheme,
+  getTheme,
+  getThemeWindowBackgroundColor,
+  githubTheme,
+  nightOwlTheme,
+  oneTheme,
+  piWorkspaceTheme,
+  resolveThemeColorScheme,
+  themes,
+  tokyoNightTheme,
+} from './theme'
 
-test('uses Pi Workspace as the active theme', () => {
-  assert.equal(activeTheme, piWorkspaceTheme)
+test('looks up each selectable theme by its identifier', () => {
+  assert.equal(getTheme('pi-workspace'), piWorkspaceTheme)
+  assert.equal(getTheme('one'), oneTheme)
+  assert.equal(getTheme('github'), githubTheme)
+  assert.equal(getTheme('dracula'), draculaTheme)
+  assert.equal(getTheme('night-owl'), nightOwlTheme)
+  assert.equal(getTheme('tokyo-night'), tokyoNightTheme)
 })
 
 test('provides unique theme identifiers', () => {
   assert.equal(new Set(themes.map((theme) => theme.id)).size, themes.length)
 })
 
-test('provides a window background for every theme color scheme', () => {
+test('provides a window background for every supported theme color scheme', () => {
   for (const theme of themes) {
-    assert.match(theme.windowBackgroundColor.light, /^#[\da-f]{6}$/i)
-    assert.match(theme.windowBackgroundColor.dark, /^#[\da-f]{6}$/i)
+    for (const colorScheme of theme.colorSchemes) {
+      assert.match(getThemeWindowBackgroundColor(theme.id, colorScheme), /^#[\da-f]{6}$/i)
+    }
   }
+})
+
+test('resolves dark-only themes to dark mode without changing the saved appearance preference', () => {
+  assert.equal(resolveThemeColorScheme('dracula', false), 'dark')
+  assert.equal(resolveThemeColorScheme('dracula', true), 'dark')
 })
 
 test('pairs One Light and One Dark under one theme', () => {
@@ -28,6 +50,15 @@ test('pairs One Light and One Dark under one theme', () => {
 test('keeps Pi Workspace window backgrounds neutral', () => {
   assert.equal(piWorkspaceTheme.windowBackgroundColor.light, '#ffffff')
   assert.equal(piWorkspaceTheme.windowBackgroundColor.dark, '#18181b')
+})
+
+test('new themes provide a caution color for context usage', () => {
+  const stylesheet = readFileSync(join(process.cwd(), 'src', 'renderer', 'style.css'), 'utf8')
+
+  assert.match(
+    stylesheet,
+    /:root:is\(\[data-theme='github'\], \[data-theme='dracula'\], \[data-theme='night-owl'\], \[data-theme='tokyo-night'\]\) \{[\s\S]*--theme-warning-border:/
+  )
 })
 
 test('renderer components use semantic theme colors', () => {

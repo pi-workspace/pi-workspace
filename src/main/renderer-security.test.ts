@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
-  denyBrowserPermissionCheck,
-  denyBrowserPermissionRequest,
+  allowBrowserPermissionCheck,
+  allowBrowserPermissionRequest,
   denyWindowOpen,
   isTrustedRendererSource,
   isTrustedRendererUrl,
@@ -113,14 +113,22 @@ test('new renderer windows are denied', () => {
   assert.deepEqual(denyWindowOpen(), { action: 'deny' })
 })
 
-test('browser permission checks are denied', () => {
-  assert.equal(denyBrowserPermissionCheck(), false)
+test('allows sanitized clipboard writes', () => {
+  assert.equal(allowBrowserPermissionCheck({}, 'clipboard-sanitized-write'), true)
+
+  let permissionGranted: boolean | undefined
+  allowBrowserPermissionRequest({}, 'clipboard-sanitized-write', (granted) => {
+    permissionGranted = granted
+  })
+
+  assert.equal(permissionGranted, true)
 })
 
-test('browser permission requests are denied', () => {
-  let permissionGranted: boolean | undefined
+test('denies browser permissions other than sanitized clipboard writes', () => {
+  assert.equal(allowBrowserPermissionCheck({}, 'media'), false)
 
-  denyBrowserPermissionRequest({}, 'media', (granted) => {
+  let permissionGranted: boolean | undefined
+  allowBrowserPermissionRequest({}, 'media', (granted) => {
     permissionGranted = granted
   })
 

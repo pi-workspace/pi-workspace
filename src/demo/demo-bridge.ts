@@ -69,7 +69,7 @@ export function createDemoBridge(scenarioName?: string): PiWorkspaceBridge {
       return
     }
 
-    settingsSnapshot = createSettingsSnapshot(defaultSettings, event.matches)
+    settingsSnapshot = createSettingsSnapshot({ ...settingsSnapshot, appearance: 'system' }, event.matches)
 
     for (const listener of settingsListeners) {
       listener(settingsSnapshot)
@@ -370,10 +370,10 @@ export function createDemoBridge(scenarioName?: string): PiWorkspaceBridge {
         return settingsSnapshot
       },
       async update(update) {
-        const appearance = update.appearance ?? settingsSnapshot.appearance
-
-        const usesDarkColors = appearance === 'system' ? colorSchemeMediaQuery.matches : appearance === 'dark'
-        settingsSnapshot = createSettingsSnapshot({ appearance }, usesDarkColors)
+        const nextSettings = { ...settingsSnapshot, ...update }
+        const usesDarkColors =
+          nextSettings.appearance === 'system' ? colorSchemeMediaQuery.matches : nextSettings.appearance === 'dark'
+        settingsSnapshot = createSettingsSnapshot(nextSettings, usesDarkColors)
 
         for (const listener of settingsListeners) {
           listener(settingsSnapshot)

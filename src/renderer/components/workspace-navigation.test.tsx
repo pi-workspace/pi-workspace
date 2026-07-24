@@ -67,13 +67,13 @@ afterEach(() => {
   cleanup()
 })
 
-test('exposes the Workspace and Repository navigation actions', () => {
+test('keeps Repository controls out of the Workspace sidebar', () => {
   const markup = renderToStaticMarkup(createNavigation())
 
   assert.match(markup, /aria-label="Switch Workspace"/)
   assert.match(markup, /aria-label="New Workspace"/)
-  assert.match(markup, /aria-label="Add Repositories"/)
-  assert.match(markup, /aria-label="Repository A settings"/)
+  assert.doesNotMatch(markup, /aria-label="Add Repositories"/)
+  assert.doesNotMatch(markup, /aria-label="Repository A settings"/)
 })
 
 test('keeps membership changes behind Repository settings', () => {
@@ -84,8 +84,14 @@ test('keeps membership changes behind Repository settings', () => {
   assert.doesNotMatch(markup, />Remove Repository</)
 })
 
-test('labels an unavailable Repository', () => {
-  assert.match(renderToStaticMarkup(createNavigation()), /Repository B \(unavailable\)/)
+test('identifies unavailable Repositories in Workspace settings', async () => {
+  const user = createUser()
+  const view = renderInBrowser()
+
+  await user.click(view.getByRole('button', { name: 'Switch Workspace' }))
+  await user.click(await view.findByRole('menuitem', { name: 'Workspace settings' }))
+
+  assert.ok(view.getByText('Unavailable', { exact: true }))
 })
 
 test('creates a Workspace from the dialog', async () => {
@@ -131,7 +137,7 @@ test('opens Workspace creation with the keyboard', async () => {
   assert.ok(view.getByRole('dialog', { name: 'Create Workspace' }))
 })
 
-test('adds Repositories to the selected Workspace', async () => {
+test('adds Repositories from Workspace settings', async () => {
   const addedWorkspaceIds: string[] = []
   const user = createUser()
   const view = renderInBrowser({
@@ -140,9 +146,12 @@ test('adds Repositories to the selected Workspace', async () => {
     },
   })
 
+  await user.click(view.getByRole('button', { name: 'Switch Workspace' }))
+  await user.click(await view.findByRole('menuitem', { name: 'Workspace settings' }))
   await user.click(view.getByRole('button', { name: 'Add Repositories' }))
 
   assert.deepEqual(addedWorkspaceIds, ['workspace-a'])
+  assert.ok(view.getByRole('dialog', { name: 'Workspace settings' }))
 })
 
 test('renames the selected Workspace', async () => {
@@ -164,6 +173,18 @@ test('renames the selected Workspace', async () => {
   assert.deepEqual(renames, [['workspace-a', 'Renamed Workspace']])
 })
 
+test('returns to Workspace settings when Repository settings are cancelled', async () => {
+  const user = createUser()
+  const view = renderInBrowser()
+
+  await user.click(view.getByRole('button', { name: 'Switch Workspace' }))
+  await user.click(await view.findByRole('menuitem', { name: 'Workspace settings' }))
+  await user.click(view.getByRole('button', { name: 'Repository A settings' }))
+  await user.click(view.getByRole('button', { name: 'Cancel' }))
+
+  assert.ok(view.getByRole('dialog', { name: 'Workspace settings' }))
+})
+
 test('updates membership metadata from Repository settings', async () => {
   const updates: Parameters<WorkspaceNavigationProperties['onUpdateMembership']>[] = []
   const user = createUser()
@@ -173,6 +194,8 @@ test('updates membership metadata from Repository settings', async () => {
     },
   })
 
+  await user.click(view.getByRole('button', { name: 'Switch Workspace' }))
+  await user.click(await view.findByRole('menuitem', { name: 'Workspace settings' }))
   await user.click(view.getByRole('button', { name: 'Repository A settings' }))
   await user.type(view.getByRole('textbox', { name: 'Role in this Workspace' }), 'Desktop application')
   await user.click(view.getByRole('checkbox', { name: 'Repository B' }))
@@ -190,6 +213,7 @@ test('updates membership metadata from Repository settings', async () => {
       },
     ],
   ])
+  assert.ok(view.getByRole('dialog', { name: 'Workspace settings' }))
 })
 
 test('removes a membership from Repository settings', async () => {
@@ -201,8 +225,11 @@ test('removes a membership from Repository settings', async () => {
     },
   })
 
+  await user.click(view.getByRole('button', { name: 'Switch Workspace' }))
+  await user.click(await view.findByRole('menuitem', { name: 'Workspace settings' }))
   await user.click(view.getByRole('button', { name: 'Repository A settings' }))
   await user.click(view.getByRole('button', { name: 'Remove Repository' }))
 
   await waitFor(() => assert.deepEqual(removals, [['workspace-a', 'membership-a']]))
+  assert.ok(view.getByRole('dialog', { name: 'Workspace settings' }))
 })

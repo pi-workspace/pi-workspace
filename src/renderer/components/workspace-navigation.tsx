@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react'
-import { ChevronDown, Folder, Layers3, Plus, Settings2 } from 'lucide-react'
+import { ChevronDown, Folder, Layers3, Plus, Settings, Settings2 } from 'lucide-react'
 import type { WorkspaceMembershipUpdate, WorkspacesSnapshot } from '@/src/application-state'
 import { Button } from '@/components/ui-kit/button'
 import { Checkbox, CheckboxField, CheckboxGroup } from '@/components/ui-kit/checkbox'
@@ -19,12 +19,11 @@ import {
   SidebarBody,
   SidebarFooter,
   SidebarHeader,
-  SidebarHeading,
   SidebarItem,
   SidebarLabel,
-  SidebarSection,
 } from '@/components/ui-kit/sidebar'
 import { Textarea } from '@/components/ui-kit/textarea'
+import { SettingsDialog } from '@/src/renderer/components/settings-dialog'
 
 type WorkspaceNavigationProperties = Readonly<{
   children: ReactNode
@@ -36,6 +35,8 @@ type WorkspaceNavigationProperties = Readonly<{
   onAddRepositories(workspaceId: string): Promise<void>
   onRemoveRepository(workspaceId: string, membershipId: string): Promise<void>
   onUpdateMembership(workspaceId: string, membershipId: string, update: WorkspaceMembershipUpdate): Promise<void>
+  applicationVersion?: string
+  onOpenChangelog?(): void
 }>
 
 type DialogState =
@@ -66,6 +67,8 @@ export function WorkspaceNavigation({
   onAddRepositories,
   onRemoveRepository,
   onUpdateMembership,
+  applicationVersion = 'Unknown',
+  onOpenChangelog = () => {},
 }: WorkspaceNavigationProperties) {
   const selectedWorkspace = workspaces.find((workspace) => workspace.id === selectedWorkspaceId) ?? workspaces[0]
   const [dialog, setDialog] = useState<DialogState>()
@@ -76,21 +79,22 @@ export function WorkspaceNavigation({
   const [editingMembershipId, setEditingMembershipId] = useState<string>()
   const [error, setError] = useState<string>()
   const [saving, setSaving] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   const closeDialog = () => {
-    if (!saving) {
-      setDialog(undefined)
-      setError(undefined)
-    }
+    if (saving) return
+
+    setDialog(dialog?.type === 'membership-settings' ? { type: 'workspace-settings' } : undefined)
+    setError(undefined)
   }
 
-  const run = async (operation: () => Promise<void>) => {
+  const run = async (operation: () => Promise<void>, onSuccess: () => void = () => setDialog(undefined)) => {
     setSaving(true)
     setError(undefined)
 
     try {
       await operation()
-      setDialog(undefined)
+      onSuccess()
     } catch (operationError) {
       setError(operationError instanceof Error ? operationError.message : 'Could not update the Workspace.')
     } finally {
@@ -179,52 +183,33 @@ export function WorkspaceNavigation({
 
         <SidebarBody>{children}</SidebarBody>
         <SidebarFooter className="shrink-0">
-          <SidebarSection>
-            <div className="flex items-center gap-1">
-              <SidebarHeading className="mb-0 min-w-0 flex-1">Repositories</SidebarHeading>
-              <button
-                type="button"
-                aria-label="Add Repositories"
-                className="shrink-0 rounded-sm p-1.5 text-sidebar-muted-foreground hover:bg-sidebar-interaction hover:text-sidebar-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
-                onClick={() => void run(() => onAddRepositories(selectedWorkspace.id))}
-              >
-                <Plus aria-hidden="true" className="size-4" />
-              </button>
-            </div>
-            <div aria-label="Workspace Repositories" className="max-h-48 overflow-y-auto">
-              {selectedWorkspace.repositories.map((repository) => (
-                <div className="relative" key={repository.membershipId}>
-                  <SidebarItem
-                    className="[&>button]:pr-10"
-                    onClick={() => openMembershipSettings(repository.membershipId)}
-                  >
-                    <Folder aria-hidden="true" className="size-4 shrink-0 text-sidebar-muted-foreground" />
-                    <SidebarLabel>
-                      {repository.name}
-                      {repository.availability === 'unavailable' && ' (unavailable)'}
-                    </SidebarLabel>
-                  </SidebarItem>
-                  <div className="absolute top-1/2 right-1 z-10 -translate-y-1/2">
-                    <button
-                      type="button"
-                      aria-label={`${repository.name} settings`}
-                      className="rounded-sm p-1.5 text-sidebar-muted-foreground hover:bg-sidebar-interaction hover:text-sidebar-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
-                      onClick={() => openMembershipSettings(repository.membershipId)}
-                    >
-                      <Settings2 aria-hidden="true" className="size-4" />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-            {error && !dialog && (
-              <p className="px-2 pt-2 text-xs/5 text-form-error-foreground" role="alert">
-                {error}
-              </p>
-            )}
-          </SidebarSection>
+          <div className="flex items-stretch rounded-lg border border-sidebar-border">
+            <button
+              type="button"
+              className="flex min-w-0 flex-1 items-center gap-3 rounded-l-lg px-2 py-2 text-left hover:bg-sidebar-interaction focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+              onClick={onOpenChangelog}
+            >
+              <img alt="" className="size-7 shrink-0" src="./pi-workspace-mark.svg" />
+              <span className="min-w-0">
+                <span className="block truncate text-sm/5 font-medium text-sidebar-foreground">Pi Workspace</span>
+                <span className="block truncate text-xs/5 text-sidebar-muted-foreground">
+                  v{applicationVersion} · Release notes
+                </span>
+              </span>
+            </button>
+            <Button
+              plain
+              aria-label="Settings"
+              className="shrink-0 self-stretch rounded-l-none! rounded-r-lg! border-0! border-l! border-sidebar-border! px-3! py-2! text-sidebar-foreground [--btn-icon:var(--theme-sidebar-muted-foreground)] data-hover:bg-sidebar-interaction data-hover:[--btn-icon:var(--theme-sidebar-foreground)]"
+              onClick={() => setSettingsOpen(true)}
+            >
+              <Settings aria-hidden="true" data-slot="icon" />
+            </Button>
+          </div>
         </SidebarFooter>
       </Sidebar>
+
+      {settingsOpen && <SettingsDialog open onClose={() => setSettingsOpen(false)} />}
 
       <Dialog open={dialog?.type === 'create-workspace'} onClose={closeDialog}>
         <DialogTitle>Create Workspace</DialogTitle>
@@ -248,15 +233,62 @@ export function WorkspaceNavigation({
         </DialogActions>
       </Dialog>
 
-      <Dialog open={dialog?.type === 'workspace-settings'} onClose={closeDialog}>
+      <Dialog open={dialog?.type === 'workspace-settings'} onClose={closeDialog} size="xl">
         <DialogTitle>Workspace settings</DialogTitle>
         <DialogDescription>Change how this Workspace appears in Pi Workspace.</DialogDescription>
         <DialogBody>
           <Fieldset>
-            <Field>
-              <Label>Workspace name</Label>
-              <Input autoFocus onChange={(event) => setName(event.target.value)} value={name} />
-            </Field>
+            <FieldGroup>
+              <Field>
+                <Label>Workspace name</Label>
+                <Input autoFocus onChange={(event) => setName(event.target.value)} value={name} />
+              </Field>
+              <Field>
+                <div className="flex items-center gap-3">
+                  <Label className="flex-1">Repositories</Label>
+                  <Button
+                    plain
+                    className="-my-1"
+                    disabled={saving}
+                    onClick={() =>
+                      void run(
+                        () => onAddRepositories(selectedWorkspace.id),
+                        () => {}
+                      )
+                    }
+                  >
+                    <Plus aria-hidden="true" data-slot="icon" />
+                    Add Repositories
+                  </Button>
+                </div>
+                <Description>Manage the local Git Repositories available to this Workspace.</Description>
+                <div
+                  aria-label="Workspace Repositories"
+                  className="mt-4 divide-y divide-content-border overflow-hidden rounded-lg border border-content-border"
+                >
+                  {selectedWorkspace.repositories.map((repository) => (
+                    <button
+                      type="button"
+                      aria-label={`${repository.name} settings`}
+                      className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-content-interaction focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-focus-ring"
+                      key={repository.membershipId}
+                      onClick={() => openMembershipSettings(repository.membershipId)}
+                    >
+                      <Folder aria-hidden="true" className="size-4 shrink-0 text-content-muted-foreground" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm/5 font-medium text-content-foreground">
+                          {repository.name}
+                        </span>
+                        <span className="block truncate text-xs/5 text-content-muted-foreground">
+                          {repository.availability === 'unavailable' ? 'Unavailable' : repository.directoryPath}
+                        </span>
+                      </span>
+                      <Settings2 aria-hidden="true" className="size-4 shrink-0 text-content-muted-foreground" />
+                    </button>
+                  ))}
+                </div>
+              </Field>
+            </FieldGroup>
           </Fieldset>
           <WorkspaceDialogError message={error} />
         </DialogBody>
@@ -319,7 +351,7 @@ export function WorkspaceNavigation({
               disabled={saving}
               onClick={() => {
                 if (!editingMembershipId) return
-                void run(() => onRemoveRepository(selectedWorkspace.id, editingMembershipId))
+                void run(() => onRemoveRepository(selectedWorkspace.id, editingMembershipId), openWorkspaceSettings)
               }}
             >
               Remove Repository
@@ -332,12 +364,14 @@ export function WorkspaceNavigation({
             disabled={saving}
             onClick={() => {
               if (!editingMembershipId) return
-              void run(() =>
-                onUpdateMembership(selectedWorkspace.id, editingMembershipId, {
-                  role,
-                  relationships,
-                  validationCommands: validationCommands.split('\n'),
-                })
+              void run(
+                () =>
+                  onUpdateMembership(selectedWorkspace.id, editingMembershipId, {
+                    role,
+                    relationships,
+                    validationCommands: validationCommands.split('\n'),
+                  }),
+                openWorkspaceSettings
               )
             }}
           >

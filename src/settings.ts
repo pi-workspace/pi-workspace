@@ -1,7 +1,15 @@
-import { isAppearancePreference, type AppearancePreference, type ColorScheme } from '@/src/theme'
+import {
+  isAppearancePreference,
+  isThemeId,
+  resolveThemeColorScheme,
+  type AppearancePreference,
+  type ColorScheme,
+  type ThemeId,
+} from '@/src/theme'
 
 export type Settings = Readonly<{
   appearance: AppearancePreference
+  theme: ThemeId
 }>
 
 export type SettingsSnapshot = Settings &
@@ -20,6 +28,7 @@ export interface SettingsBridge {
 
 export const defaultSettings: Settings = {
   appearance: 'system',
+  theme: 'pi-workspace',
 }
 
 export function parseSettings(value: unknown): Settings | undefined {
@@ -29,11 +38,19 @@ export function parseSettings(value: unknown): Settings | undefined {
 
   const settings = value as Record<string, unknown>
 
-  if (Object.keys(settings).length !== 1 || !isAppearancePreference(settings.appearance)) {
+  const hasTheme = Object.hasOwn(settings, 'theme')
+
+  if (
+    Object.keys(settings).length !== (hasTheme ? 2 : 1) ||
+    !isAppearancePreference(settings.appearance) ||
+    (hasTheme && !isThemeId(settings.theme))
+  ) {
     return undefined
   }
 
-  return { appearance: settings.appearance }
+  const theme = isThemeId(settings.theme) ? settings.theme : defaultSettings.theme
+
+  return { appearance: settings.appearance, theme }
 }
 
 export function parseSettingsUpdate(value: unknown): SettingsUpdate | undefined {
@@ -43,13 +60,12 @@ export function parseSettingsUpdate(value: unknown): SettingsUpdate | undefined 
 
   const update = value as Record<string, unknown>
 
-  if (Object.keys(update).length !== 1 || !isAppearancePreference(update.appearance)) {
-    return undefined
-  }
+  if (Object.keys(update).length !== 1) return undefined
 
-  return {
-    appearance: update.appearance,
-  }
+  if (isAppearancePreference(update.appearance)) return { appearance: update.appearance }
+  if (isThemeId(update.theme)) return { theme: update.theme }
+
+  return undefined
 }
 
 export function createSettingsSnapshot(
@@ -59,7 +75,7 @@ export function createSettingsSnapshot(
 ): SettingsSnapshot {
   return {
     ...settings,
-    resolvedColorScheme: usesDarkColors ? 'dark' : 'light',
+    resolvedColorScheme: resolveThemeColorScheme(settings.theme, usesDarkColors),
     ...(warning ? { warning } : {}),
   }
 }

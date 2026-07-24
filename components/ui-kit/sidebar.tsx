@@ -79,17 +79,15 @@ export const SidebarItem = forwardRef(function SidebarItem(
     // Base
     'flex w-full items-center gap-3 rounded-lg px-2 py-2.5 text-left text-base/6 font-medium text-sidebar-foreground sm:py-2 sm:text-sm/5',
     // Leading icon/icon-only
-    '*:data-[slot=icon]:size-6 *:data-[slot=icon]:shrink-0 *:data-[slot=icon]:fill-sidebar-icon sm:*:data-[slot=icon]:size-5',
+    '*:data-[slot=icon]:size-6 *:data-[slot=icon]:shrink-0 sm:*:data-[slot=icon]:size-5',
     // Trailing icon (down chevron or similar)
     '*:last:data-[slot=icon]:ml-auto *:last:data-[slot=icon]:size-5 sm:*:last:data-[slot=icon]:size-4',
     // Avatar
     '*:data-[slot=avatar]:-m-0.5 *:data-[slot=avatar]:size-7 sm:*:data-[slot=avatar]:size-6',
     // Hover
-    'data-hover:bg-sidebar-interaction data-hover:*:data-[slot=icon]:fill-sidebar-foreground',
+    'data-hover:bg-sidebar-interaction',
     // Active
-    'data-active:bg-sidebar-interaction data-active:*:data-[slot=icon]:fill-sidebar-foreground',
-    // Current
-    'data-current:*:data-[slot=icon]:fill-sidebar-foreground'
+    'data-active:bg-sidebar-interaction'
   )
 
   return (
