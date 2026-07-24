@@ -1,6 +1,6 @@
 {
   "name": "pi-workspace",
-  "version": "0.4.0-beta.1",
+  "version": "0.5.0-beta.1",
   "private": true,
   "license": "Apache-2.0",
   "packageManager": "bun@1.3.14",
@@ -18,7 +18,7 @@
     "session-manager",
     "developer-tools"
   ],
-  "description": "Desktop application for navigating Pi Sessions across Workspaces and Workstreams.",
+  "description": "A local desktop app for working with Pi across Git repositories and long-running goals. Plan, implement, and pick up where you left off.",
   "desktopName": "pi-workspace.desktop",
   "author": "Pi Workspace contributors",
   "homepage": "https://github.com/pi-workspace/pi-workspace",
@@ -100,12 +100,12 @@
       ],
       "artifactName": "pi-workspace-${version}-${arch}.${ext}",
       "category": "Development",
-      "description": "Navigate Pi Sessions across Workspaces and Workstreams.",
+      "description": "Pi Workspace is a local desktop app for working with Pi across Git repositories and long-running goals.\n\nOrganize related repositories into Workspaces, use Quick Sessions for focused tasks, and carry shared context across long-running Workstreams. Plan with Brainstorm Sessions, then make and validate changes with Implement Sessions.\n\nApplication data is stored locally. Pi Workspace uses Pi's existing model-provider configuration; it does not provide a separate account or provider login.",
       "executableName": "pi-workspace",
       "icon": "assets/icons",
       "maintainer": "Pi Workspace contributors <7268075+OfficialOzzy@users.noreply.github.com>",
       "syncDesktopName": true,
-      "synopsis": "Navigate Pi Sessions by Workstream"
+      "synopsis": "Work with Pi across Git repositories and long-running goals"
     }
   },
   "devDependencies": {

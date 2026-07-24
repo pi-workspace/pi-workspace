@@ -20,6 +20,19 @@ export function isSemanticVersion(version: string): boolean {
 
 export const bundledReleaseNotes: readonly ReleaseNote[] = [
   {
+    version: '0.5.0-beta.1',
+    releaseDate: '2026-07-24',
+    summary: 'This beta adds appearance customization and brings Workspace and application controls together.',
+    changes: {
+      new: ['Choose from six visual themes and color modes in Settings, with your preferences saved across launches.'],
+      improved: [
+        'Manage Workspace Repositories from Workspace settings and open application Settings or Release notes from the sidebar footer.',
+        'Changelog and Composer controls now use a cleaner, more focused layout.',
+      ],
+      fixed: ['Copying Markdown code blocks now works without a browser permission failure.'],
+    },
+  },
+  {
     version: '0.4.0-beta.1',
     releaseDate: '2026-07-23',
     summary: 'This beta makes it easier to prepare changes in different Repositories at the same time.',
