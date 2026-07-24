@@ -73,7 +73,7 @@ async function commitRepositoryFile(
 }
 
 async function createInterruptedSessionWorktreeFixture() {
-  const storageDirectory = await mkdtemp(join(tmpdir(), 'pi-workspace-session-worktree-retry-'))
+  const storageDirectory = await realpath(await mkdtemp(join(tmpdir(), 'pi-workspace-session-worktree-retry-')))
   temporaryDirectories.push(storageDirectory)
   const repositoryPath = join(storageDirectory, 'repository')
   await exec('git', ['init', repositoryPath])
