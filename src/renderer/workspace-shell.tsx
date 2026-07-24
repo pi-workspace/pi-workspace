@@ -395,6 +395,8 @@ export function WorkspaceShell({ initialWorkspacesSnapshot, initialSessionDispla
           onRenameWorkspace={renameWorkspace}
           onSelectWorkspace={selectWorkspace}
           onUpdateMembership={updateWorkspaceMembership}
+          applicationVersion={bundledReleaseNotes[0]?.version ?? 'Unknown'}
+          onOpenChangelog={openChangelog}
           selectedWorkspaceId={selectedWorkspaceId}
           workspaces={workspacesSnapshot.workspaces}
         >
@@ -440,6 +442,8 @@ export function WorkspaceShell({ initialWorkspacesSnapshot, initialSessionDispla
             error={workstreamsLoadError}
             onRetry={() => setWorkstreamsLoadAttempt((attempt) => attempt + 1)}
           />
+        ) : mainContent.destination === 'changelog' ? (
+          <ChangelogScreen releaseNotes={bundledReleaseNotes} onBack={returnToStartup} />
         ) : visibleSessions.length > 0 ? (
           <SessionArea
             sessions={visibleSessions}
@@ -465,8 +469,6 @@ export function WorkspaceShell({ initialWorkspacesSnapshot, initialSessionDispla
             sessionSkills={window.piWorkspace.sessionSkills}
             onToggleSessionPin={toggleSessionPin}
           />
-        ) : mainContent.destination === 'changelog' ? (
-          <ChangelogScreen releaseNotes={bundledReleaseNotes} onBack={returnToStartup} />
         ) : selectedWorkstream?.goal ? (
           <WorkstreamSelectionScreen workstream={selectedWorkstream} />
         ) : (

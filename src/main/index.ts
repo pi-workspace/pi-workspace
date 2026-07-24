@@ -6,8 +6,8 @@ import { initializeApplicationStateIpc } from '@/src/main/application-state-ipc'
 import { initializeComposer } from '@/src/main/composer-ipc'
 import {
   applicationProtocolScheme,
-  denyBrowserPermissionCheck,
-  denyBrowserPermissionRequest,
+  allowBrowserPermissionCheck,
+  allowBrowserPermissionRequest,
   denyWindowOpen,
   preventUntrustedRendererNavigation,
   productionRendererUrl,
@@ -15,11 +15,11 @@ import {
   resolveRendererUrl,
 } from '@/src/main/renderer-security'
 import { createStartupFailureUrl, startupRetryUrl } from '@/src/main/startup-failure'
-import { initializeSettings } from '@/src/main/settings'
+import { initializeSettings, subscribeToSettings } from '@/src/main/settings'
 import { initializeWorkstreams } from '@/src/main/workstreams-ipc'
 import { initializeWorkstreamKnowledge } from '@/src/main/workstream-knowledge-ipc'
 import { configureTrustedRendererUrl, registerTrustedRendererWindow } from '@/src/main/trusted-ipc'
-import { activeTheme } from '@/src/theme'
+import { getThemeWindowBackgroundColor } from '@/src/theme'
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -44,7 +44,7 @@ const trustedRendererUrl = resolveRendererUrl({
 })
 configureTrustedRendererUrl(trustedRendererUrl)
 
-let windowBackgroundColor: string = activeTheme.windowBackgroundColor.light
+let windowBackgroundColor: string = getThemeWindowBackgroundColor('pi-workspace', 'light')
 let initializationFailed = false
 
 async function initializeApplication(): Promise<void> {
@@ -55,8 +55,8 @@ async function initializeApplication(): Promise<void> {
 
     return net.fetch(pathToFileURL(assetPath).href)
   })
-  session.defaultSession.setPermissionCheckHandler(denyBrowserPermissionCheck)
-  session.defaultSession.setPermissionRequestHandler(denyBrowserPermissionRequest)
+  session.defaultSession.setPermissionCheckHandler(allowBrowserPermissionCheck)
+  session.defaultSession.setPermissionRequestHandler(allowBrowserPermissionRequest)
 
   try {
     const authority = await initializeApplicationAuthority(app.getPath('userData'))
@@ -65,7 +65,7 @@ async function initializeApplication(): Promise<void> {
     initializeWorkstreamKnowledge(authority)
     const settings = await initializeSettings()
     initializeComposer(authority)
-    windowBackgroundColor = activeTheme.windowBackgroundColor[settings.resolvedColorScheme]
+    windowBackgroundColor = getThemeWindowBackgroundColor(settings.theme, settings.resolvedColorScheme)
   } catch (error) {
     initializationFailed = true
     console.error('Pi Workspace initialization failed.', error)
@@ -95,7 +95,13 @@ function createWindow(): ApplicationWindow {
   })
 
   const unregisterTrustedRenderer = registerTrustedRendererWindow(window)
-  window.once('closed', unregisterTrustedRenderer)
+  const unsubscribeFromSettings = subscribeToSettings((settings) => {
+    window.setBackgroundColor(getThemeWindowBackgroundColor(settings.theme, settings.resolvedColorScheme))
+  })
+  window.once('closed', () => {
+    unregisterTrustedRenderer()
+    unsubscribeFromSettings()
+  })
 
   let allowedFailureUrl: string | undefined
   const showFailure = (kind: 'initialization' | 'renderer-load') => {
