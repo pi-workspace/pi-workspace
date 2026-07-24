@@ -20,7 +20,7 @@ Pi Workspace beta releases are manually started from GitHub Actions. The workflo
 - `package.json` and the latest bundled Release Note in `src/release-notes.ts` are curated together before release.
   Automated validation requires their versions to match.
 - The manual workflow must run from the default branch. It creates the `v<package-version>` tag and matching GitHub
-  prerelease only after source checks, packaging, and Debian and macOS verification pass.
+  prerelease only after source checks, packaging, and Debian, macOS, and Windows verification pass.
 - A version can be released only once. The workflow stops if its tag already exists.
 - Debian packages and beta Git tags are not separately signed. Every installable artifact has a SHA-256 checksum and
   an SPDX JSON SBOM generated from the unpacked packaged application. The release workflow adds a keyless GitHub
