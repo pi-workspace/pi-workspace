@@ -486,11 +486,6 @@ export function WorkstreamGroup({
           {workstream.goal && <Workflow aria-hidden="true" className="size-4 shrink-0 text-sidebar-muted-foreground" />}
           <span className="min-w-0 flex-1 truncate">{label}</span>
           <WorkingSessionsIndicator count={workingCount} visible={!open && workingCount > 0} />
-          {workstream.workingLocation === 'worktrees' && (
-            <span aria-label="Uses separate worktrees" title="Uses separate worktrees">
-              <GitBranch aria-hidden="true" className="size-3.5 text-sidebar-muted-foreground" />
-            </span>
-          )}
           {unavailable ? (
             <span className="text-xs/4 font-normal text-sidebar-muted-foreground">Unavailable</span>
           ) : (

@@ -20,6 +20,20 @@ export function isSemanticVersion(version: string): boolean {
 
 export const bundledReleaseNotes: readonly ReleaseNote[] = [
   {
+    version: '0.4.0-beta.1',
+    releaseDate: '2026-07-23',
+    summary: 'This beta makes it easier to prepare changes in different Repositories at the same time.',
+    changes: {
+      new: [
+        'Implement Sessions now create a separate Repository worktree only when Pi prepares that Repository for changes.',
+      ],
+      improved: [],
+      fixed: [
+        'Sessions with separate Repository worktrees can now run at the same time while shared working paths remain protected.',
+      ],
+    },
+  },
+  {
     version: '0.3.0-beta.1',
     releaseDate: '2026-07-23',
     summary: 'This beta makes it easier to keep track of available context during a Session.',

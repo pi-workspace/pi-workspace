@@ -16,7 +16,7 @@ export type WorkstreamCreationOutcome = Readonly<{
 
 export interface WorkstreamsBridge {
   getSnapshot(workspaceId: string): Promise<WorkstreamsSnapshot>
-  previewWorktreeLocations(workspaceId: string, repositoryId?: string): Promise<WorktreeLocationsPreview>
+  previewWorktreeLocations(workspaceId: string, repositoryId: string): Promise<WorktreeLocationsPreview>
   createWorkstream(workspaceId: string, options: CreateWorkstreamOptions): Promise<WorkstreamCreationOutcome>
   createQuickSession(workspaceId: string, options: CreateQuickSessionOptions): Promise<WorkstreamCreationOutcome>
   createSession(workstreamId: string, options: CreateSessionOptions): Promise<WorkstreamCreationOutcome>

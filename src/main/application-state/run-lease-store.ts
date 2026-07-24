@@ -27,8 +27,27 @@ export function createRunLeaseStore({ openDatabase }: RunLeaseStoreOptions) {
       }
       if (
         database
-          .prepare('SELECT lease_id FROM workstream_run_leases WHERE workstream_id = ?')
-          .get(session.workstream_id)
+          .prepare("SELECT lease_id FROM session_run_leases WHERE session_id = ? AND purpose = 'agent-run'")
+          .get(sessionId)
+      ) {
+        database.exec('ROLLBACK;')
+        return false
+      }
+      if (
+        database
+          .prepare(
+            `SELECT 1
+               FROM session_run_leases held
+               JOIN session_repository_locations held_location
+                 ON held_location.session_id = held.session_id
+               JOIN session_repository_locations requested_location
+                 ON requested_location.session_id = ?
+              WHERE held.purpose = 'agent-run'
+                AND held.session_id <> ?
+                AND held_location.working_path = requested_location.working_path
+              LIMIT 1`
+          )
+          .get(sessionId, sessionId)
       ) {
         database.exec('ROLLBACK;')
         return false
@@ -36,7 +55,7 @@ export function createRunLeaseStore({ openDatabase }: RunLeaseStoreOptions) {
 
       database
         .prepare(
-          `INSERT INTO workstream_run_leases (workstream_id, lease_id, session_id, purpose, acquired_at)
+          `INSERT INTO session_run_leases (workstream_id, lease_id, session_id, purpose, acquired_at)
            VALUES (?, ?, ?, 'agent-run', ?)`
         )
         .run(session.workstream_id, randomUUID(), sessionId, Date.now())
@@ -59,9 +78,7 @@ export function createRunLeaseStore({ openDatabase }: RunLeaseStoreOptions) {
 
     try {
       database.exec('BEGIN IMMEDIATE;')
-      database
-        .prepare("DELETE FROM workstream_run_leases WHERE session_id = ? AND purpose = 'agent-run'")
-        .run(sessionId)
+      database.prepare("DELETE FROM session_run_leases WHERE session_id = ? AND purpose = 'agent-run'").run(sessionId)
       database.exec('COMMIT;')
       return true
     } catch (error) {

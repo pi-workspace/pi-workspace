@@ -68,6 +68,69 @@ async function readMarker(markerPath: string): Promise<InstallationMarker | unde
   }
 }
 
+function tableExists(database: SqliteDatabase, name: string): boolean {
+  return Boolean(database.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(name))
+}
+
+function migrateApplicationState(database: SqliteDatabase): void {
+  database.exec('PRAGMA foreign_keys = ON;')
+  const schemaVersion = Number(database.prepare("SELECT value FROM metadata WHERE key = 'schema_version'").get()?.value)
+
+  if (schemaVersion !== 3 && schemaVersion !== 4) return
+
+  database.exec('BEGIN IMMEDIATE;')
+
+  try {
+    if (tableExists(database, 'workstream_run_leases')) {
+      database.exec(`
+        CREATE TABLE session_run_leases_new (session_id TEXT PRIMARY KEY REFERENCES sessions(id), workstream_id TEXT NOT NULL REFERENCES workstreams(id), lease_id TEXT NOT NULL UNIQUE, purpose TEXT NOT NULL, acquired_at INTEGER NOT NULL);
+        INSERT INTO session_run_leases_new (session_id, workstream_id, lease_id, purpose, acquired_at)
+        SELECT session_id, workstream_id, lease_id, purpose, acquired_at FROM workstream_run_leases;
+        DROP TABLE workstream_run_leases;
+        ALTER TABLE session_run_leases_new RENAME TO session_run_leases;
+      `)
+    } else if (!tableExists(database, 'session_run_leases')) {
+      database.exec(
+        'CREATE TABLE session_run_leases (session_id TEXT PRIMARY KEY REFERENCES sessions(id), workstream_id TEXT NOT NULL REFERENCES workstreams(id), lease_id TEXT NOT NULL UNIQUE, purpose TEXT NOT NULL, acquired_at INTEGER NOT NULL);'
+      )
+    }
+
+    if (!tableExists(database, 'session_repository_locations')) {
+      database.exec(
+        `CREATE TABLE session_repository_locations (session_id TEXT NOT NULL REFERENCES sessions(id), repository_id TEXT NOT NULL REFERENCES repositories(id), kind TEXT NOT NULL, working_path TEXT NOT NULL, branch TEXT, base_commit TEXT, availability TEXT NOT NULL, PRIMARY KEY (session_id, repository_id));`
+      )
+    }
+
+    database.exec(`
+      INSERT INTO session_repository_locations
+        (session_id, repository_id, kind, working_path, branch, base_commit, availability)
+      SELECT session.id, location.repository_id, location.kind, location.working_path,
+             location.branch, location.base_commit, location.availability
+        FROM sessions session
+        JOIN workstream_repository_locations location ON location.workstream_id = session.workstream_id
+       WHERE (
+               session.access_kind = 'managed' AND session.id = (
+                 SELECT first_session.id
+                   FROM sessions first_session
+                  WHERE first_session.workstream_id = session.workstream_id
+                  ORDER BY first_session.created_at, first_session.rowid
+                  LIMIT 1
+               )
+             )
+          OR session.repository_id = location.repository_id
+      ON CONFLICT (session_id, repository_id) DO NOTHING;
+    `)
+    database
+      .prepare("UPDATE metadata SET value = ? WHERE key = 'schema_version'")
+      .run(String(applicationStateSchemaVersion))
+    incrementRevision(database)
+    database.exec('COMMIT;')
+  } catch (error) {
+    database.exec('ROLLBACK;')
+    throw error
+  }
+}
+
 function initializeSchema(database: SqliteDatabase, generationId: string): void {
   database.exec(`
     PRAGMA foreign_keys = ON;
@@ -80,7 +143,8 @@ function initializeSchema(database: SqliteDatabase, generationId: string): void 
     CREATE TABLE workstreams (id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL REFERENCES workspaces(id), goal TEXT, lifecycle TEXT NOT NULL, working_location TEXT NOT NULL, working_location_revision INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL);
     CREATE TABLE sessions (id TEXT PRIMARY KEY, workstream_id TEXT NOT NULL REFERENCES workstreams(id), title TEXT NOT NULL, mode TEXT NOT NULL, availability TEXT NOT NULL, access_kind TEXT NOT NULL, repository_id TEXT REFERENCES repositories(id), pi_session_id TEXT NOT NULL UNIQUE, expected_jsonl_path TEXT NOT NULL UNIQUE, creation_status TEXT NOT NULL, created_at INTEGER NOT NULL);
     CREATE TABLE workstream_repository_locations (workstream_id TEXT NOT NULL REFERENCES workstreams(id), repository_id TEXT NOT NULL REFERENCES repositories(id), kind TEXT NOT NULL, working_path TEXT NOT NULL, branch TEXT, base_commit TEXT, availability TEXT NOT NULL, PRIMARY KEY (workstream_id, repository_id));
-    CREATE TABLE workstream_run_leases (workstream_id TEXT PRIMARY KEY REFERENCES workstreams(id), lease_id TEXT NOT NULL UNIQUE, session_id TEXT NOT NULL REFERENCES sessions(id), purpose TEXT NOT NULL, acquired_at INTEGER NOT NULL);
+    CREATE TABLE session_run_leases (session_id TEXT PRIMARY KEY REFERENCES sessions(id), workstream_id TEXT NOT NULL REFERENCES workstreams(id), lease_id TEXT NOT NULL UNIQUE, purpose TEXT NOT NULL, acquired_at INTEGER NOT NULL);
+    CREATE TABLE session_repository_locations (session_id TEXT NOT NULL REFERENCES sessions(id), repository_id TEXT NOT NULL REFERENCES repositories(id), kind TEXT NOT NULL, working_path TEXT NOT NULL, branch TEXT, base_commit TEXT, availability TEXT NOT NULL, PRIMARY KEY (session_id, repository_id));
     CREATE TABLE external_side_effect_intents (id TEXT PRIMARY KEY, kind TEXT NOT NULL, status TEXT NOT NULL, session_id TEXT NOT NULL REFERENCES sessions(id), pi_session_id TEXT NOT NULL, directory_path TEXT NOT NULL, session_path TEXT NOT NULL);
     ${workstreamKnowledgeSchemaSql}
     INSERT INTO metadata (key, value) VALUES ('generation_id', '${generationId}'), ('schema_version', '${applicationStateSchemaVersion}'), ('revision', '0');
@@ -91,6 +155,9 @@ function initializeSchema(database: SqliteDatabase, generationId: string): void 
 function readMetadata(database: SqliteDatabase): ApplicationStateMetadata | undefined {
   try {
     database.exec('PRAGMA foreign_keys = ON;')
+    const schemaVersion = database.prepare("SELECT value FROM metadata WHERE key = 'schema_version'").get()?.value
+    const schemaVersionNumber = typeof schemaVersion === 'string' ? Number(schemaVersion) : Number.NaN
+
     for (const table of [
       'repositories',
       'workspace_repositories',
@@ -115,10 +182,18 @@ function readMetadata(database: SqliteDatabase): ApplicationStateMetadata | unde
         'SELECT session_id, pi_session_id, directory_path, session_path FROM external_side_effect_intents LIMIT 1'
       )
       .get()
-    database.prepare('SELECT workstream_id, lease_id, session_id, purpose FROM workstream_run_leases LIMIT 1').get()
+    const leaseTable = tableExists(database, 'session_run_leases')
+      ? 'session_run_leases'
+      : tableExists(database, 'workstream_run_leases')
+        ? 'workstream_run_leases'
+        : undefined
+    if (!leaseTable) throw new Error('The application database has no Agent Run lease table.')
+    if (schemaVersionNumber >= 5 && !tableExists(database, 'session_repository_locations')) {
+      throw new Error('The application database has no Session Repository location table.')
+    }
+    database.prepare(`SELECT workstream_id, lease_id, session_id, purpose FROM ${leaseTable} LIMIT 1`).get()
     const integrity = database.prepare('PRAGMA integrity_check').get()?.integrity_check
     const generationId = database.prepare("SELECT value FROM metadata WHERE key = 'generation_id'").get()?.value
-    const schemaVersion = database.prepare("SELECT value FROM metadata WHERE key = 'schema_version'").get()?.value
 
     return typeof generationId === 'string' && typeof schemaVersion === 'string'
       ? { generationId, schemaVersion: Number(schemaVersion), integrity: integrity === 'ok' ? 'ok' : 'failed' }
@@ -159,6 +234,17 @@ export async function initializeApplicationStateStore(storageDirectory: string, 
 
     try {
       database = hasDatabase ? new sqlite.DatabaseSync(databasePath) : undefined
+      const metadata = database ? readMetadata(database) : undefined
+      if (
+        database &&
+        metadata &&
+        marker &&
+        metadata.integrity === 'ok' &&
+        metadata.generationId === marker.generationId &&
+        (metadata.schemaVersion === 3 || metadata.schemaVersion === 4)
+      ) {
+        migrateApplicationState(database)
+      }
       startup = classifyApplicationState(marker, database ? readMetadata(database) : undefined)
     } catch {
       startup = { status: 'recovery-only', diagnostic: 'The application database is unreadable.' }
@@ -172,10 +258,10 @@ export async function initializeApplicationStateStore(storageDirectory: string, 
 
     try {
       database.exec('BEGIN IMMEDIATE;')
-      const leases = database.prepare("SELECT lease_id FROM workstream_run_leases WHERE purpose = 'agent-run'").all()
+      const leases = database.prepare("SELECT lease_id FROM session_run_leases WHERE purpose = 'agent-run'").all()
 
       if (leases.length > 0) {
-        database.prepare("DELETE FROM workstream_run_leases WHERE purpose = 'agent-run'").run()
+        database.prepare("DELETE FROM session_run_leases WHERE purpose = 'agent-run'").run()
         incrementRevision(database)
       }
 

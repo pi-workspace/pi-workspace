@@ -72,7 +72,7 @@ export function WorkstreamContext({
           <p className="mt-2 text-sm/6 text-content-muted-foreground">{workstream.goal}</p>
         </section>
         {workstream.repositoryWorkingLocations.length > 0 && (
-          <ContextSection icon={FolderGit2} title="Working location">
+          <ContextSection icon={FolderGit2} title="Repository checkouts">
             <RecordList>
               {workstream.repositoryWorkingLocations.map((location) => (
                 <li className="min-w-0" key={location.repositoryId}>

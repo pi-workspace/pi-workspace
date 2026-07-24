@@ -69,7 +69,7 @@ test('creates a deterministic ordinary worktree without changing dirty source fi
   const proposal = await proposeWorktree({
     repositoryId: 'repository-a',
     repositoryPath,
-    workstreamId: '018f35d8-4b2c-7abc-8def-0123456789ab',
+    worktreeId: '018f35d8-4b2c-7abc-8def-0123456789ab',
   })
   const created = await createWorktree(proposal)
 

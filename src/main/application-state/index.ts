@@ -16,6 +16,7 @@ import type {
 import {
   createWorktree as createGitWorktree,
   inspectGitRepository,
+  restoreWorktree as restoreGitWorktree,
   type InspectedGitRepository,
   type WorktreeProposal,
 } from '@/src/main/git-repositories'
@@ -28,6 +29,7 @@ import { createWorkstreamKnowledgeFacade } from './workstream-knowledge-facade'
 import {
   createWorkstreamSessionStore,
   type OwnedSessionResolution,
+  type PreparedSessionRepository,
   type WorkstreamCreationResult,
 } from './workstream-session-store'
 import { incrementRevision, initializeApplicationStateStore, loadSqlite } from './application-state-store'
@@ -43,7 +45,11 @@ export type ApplicationAuthorityOptions = Readonly<{
   createWorktree?: (proposal: WorktreeProposal) => Promise<WorktreeProposal>
 }>
 
-export type { OwnedSessionResolution, WorkstreamCreationResult } from './workstream-session-store'
+export type {
+  OwnedSessionResolution,
+  PreparedSessionRepository,
+  WorkstreamCreationResult,
+} from './workstream-session-store'
 
 export type ApplicationAuthority = Readonly<{
   startup: ApplicationStateStartup
@@ -60,9 +66,10 @@ export type ApplicationAuthority = Readonly<{
     update: WorkspaceMembershipUpdate
   ): Promise<WorkspacesSnapshot>
   getWorkstreamSnapshot(workspaceId: string): Promise<WorkstreamsSnapshot>
-  previewWorktreeLocations(workspaceId: string, repositoryId?: string): Promise<WorktreeLocationsPreview>
+  previewWorktreeLocations(workspaceId: string, repositoryId: string): Promise<WorktreeLocationsPreview>
   createWorkstream(workspaceId: string, options: CreateWorkstreamOptions): Promise<WorkstreamCreationResult>
   createQuickSession(workspaceId: string, options: CreateQuickSessionOptions): Promise<WorkstreamCreationResult>
+  prepareSessionRepository(sessionId: SessionId, repositoryId: string): Promise<PreparedSessionRepository>
   createWorkstreamSession(workstreamId: string, options: CreateSessionOptions): Promise<WorkstreamCreationResult>
   setWorkstreamLifecycle(workstreamId: string, lifecycle: WorkstreamLifecycle): Promise<WorkstreamsSnapshot>
   renameWorkstreamSession(sessionId: SessionId, title: string): Promise<WorkstreamsSnapshot>
@@ -130,6 +137,7 @@ export async function initializeApplicationAuthority(
     openDatabase,
     inspectRepository,
     createWorktree,
+    restoreWorktree: restoreGitWorktree,
     sessionFiles,
     incrementRevision,
     reconcilePendingSessionFiles,
@@ -141,6 +149,7 @@ export async function initializeApplicationAuthority(
     previewWorktreeLocations,
     createWorkstream,
     createQuickSession,
+    prepareSessionRepository,
     createWorkstreamSession,
     setWorkstreamLifecycle,
     renameWorkstreamSession,
@@ -165,6 +174,7 @@ export async function initializeApplicationAuthority(
     previewWorktreeLocations,
     createWorkstream,
     createQuickSession,
+    prepareSessionRepository,
     createWorkstreamSession,
     setWorkstreamLifecycle,
     renameWorkstreamSession,

@@ -10,7 +10,14 @@ type ManagedSessionRuntimeRepositoryProperties = Readonly<{
 }>
 
 export type ManagedSessionRuntimeRepository = ManagedSessionRuntimeRepositoryProperties &
-  (Readonly<{ availability: 'available'; workingPath: string }> | Readonly<{ availability: 'unavailable' }>)
+  (
+    | Readonly<{
+        availability: 'available'
+        workingPath: string
+        workingLocation: 'source-checkout' | 'session-worktree'
+      }>
+    | Readonly<{ availability: 'unavailable' }>
+  )
 
 export type ManagedSessionRuntimePolicy = Readonly<{
   workspaceId: string

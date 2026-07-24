@@ -14,7 +14,9 @@ export function projectWorkspaceOverview(policy: ManagedSessionRuntimePolicy) {
       availability: repository.availability,
       role: repository.role,
       relationships: repository.relationships,
-      ...(repository.availability === 'available' ? { workingPath: repository.workingPath } : {}),
+      ...(repository.availability === 'available'
+        ? { workingPath: repository.workingPath, workingLocation: repository.workingLocation }
+        : {}),
     })),
   }
 }
@@ -23,17 +25,18 @@ export function managedSessionMethodology(mode: ManagedSessionRuntimePolicy['mod
   const modeMethodology =
     mode === 'brainstorm'
       ? [
+          'Call workspace_overview before Repository work, then use the supplied Repository working paths.',
           'Read workstream_knowledge before investigating. Use update_workstream_knowledge to preserve relevant evidence, findings, questions, proposed decisions, Repository impact, plan steps, and validation requirements for the Workstream.',
           'Investigate the Workspace and produce an implementation-ready specification. Do not modify Repository content.',
         ]
       : [
+          'Call workspace_overview before Repository work. Source checkout paths are for inspection only.',
           'Read workstream_knowledge before implementing. Use update_workstream_knowledge to preserve relevant implementation progress and newly discovered Workstream knowledge.',
-          'Change and validate Repository content as needed to pursue the Workstream goal.',
+          'Before modifying a Repository, call prepare_repository with its id. Make and validate all changes in the returned Session worktree path.',
         ]
 
   return [
     `You are operating a Pi Workspace ${mode === 'brainstorm' ? 'Brainstorm' : 'Implement'} Session.`,
-    'Call workspace_overview before Repository work, then use the supplied Repository working paths.',
     ...modeMethodology,
   ].join('\n')
 }

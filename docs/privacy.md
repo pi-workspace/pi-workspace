@@ -95,10 +95,12 @@ A Workspace or Workstream is an application routing boundary, not an operating-s
   worktree with Pi's normal tools.
 - A **Brainstorm Session** receives every current Workspace Repository working path and Pi's normal tools. Its system
   prompt instructs the Agent not to modify Repository content, but this is methodology rather than sandbox enforcement.
-- An **Implement Session** receives the same Workspace Repository working paths and may use Pi's normal tools to change
-  and validate Repository content.
-- Managed Sessions expose Workspace metadata and structured Workstream knowledge through Pi Workspace-owned tools. They do
-  not add Repository approval prompts or per-operation confirmations before normal Pi tool use.
+- An **Implement Session** can inspect every current Workspace Repository checkout. Before changing a Repository, its
+  methodology directs the Agent to request a dedicated worktree created for that Session from the Repository's current
+  local `HEAD`, then make and validate changes there. This routing is instructed rather than filesystem-enforced.
+- Managed Sessions expose Workspace metadata, lazy Implement worktree preparation, and structured Workstream knowledge
+  through Pi Workspace-owned tools. They do not add Repository approval prompts or per-operation confirmations before
+  normal Pi tool use.
 
 User-installed extensions remain trusted local code with their normal authority. Their tools and lifecycle hooks are
 not confined by Brainstorm mode, Workspace membership, Repository routing, or managed worktrees. An extension can

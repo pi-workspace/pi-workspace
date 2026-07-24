@@ -18,24 +18,18 @@ test('parses Workstream creation with an omitted Session mode', () => {
   })
 })
 
-test('parses Workstream creation with a previewed worktree identity', () => {
-  const workstreamId = '00000000-0000-4000-8000-000000000052'
-
+test('parses Workstream creation with an explicit Session mode', () => {
   assert.deepEqual(
     parseCreateWorkstreamRequest({
       workspaceId: 'workspace-a',
       goal: 'Work separately',
       mode: 'implement',
-      workingLocation: 'worktrees',
-      workstreamId,
     }),
     {
       workspaceId: 'workspace-a',
       options: {
         goal: 'Work separately',
         mode: 'implement',
-        workingLocation: 'worktrees',
-        workstreamId,
       },
     }
   )
@@ -67,6 +61,10 @@ test('parses a worktree preview scoped to one Repository', () => {
     workspaceId: 'workspace-a',
     repositoryId: 'repository-a',
   })
+})
+
+test('rejects a worktree preview without a selected Repository', () => {
+  assert.equal(parsePreviewWorktreeLocationsRequest({ workspaceId: 'workspace-a' }), undefined)
 })
 
 test('rejects Default mode through Workstream creation', () => {

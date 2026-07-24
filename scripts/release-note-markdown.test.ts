@@ -10,6 +10,6 @@ test('formats the latest bundled Release Note for a GitHub Release', () => {
   assert.match(markdown, /^## New$/m)
   assert.match(
     markdown,
-    /^- See current Session context-window usage in Composer, including used and remaining capacity\./m
+    /^- Implement Sessions now create a separate Repository worktree only when Pi prepares that Repository for changes\./m
   )
 })
