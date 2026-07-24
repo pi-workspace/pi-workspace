@@ -10,6 +10,6 @@ test('formats the latest bundled Release Note for a GitHub Release', () => {
   assert.match(markdown, /^## New$/m)
   assert.match(
     markdown,
-    /^- Implement Sessions now create a separate Repository worktree only when Pi prepares that Repository for changes\./m
+    /^- Choose from six visual themes and color modes in Settings, with your preferences saved across launches\./m
   )
 })
