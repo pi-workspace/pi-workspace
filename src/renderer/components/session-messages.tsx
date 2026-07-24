@@ -3,7 +3,7 @@ import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRe
 import { Button } from '@/components/ui-kit/button'
 import type { SessionId } from '@/src/domain/session'
 import { AgentActivityCard } from '@/src/renderer/components/agent-activity-card'
-import { SkillReference } from '@/src/renderer/components/skill-reference'
+import { SkillMentionText } from '@/src/renderer/components/skill-mention-text'
 import type { AgentActivity } from '@/src/session-timeline'
 import type { SessionTranscriptMessage, SessionTranscriptSnapshot } from '@/src/session-transcript'
 
@@ -99,7 +99,12 @@ export function SessionMessages({
           {!isLoading &&
             transcript.map((entry) =>
               entry.type === 'message' ? (
-                <SessionMessageRow key={entry.key} message={entry.message} onOpenExternalLink={requestExternalLink} />
+                <SessionMessageRow
+                  key={entry.key}
+                  message={entry.message}
+                  isWorking={isWorking}
+                  onOpenExternalLink={requestExternalLink}
+                />
               ) : (
                 <AgentActivityCard
                   key={entry.key}
@@ -323,32 +328,31 @@ function useTranscriptScroll({
   }
 }
 
-function UserMessageContent({ message }: Readonly<{ message: SessionTranscriptMessage }>) {
-  const content: React.ReactNode[] = []
-  let textOffset = 0
-
-  for (const [index, mention] of (message.skills ?? []).entries()) {
-    content.push(message.text.slice(textOffset, mention.offset))
-    content.push(<SkillReference key={`${mention.offset}:${mention.skill.name}:${index}`} skill={mention.skill} />)
-    textOffset = mention.offset
-  }
-
-  content.push(message.text.slice(textOffset))
-  return content
-}
-
 function SessionMessageRow({
   message,
+  isWorking,
   onOpenExternalLink,
 }: Readonly<{
   message: SessionTranscriptMessage
+  isWorking: boolean
   onOpenExternalLink: (url: string) => void
 }>) {
   if (message.role === 'user') {
+    const steering = message.delivery === 'steer'
+
     return (
-      <article className="ml-auto w-fit max-w-[80%] rounded-xl border border-session-message-person-border bg-session-message-person-background px-3 py-2 text-sm/6 text-session-message-person-foreground">
+      <article
+        className={`ml-auto w-fit max-w-[80%] rounded-xl border px-3 py-2 text-sm/6 ${
+          steering
+            ? `border-content-border bg-content-subtle-background text-content-foreground opacity-80${
+                isWorking ? ' motion-safe:animate-pulse' : ''
+              }`
+            : 'border-session-message-person-border bg-session-message-person-background text-session-message-person-foreground'
+        }`}
+      >
+        {steering && <p className="mb-1 text-xs/4 font-medium text-content-muted-foreground">Steering</p>}
         <p className="whitespace-pre-wrap break-words">
-          <UserMessageContent message={message} />
+          <SkillMentionText text={message.text} skills={message.skills ?? []} />
         </p>
       </article>
     )

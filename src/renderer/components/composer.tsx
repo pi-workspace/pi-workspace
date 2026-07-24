@@ -92,11 +92,11 @@ export function Composer({
 
     editorHandle.current?.focus()
 
-    // Focus again after creation dialogs have finished closing and restoring
-    // focus to their trigger.
-    const frame = window.requestAnimationFrame(() => editorHandle.current?.focus())
+    // The creation dialog restores focus to its trigger after its 100 ms close
+    // transition. Restore focus once more after that transition has completed.
+    const timeout = window.setTimeout(() => editorHandle.current?.focus(), 125)
 
-    return () => window.cancelAnimationFrame(frame)
+    return () => window.clearTimeout(timeout)
   }, [focusRequest])
 
   useEffect(() => {

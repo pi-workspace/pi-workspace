@@ -601,6 +601,32 @@ test('focuses the Composer when a new focus request arrives', async () => {
   await waitFor(() => assert.equal(browser.document.activeElement, view.getByRole('textbox')))
 })
 
+test('restores Composer focus after the creation dialog restores its trigger', async () => {
+  const view = renderInBrowser(
+    <>
+      <button type="button">Create Session</button>
+      <Composer
+        session={session}
+        draft=""
+        focusRequest={1}
+        isWorking={false}
+        onActivate={() => {}}
+        onDraftChange={() => {}}
+        submitMessage={async () => ({ status: 'accepted', delivery: 'prompt' })}
+      />
+    </>
+  )
+  const trigger = view.getByRole('button', { name: 'Create Session' })
+
+  window.setTimeout(() => trigger.focus(), 100)
+
+  await new Promise<void>((resolve) => window.setTimeout(() => resolve(), 110))
+  assert.equal(browser.document.activeElement, trigger)
+
+  await new Promise<void>((resolve) => window.setTimeout(() => resolve(), 30))
+  assert.equal(browser.document.activeElement, view.getByRole('textbox'))
+})
+
 test('prevents Agent Run acceptance while a Model change is pending', async () => {
   let resolveModelChange: () => void = () => {}
   const configuration = sessionConfigurationSnapshot()

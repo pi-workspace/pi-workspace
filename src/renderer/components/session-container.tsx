@@ -5,6 +5,7 @@ import type { OwnedSession, WorkstreamLifecycle } from '@/src/domain/workstream'
 import type { SessionConfigurationBridge } from '@/src/session-configuration'
 import type { SessionSkillsBridge } from '@/src/session-skills'
 import { Composer } from '@/src/renderer/components/composer'
+import { QueuedFollowUpTray } from '@/src/renderer/components/queued-follow-up-tray'
 import { SessionMessages } from '@/src/renderer/components/session-messages'
 import { SessionPinButton } from '@/src/renderer/components/session-pin-button'
 import { SessionTitleEditor } from '@/src/renderer/components/session-title-editor'
@@ -27,6 +28,8 @@ type SessionContainerProperties = {
   onDraftChange: (draft: string) => void
   submitMessage: ComposerBridge['submit']
   stopRun?: ComposerBridge['stop']
+  removeQueuedFollowUp?: NonNullable<ComposerBridge['removeQueuedFollowUp']>
+  resumeQueuedFollowUps?: NonNullable<ComposerBridge['resumeQueuedFollowUps']>
   sessionConfiguration?: SessionConfigurationBridge
   sessionSkills?: SessionSkillsBridge
   onTogglePin: () => void
@@ -48,6 +51,8 @@ export function SessionContainer({
   onDraftChange,
   submitMessage,
   stopRun,
+  removeQueuedFollowUp,
+  resumeQueuedFollowUps,
   sessionConfiguration,
   sessionSkills,
   onTogglePin,
@@ -132,6 +137,16 @@ export function SessionContainer({
         timelineError={transcriptState.error}
         onReloadTimeline={transcriptState.reload}
       />
+      {!composerUnavailable && transcriptState.snapshot?.queuedFollowUps && (
+        <QueuedFollowUpTray
+          sessionId={session.id}
+          isWorking={isWorking}
+          queuedFollowUps={transcriptState.snapshot.queuedFollowUps}
+          queuedFollowUpsPaused={transcriptState.snapshot.queuedFollowUpsPaused ?? false}
+          removeQueuedFollowUp={removeQueuedFollowUp}
+          resumeQueuedFollowUps={resumeQueuedFollowUps}
+        />
+      )}
       {composerUnavailable ? (
         <div className="composer-tray shrink-0 border-t border-content-border p-3">
           <div className="flex min-h-13 items-center justify-center gap-2 rounded-xl border border-dashed border-composer-border bg-composer-background px-4 text-center text-sm/5 text-composer-muted-foreground">

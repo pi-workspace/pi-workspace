@@ -71,6 +71,56 @@ test('rejects malformed activity removal records', () => {
   assert.equal(isActivityLayerRecord({ version: 1, type: 'activity-removed', activityId: '' }), false)
 })
 
+test('rejects malformed queued follow-up records', () => {
+  assert.equal(
+    isActivityLayerRecord({ version: 1, type: 'queued-follow-up', followUp: { id: '', text: '', createdAt: -1 } }),
+    false
+  )
+  assert.equal(
+    isActivityLayerRecord({
+      version: 1,
+      type: 'queued-follow-up',
+      followUp: { id: 'follow-up-1', text: '/skill:tdd Continue.', skills: [{ offset: -1 }], createdAt: 1 },
+    }),
+    false
+  )
+  assert.equal(isActivityLayerRecord({ version: 1, type: 'queued-follow-up-removed', followUpId: '' }), false)
+})
+
+test('accepts queued follow-up records', () => {
+  assert.equal(
+    isActivityLayerRecord({
+      version: 1,
+      type: 'queued-follow-up',
+      followUp: {
+        id: 'follow-up-1',
+        text: '/skill:tdd Continue after this response.',
+        skills: [
+          {
+            offset: 0,
+            skill: { name: 'tdd', description: 'Develop test first.', availability: 'available' },
+          },
+        ],
+        createdAt: 1,
+      },
+    }),
+    true
+  )
+  assert.equal(isActivityLayerRecord({ version: 1, type: 'queued-follow-up-removed', followUpId: 'follow-up-1' }), true)
+})
+
+test('accepts a steering message record', () => {
+  assert.equal(
+    isActivityLayerRecord({
+      version: 1,
+      type: 'steering-message',
+      text: 'Prioritize transcript delivery.',
+      acceptedAt: 1,
+    }),
+    true
+  )
+})
+
 test('rejects malformed diagnostic records', () => {
   assert.equal(
     isActivityLayerRecord({

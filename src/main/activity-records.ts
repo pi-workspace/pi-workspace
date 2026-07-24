@@ -1,3 +1,4 @@
+import type { QueuedFollowUp, QueuedFollowUpRecord } from '@/src/queued-follow-up'
 import {
   agentActivityKinds,
   type ActivityArtifact,
@@ -26,6 +27,8 @@ export type ActivityLayerRecord =
       execution: Omit<ToolExecution, 'input'>
     }>
   | Readonly<{ version: 1; type: 'activity-removed'; activityId: string }>
+  | Readonly<{ version: 1 } & QueuedFollowUpRecord>
+  | Readonly<{ version: 1; type: 'steering-message'; text: string; acceptedAt: number }>
   | Readonly<{
       version: 1
       type: 'diagnostic'
@@ -42,6 +45,9 @@ export function isActivityLayerRecord(value: unknown): value is ActivityLayerRec
   if (value.type === 'activity') return isAgentActivity(value.activity)
   if (value.type === 'operation') return isToolExecution(value.execution)
   if (value.type === 'activity-removed') return isNonEmptyString(value.activityId)
+  if (value.type === 'queued-follow-up') return isQueuedFollowUp(value.followUp)
+  if (value.type === 'queued-follow-up-removed') return isNonEmptyString(value.followUpId)
+  if (value.type === 'steering-message') return typeof value.text === 'string' && isTimestamp(value.acceptedAt)
   if (value.type === 'diagnostic') {
     return (
       isNonEmptyString(value.runId) &&
@@ -57,6 +63,28 @@ export function isActivityLayerRecord(value: unknown): value is ActivityLayerRec
   }
 
   return false
+}
+
+function isQueuedFollowUp(value: unknown): value is QueuedFollowUp {
+  if (!isRecord(value)) return false
+
+  return (
+    isNonEmptyString(value.id) &&
+    typeof value.text === 'string' &&
+    (value.skills === undefined || (Array.isArray(value.skills) && value.skills.every(isSessionSkillMention))) &&
+    isTimestamp(value.createdAt)
+  )
+}
+
+function isSessionSkillMention(value: unknown): boolean {
+  if (!isRecord(value) || !isCount(value.offset) || !isRecord(value.skill) || !isNonEmptyString(value.skill.name)) {
+    return false
+  }
+
+  return (
+    (value.skill.availability === 'available' && typeof value.skill.description === 'string') ||
+    value.skill.availability === 'unavailable'
+  )
 }
 
 function isAgentRun(value: unknown): value is AgentRun {

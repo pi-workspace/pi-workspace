@@ -62,6 +62,8 @@ export function createDemoBridge(scenarioName?: string): PiWorkspaceBridge {
   let settingsSnapshot: SettingsSnapshot = createSettingsSnapshot(defaultSettings, colorSchemeMediaQuery.matches)
   let createdSessionNumber = 0
   let workstreamsSnapshot: WorkstreamsSnapshot = scenario.workstreams
+  const transcriptsBySessionId: Record<string, SessionTranscriptSnapshot> = { ...scenario.transcriptsBySessionId }
+  const transcriptListeners = new Set<Parameters<PiWorkspaceBridge['transcript']['subscribe']>[0]>()
   const settingsListeners = new Set<Parameters<PiWorkspaceBridge['settings']['subscribe']>[0]>()
 
   colorSchemeMediaQuery.addEventListener('change', (event) => {
@@ -77,7 +79,7 @@ export function createDemoBridge(scenarioName?: string): PiWorkspaceBridge {
   })
 
   const transcriptSnapshot = (requestedSessionId: string): SessionTranscriptSnapshot =>
-    scenario.transcriptsBySessionId[requestedSessionId] ?? {
+    transcriptsBySessionId[requestedSessionId] ?? {
       sessionId: sessionId(requestedSessionId),
       revision: 0,
       isWorking: false,
@@ -131,6 +133,28 @@ export function createDemoBridge(scenarioName?: string): PiWorkspaceBridge {
       async stop() {
         return { status: 'not-running' }
       },
+      async removeQueuedFollowUp(sessionId, followUpId) {
+        const transcript = transcriptSnapshot(sessionId)
+        const queuedFollowUps = transcript.queuedFollowUps ?? []
+
+        if (!queuedFollowUps.some((followUp) => followUp.id === followUpId)) return false
+
+        const snapshot = {
+          ...transcript,
+          revision: transcript.revision + 1,
+          queuedFollowUps: queuedFollowUps.filter((followUp) => followUp.id !== followUpId),
+        }
+        transcriptsBySessionId[sessionId] = snapshot
+
+        for (const listener of transcriptListeners) {
+          listener({ sessionId, revision: snapshot.revision, snapshot })
+        }
+
+        return true
+      },
+      async resumeQueuedFollowUps() {
+        return false
+      },
     },
     sessionSkills: {
       async getAvailable() {
@@ -170,7 +194,7 @@ export function createDemoBridge(scenarioName?: string): PiWorkspaceBridge {
         return transcriptSnapshot(sessionId)
       },
       async getWorkingStateSnapshots() {
-        return Object.values(scenario.transcriptsBySessionId).map(({ sessionId, revision, isWorking }) => ({
+        return Object.values(transcriptsBySessionId).map(({ sessionId, revision, isWorking }) => ({
           sessionId,
           revision,
           isWorking,
@@ -180,8 +204,9 @@ export function createDemoBridge(scenarioName?: string): PiWorkspaceBridge {
         return scenario.activityDetailsBySessionId[sessionId]?.[activityId]
       },
       async openExternalLink() {},
-      subscribe() {
-        return () => {}
+      subscribe(listener) {
+        transcriptListeners.add(listener)
+        return () => transcriptListeners.delete(listener)
       },
     },
     workstreams: {

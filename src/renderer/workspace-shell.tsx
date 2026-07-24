@@ -243,6 +243,9 @@ export function WorkspaceShell({ initialWorkspacesSnapshot, initialSessionDispla
 
   const submitMessage = (submission: SessionMessageSubmission) => window.piWorkspace.composer.submit(submission)
   const stopRun = (sessionId: SessionId) => window.piWorkspace.composer.stop(sessionId)
+  const removeQueuedFollowUp = (sessionId: SessionId, followUpId: string) =>
+    window.piWorkspace.composer.removeQueuedFollowUp(sessionId, followUpId)
+  const resumeQueuedFollowUps = (sessionId: SessionId) => window.piWorkspace.composer.resumeQueuedFollowUps(sessionId)
 
   const startTitleEditing = (sessionId: SessionId, origin: 'header' | 'sidebar') => {
     const session = sessions.find((candidate) => candidate.id === sessionId)
@@ -465,6 +468,8 @@ export function WorkspaceShell({ initialWorkspacesSnapshot, initialSessionDispla
             onDraftChange={updateDraft}
             submitMessage={submitMessage}
             stopRun={stopRun}
+            removeQueuedFollowUp={removeQueuedFollowUp}
+            resumeQueuedFollowUps={resumeQueuedFollowUps}
             sessionConfiguration={window.piWorkspace.sessionConfiguration}
             sessionSkills={window.piWorkspace.sessionSkills}
             onToggleSessionPin={toggleSessionPin}

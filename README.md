@@ -139,6 +139,7 @@ The default `startup` scenario opens at the printed local URL. Other determinist
 - `?scenario=completed-run`
 - `?scenario=multi-session`
 - `?scenario=quick-sessions` — two realistic frontend and API Quick Sessions pinned side by side
+- `?scenario=queued-messages` — an active Session with a transcript-visible steer and a full three-item follow-up queue
 - `?scenario=workstream`
 
 Unknown scenario names use `startup`. Use a 1200 by 800 browser viewport as the baseline screenshot composition.

@@ -32,7 +32,7 @@ export function getComposerSubmissionState(event: ComposerSubmissionEvent): Comp
       'run-in-progress': 'This Session is already starting work. Wait a moment and try again.',
       'agent-run-capacity': 'Ten Agent Runs are already active. Wait for one to finish, then try again.',
       'follow-up-capacity':
-        'This Session already has 100 pending follow-ups. Wait for Pi to process one, then try again.',
+        'This Session already has three queued follow-ups. Wait for Pi to process one, then try again.',
       'runtime-unavailable': 'Pi couldn’t open this Session. Check its Repository and history, then try again.',
       'skill-unavailable': 'That Skill is no longer available for this Session. Remove it and choose another.',
       'preflight-rejected': 'Pi couldn’t start this run. Check the selected Model and provider, then try again.',
@@ -47,12 +47,6 @@ export function getComposerSubmissionState(event: ComposerSubmissionEvent): Comp
     }
   }
 
-  const status =
-    event.result.delivery === 'steer'
-      ? 'Message queued to steer the Session'
-      : event.result.delivery === 'follow-up'
-        ? 'Message queued for after the current work'
-        : ''
-
-  return { draft: '', awaiting: false, error: '', status }
+  // The accepted message is already visible in the canonical transcript.
+  return { draft: '', awaiting: false, error: '', status: '' }
 }

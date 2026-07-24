@@ -30,6 +30,8 @@ type SessionAreaProperties = {
   onDraftChange: (sessionId: SessionId, draft: string) => void
   submitMessage: ComposerBridge['submit']
   stopRun?: ComposerBridge['stop']
+  removeQueuedFollowUp?: NonNullable<ComposerBridge['removeQueuedFollowUp']>
+  resumeQueuedFollowUps?: NonNullable<ComposerBridge['resumeQueuedFollowUps']>
   sessionConfiguration?: SessionConfigurationBridge
   sessionSkills?: SessionSkillsBridge
   onToggleSessionPin: (sessionId: SessionId) => void
@@ -53,6 +55,8 @@ export function SessionArea({
   onDraftChange,
   submitMessage,
   stopRun,
+  removeQueuedFollowUp,
+  resumeQueuedFollowUps,
   sessionConfiguration,
   sessionSkills,
   onToggleSessionPin,
@@ -106,6 +110,8 @@ export function SessionArea({
             onDraftChange={(draft) => onDraftChange(session.id, draft)}
             submitMessage={submitMessage}
             stopRun={stopRun}
+            removeQueuedFollowUp={removeQueuedFollowUp}
+            resumeQueuedFollowUps={resumeQueuedFollowUps}
             sessionConfiguration={sessionConfiguration}
             sessionSkills={sessionSkills}
             onTogglePin={() => onToggleSessionPin(session.id)}

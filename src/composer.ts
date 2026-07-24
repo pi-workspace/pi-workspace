@@ -53,4 +53,6 @@ export type SessionMessageSubmissionResult =
 export interface ComposerBridge {
   submit(submission: SessionMessageSubmission): Promise<SessionMessageSubmissionResult>
   stop(sessionId: SessionId): Promise<SessionRunStopResult>
+  removeQueuedFollowUp(sessionId: SessionId, followUpId: string): Promise<boolean>
+  resumeQueuedFollowUps(sessionId: SessionId): Promise<boolean>
 }

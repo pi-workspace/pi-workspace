@@ -39,11 +39,15 @@ export type SessionRuntimeActivityControlTransition = Readonly<{
   accepted?: boolean
 }>
 
-export function persistActivityRecord(timeline: SessionRuntimeTimeline, record: ActivityLayerRecord): void {
+export function persistActivityRecord(timeline: SessionRuntimeTimeline, record: ActivityLayerRecord): boolean {
+  if (!timeline.persist) return false
+
   try {
-    timeline.persist?.(record)
+    timeline.persist(record)
+    return true
   } catch (error) {
     console.error('Unable to persist an activity-record transition.', error)
+    return false
   }
 }
 
@@ -75,12 +79,38 @@ export function hydrateTimeline(timeline: SessionRuntimeTimeline, history: PiSes
 
   timeline.runs = [...runs.values()].sort((left, right) => left.startedAt - right.startedAt)
 
+  const steeringMessageIds = new Set<string>()
+  const unmatchedConversations = [...history.conversations]
+
+  for (const record of history.activityRecords) {
+    if (record.type !== 'steering-message') continue
+
+    let index = -1
+    let nearestTimestampDifference = Number.POSITIVE_INFINITY
+
+    unmatchedConversations.forEach((conversation, candidateIndex) => {
+      const timestampDifference = Math.abs(conversation.timestamp - record.acceptedAt)
+      const matches = conversation.role === 'user' && conversation.text === record.text && timestampDifference <= 5_000
+
+      if (matches && timestampDifference < nearestTimestampDifference) {
+        index = candidateIndex
+        nearestTimestampDifference = timestampDifference
+      }
+    })
+
+    if (index < 0) continue
+
+    const [conversation] = unmatchedConversations.splice(index, 1)
+    if (conversation) steeringMessageIds.add(conversation.id)
+  }
+
   for (const conversation of history.conversations) {
     timeline.messages.set(conversation.id, {
       id: conversation.id,
       role: conversation.role,
       text: conversation.text,
       skills: conversation.skills,
+      delivery: steeringMessageIds.has(conversation.id) ? 'steer' : undefined,
       state: 'complete',
       revision: 0,
     })
