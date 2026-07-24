@@ -169,6 +169,44 @@ test('automatically sends a live queued follow-up when the active work settles',
   assert.deepEqual((await registry.getTranscript(id)).queuedFollowUps, [])
 })
 
+test('serializes a user submission behind automatic queued follow-up dispatch', async () => {
+  let streaming = true
+  let emit: (event: Parameters<Parameters<PiSessionRuntime['subscribe']>[0]>[0]) => void = () => {}
+  const prompts: string[] = []
+  const runtime: PiSessionRuntime = {
+    get isStreaming() {
+      return streaming
+    },
+    async prompt(text, options) {
+      prompts.push(text)
+      streaming = true
+      options.preflightResult(true)
+    },
+    subscribe(listener) {
+      emit = listener
+      return () => {}
+    },
+    appendActivityRecord() {},
+    dispose() {},
+  }
+  const registry = createPiSessionRuntimeRegistry({
+    findSession: () => ({ directoryPath: '/tmp', sessionPath: '/tmp/session.jsonl' }),
+    createSession: async () => runtime,
+  })
+  const id = sessionId('serialized-follow-up-dispatch-session')
+
+  await registry.submit({ sessionId: id, text: 'Queued first', delivery: 'follow-up' })
+  streaming = false
+  emit({ type: 'agent_settled' })
+
+  const userSubmission = registry.submit({ sessionId: id, text: 'User second', delivery: 'steer' })
+  await userSubmission
+  await new Promise<void>((resolve) => setTimeout(resolve, 0))
+
+  assert.deepEqual(prompts, ['Queued first', 'User second'])
+  assert.deepEqual((await registry.getTranscript(id)).queuedFollowUps, [])
+})
+
 test('pauses after dispatch when the delivered queue removal cannot persist', async () => {
   let streaming = true
   let emit: (event: Parameters<Parameters<PiSessionRuntime['subscribe']>[0]>[0]) => void = () => {}

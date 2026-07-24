@@ -187,6 +187,7 @@ export function createPiSessionRuntimeRegistry({
   const activationGate = createSessionRuntimeActivationGate()
   const activeAgentRunReservations = new Set<SessionId>()
   const queuedFollowUpQueue = createQueuedFollowUpQueue()
+  const submissionQueuesBySessionId = new Map<SessionId, Promise<void>>()
   const sessionReconciliationBySessionId = new Map<SessionId, () => Promise<boolean>>()
   const noProgressTimeoutsBySessionId = new Map<SessionId, ReturnType<typeof setTimeout>>()
   const noProgressTimeoutDurationsBySessionId = new Map<SessionId, number>()
@@ -247,7 +248,7 @@ export function createPiSessionRuntimeRegistry({
 
     const result = await submit({ sessionId, text: followUp.text, delivery: 'follow-up' })
 
-    if (result.status === 'accepted') {
+    if (result.status === 'accepted' && result.delivery !== 'follow-up') {
       if (!removeQueuedFollowUp(sessionId, followUp.id)) {
         queuedFollowUpQueue.pause(sessionId)
         publishTimeline(sessionId, 'Queued follow-ups paused because the delivered follow-up could not be removed.')
@@ -1236,7 +1237,7 @@ export function createPiSessionRuntimeRegistry({
     return { status: 'stopped' }
   }
 
-  async function submit(submission: SessionMessageSubmission): Promise<SessionMessageSubmissionResult> {
+  async function submitImmediately(submission: SessionMessageSubmission): Promise<SessionMessageSubmissionResult> {
     let runtime: PiSessionRuntime | undefined
     let leaseAcquired = false
     let runCapacityReserved = false
@@ -1322,6 +1323,27 @@ export function createPiSessionRuntimeRegistry({
     }
 
     return result
+  }
+
+  async function submit(submission: SessionMessageSubmission): Promise<SessionMessageSubmissionResult> {
+    const previous = submissionQueuesBySessionId.get(submission.sessionId) ?? Promise.resolve()
+    let release!: () => void
+    const current = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const queued = previous.then(() => current)
+
+    submissionQueuesBySessionId.set(submission.sessionId, queued)
+
+    try {
+      await previous
+      return await submitImmediately(submission)
+    } finally {
+      release()
+      if (submissionQueuesBySessionId.get(submission.sessionId) === queued) {
+        submissionQueuesBySessionId.delete(submission.sessionId)
+      }
+    }
   }
 
   return {
@@ -1429,6 +1451,7 @@ export function createPiSessionRuntimeRegistry({
       configuration.dispose()
       activationGate.dispose()
       activeAgentRunReservations.clear()
+      submissionQueuesBySessionId.clear()
       queuedFollowUpQueue.clear()
     },
   }
