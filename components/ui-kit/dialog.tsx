@@ -17,10 +17,11 @@ const sizes = {
 
 export function Dialog({
   size = 'lg',
+  scrollable = false,
   className,
   children,
   ...props
-}: { size?: keyof typeof sizes; className?: string; children: React.ReactNode } & Omit<
+}: { size?: keyof typeof sizes; scrollable?: boolean; className?: string; children: React.ReactNode } & Omit<
   Headless.DialogProps,
   'as' | 'className'
 >) {
@@ -28,17 +29,29 @@ export function Dialog({
     <Headless.Dialog {...props}>
       <Headless.DialogBackdrop
         transition
-        className="fixed inset-0 flex w-screen justify-center overflow-y-auto bg-overlay-background px-2 py-2 transition duration-100 focus:outline-0 data-closed:opacity-0 data-enter:ease-out data-leave:ease-in sm:px-6 sm:py-8 lg:px-8 lg:py-16"
+        className="fixed inset-0 flex w-screen justify-center overflow-hidden bg-overlay-background px-2 py-2 transition duration-100 focus:outline-0 data-closed:opacity-0 data-enter:ease-out data-leave:ease-in sm:px-6 sm:py-8 lg:px-8 lg:py-16"
       />
 
-      <div className="fixed inset-0 w-screen overflow-y-auto pt-6 sm:pt-0">
-        <div className="grid min-h-full grid-rows-[1fr_auto] justify-items-center sm:grid-rows-[1fr_auto_3fr] sm:p-4">
+      <div
+        className={clsx(
+          'fixed inset-0 w-screen',
+          scrollable ? 'overflow-hidden p-2 sm:p-8 lg:p-16' : 'overflow-y-auto pt-6 sm:pt-0'
+        )}
+      >
+        <div
+          className={clsx(
+            scrollable
+              ? 'flex h-full items-center justify-center'
+              : 'grid min-h-full grid-rows-[1fr_auto] justify-items-center sm:grid-rows-[1fr_auto_3fr] sm:p-4'
+          )}
+        >
           <Headless.DialogPanel
             transition
             className={clsx(
               className,
               sizes[size],
               'row-start-2 w-full min-w-0 rounded-t-3xl bg-content-background p-(--gutter) shadow-lg ring-1 ring-content-border [--gutter:--spacing(8)] sm:mb-auto sm:rounded-2xl forced-colors:outline',
+              scrollable && 'max-h-full overflow-y-auto overscroll-contain',
               'transition duration-100 will-change-transform data-closed:translate-y-12 data-closed:opacity-0 data-enter:ease-out data-leave:ease-in sm:data-closed:translate-y-0 sm:data-closed:data-enter:scale-95'
             )}
           >

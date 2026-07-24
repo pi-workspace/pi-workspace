@@ -31,7 +31,7 @@ export function ChangelogScreen({ releaseNotes, onBack }: ChangelogScreenPropert
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-content-background text-content-foreground">
-      <header className="flex shrink-0 items-center gap-2 border-b border-content-border px-3 py-2">
+      <header className="flex h-18 shrink-0 items-center gap-3 border-b border-content-border px-6 py-4">
         <Button plain onClick={onBack} className="shrink-0">
           <ArrowLeft aria-hidden="true" data-slot="icon" />
           Back

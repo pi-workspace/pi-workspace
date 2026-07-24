@@ -9,11 +9,12 @@ import {
   type ReactNode,
 } from 'react'
 import { createSettingsSnapshot, defaultSettings, type SettingsSnapshot } from '@/src/settings'
-import { activeTheme, type AppearancePreference } from '@/src/theme'
+import { type AppearancePreference, type ThemeId } from '@/src/theme'
 
 type ThemeContextValue = SettingsSnapshot &
   Readonly<{
     setAppearance(preference: AppearancePreference): Promise<void>
+    setTheme(theme: ThemeId): Promise<void>
   }>
 
 type ThemeProviderProperties = Readonly<{
@@ -62,12 +63,17 @@ export function ThemeProvider({ children }: ThemeProviderProperties) {
       return
     }
 
-    document.documentElement.dataset.theme = activeTheme.id
+    document.documentElement.dataset.theme = snapshot.theme
     document.documentElement.dataset.colorScheme = snapshot.resolvedColorScheme
   }, [snapshot])
 
-  const setAppearance = useCallback(async (preference: AppearancePreference) => {
-    const nextSnapshot = await window.piWorkspace.settings.update({ appearance: preference })
+  const setAppearance = useCallback(async (appearance: AppearancePreference) => {
+    const nextSnapshot = await window.piWorkspace.settings.update({ appearance })
+    setSnapshot(nextSnapshot)
+  }, [])
+
+  const setTheme = useCallback(async (theme: ThemeId) => {
+    const nextSnapshot = await window.piWorkspace.settings.update({ theme })
     setSnapshot(nextSnapshot)
   }, [])
 
@@ -77,9 +83,10 @@ export function ThemeProvider({ children }: ThemeProviderProperties) {
         ? {
             ...snapshot,
             setAppearance,
+            setTheme,
           }
         : undefined,
-    [setAppearance, snapshot]
+    [setAppearance, setTheme, snapshot]
   )
 
   if (!value) {

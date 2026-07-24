@@ -106,9 +106,10 @@ function createBridge(
       subscribe: () => () => {},
     },
     settings: {
-      getSnapshot: async () => ({ appearance: 'system', resolvedColorScheme: 'light' }),
+      getSnapshot: async () => ({ appearance: 'system', theme: 'pi-workspace', resolvedColorScheme: 'light' }),
       update: async (update: SettingsUpdate) => ({
         appearance: update.appearance ?? 'system',
+        theme: update.theme ?? 'pi-workspace',
         resolvedColorScheme: 'light',
       }),
       subscribe: () => () => {},
@@ -164,6 +165,47 @@ function renderApp(bridge: PiWorkspaceBridge) {
 }
 
 afterEach(cleanup)
+
+test('updates theme immediately from global Settings', async () => {
+  const updates: SettingsUpdate[] = []
+  const bridge = createBridge()
+  Object.assign(bridge.settings, {
+    update: async (update: SettingsUpdate) => {
+      updates.push(update)
+      return { appearance: 'system', theme: update.theme ?? 'pi-workspace', resolvedColorScheme: 'light' }
+    },
+  })
+  const user = userEvent.setup({ document: browser.document as unknown as Document })
+  const view = renderApp(bridge)
+
+  await view.findByText('Ship Workspace A')
+  await user.click(view.getByRole('button', { name: 'Settings' }))
+  await user.click(view.getByRole('radio', { name: 'One' }))
+
+  await waitFor(() => assert.deepEqual(updates, [{ theme: 'one' }]))
+})
+
+test('closes Settings from its close button', async () => {
+  const user = userEvent.setup({ document: browser.document as unknown as Document })
+  const view = renderApp(createBridge())
+
+  await view.findByText('Ship Workspace A')
+  await user.click(view.getByRole('button', { name: 'Settings' }))
+  assert.ok(view.getByRole('dialog', { name: 'Settings' }))
+
+  await user.click(view.getByRole('button', { name: 'Close settings' }))
+  await waitFor(() => assert.equal(view.queryByRole('dialog', { name: 'Settings' }), null))
+})
+
+test('opens the Changelog from the footer release notes action', async () => {
+  const user = userEvent.setup({ document: browser.document as unknown as Document })
+  const view = renderApp(createBridge())
+
+  await view.findByText('Ship Workspace A')
+  await user.click(view.getByRole('button', { name: /Release notes/ }))
+
+  await view.findByRole('heading', { name: 'Changelog' })
+})
 
 test('renders a named accessible state while startup is pending', async () => {
   const startup = deferred<Awaited<ReturnType<PiWorkspaceBridge['applicationState']['getStartup']>>>()
