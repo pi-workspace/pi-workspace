@@ -1659,6 +1659,18 @@ test('releases an interrupted ordinary Agent Run lease during startup', async ()
   assert.equal(await restarted.acquireSessionRunLease(created.sessionId), true)
 })
 
+test('releases an interrupted Session context compaction lease during startup', async () => {
+  const { authority, storageDirectory, workspace } = await createFixture()
+  const created = await authority.createWorkstream(workspace.id, { goal: 'Resume after interrupted compaction' })
+
+  assert.equal(await authority.acquireSessionCompactionLease(created.sessionId), true)
+
+  const restarted = await initializeApplicationAuthority(storageDirectory, { sqlite: bunSqlite })
+
+  assert.equal(await restarted.acquireSessionCompactionLease(created.sessionId), true)
+  await restarted.settleSessionCompactionLease(created.sessionId)
+})
+
 test('withholds submission capability from archived Sessions', async () => {
   const { authority, workspace } = await createFixture()
   const created = await authority.createWorkstream(workspace.id, { goal: 'Stop while archived' })
@@ -1671,6 +1683,19 @@ test('withholds submission capability from archived Sessions', async () => {
   assert.equal(resolution?.canSubmit, false)
   assert.equal(resolution?.toolAccess, 'none')
   assert.equal(await authority.acquireSessionRunLease(created.sessionId), false)
+})
+
+test('rejects archival while Session context compaction is active', async () => {
+  const { authority, workspace } = await createFixture()
+  const created = await authority.createWorkstream(workspace.id, { goal: 'Stay active while compacting' })
+  const workstream = created.snapshot.workstreams[0]!
+
+  assert.equal(await authority.acquireSessionCompactionLease(created.sessionId), true)
+  await assert.rejects(authority.setWorkstreamLifecycle(workstream.id, 'archived'), /only while every Session is idle/)
+  await authority.settleSessionCompactionLease(created.sessionId)
+
+  const archived = await authority.setWorkstreamLifecycle(workstream.id, 'archived')
+  assert.equal(archived.workstreams[0]?.lifecycle, 'archived')
 })
 
 test('rejects archival while a Workstream Agent Run is active', async () => {

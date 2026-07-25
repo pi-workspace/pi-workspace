@@ -5,11 +5,18 @@ import { isSessionId } from '@/src/domain/session'
 export const maximumSessionMessageLength = 200_000
 
 export const composerIpcChannels = {
+  compact: 'composer:compact',
   submit: 'composer:submit',
   stop: 'composer:stop',
   removeQueuedFollowUp: 'composer:remove-queued-follow-up',
   resumeQueuedFollowUps: 'composer:resume-queued-follow-ups',
 } as const
+
+export function parseSessionCompactRequest(
+  value: unknown
+): Readonly<{ sessionId: SessionMessageSubmission['sessionId'] }> | undefined {
+  return parseSessionRunStopRequest(value)
+}
 
 export function parseSessionRunStopRequest(
   value: unknown

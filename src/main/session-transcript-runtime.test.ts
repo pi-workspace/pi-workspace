@@ -765,3 +765,176 @@ test('publishes a failed transcript run without a parallel failure stream', asyn
   assert.equal(snapshot.runFailureReason, 'failed')
   assert.equal(snapshot.isWorking, false)
 })
+
+test('queues an Agent Run until Session context compaction completes', async () => {
+  let finishCompaction: () => void = () => {}
+  const compacted = new Promise<void>((resolve) => {
+    finishCompaction = resolve
+  })
+  let prompted = false
+  const runtime: PiSessionRuntime = {
+    isStreaming: false,
+    async prompt(_text, options) {
+      prompted = true
+      options.preflightResult(true)
+    },
+    compact() {
+      return compacted
+    },
+    subscribe() {
+      return () => {}
+    },
+    dispose() {},
+  }
+  const registry = createPiSessionRuntimeRegistry({
+    findSession: () => ({ directoryPath: '/tmp', sessionPath: '/tmp/session.jsonl' }),
+    createSession: async () => runtime,
+  })
+  const id = sessionId('compacting-session')
+
+  const compaction = registry.compact(id)
+  await Promise.resolve()
+  await Promise.resolve()
+
+  assert.equal((await registry.getTranscript(id)).isCompacting, true)
+  const submission = registry.submit({ sessionId: id, text: 'start work', delivery: 'steer' })
+
+  assert.equal(prompted, false)
+
+  finishCompaction()
+  assert.deepEqual(await compaction, { status: 'compacted' })
+  assert.deepEqual(await submission, { status: 'accepted', delivery: 'prompt' })
+  assert.equal((await registry.getTranscript(id)).isCompacting, false)
+})
+
+test('holds a Session context compaction lease until compaction completes', async () => {
+  let finishCompaction: () => void = () => {}
+  const compacted = new Promise<void>((resolve) => {
+    finishCompaction = resolve
+  })
+  let leaseHeld = false
+  const runtime: PiSessionRuntime = {
+    isStreaming: false,
+    async prompt() {},
+    compact() {
+      return compacted
+    },
+    subscribe() {
+      return () => {}
+    },
+    dispose() {},
+  }
+  const registry = createPiSessionRuntimeRegistry({
+    findSession: () => ({ directoryPath: '/tmp', sessionPath: '/tmp/session.jsonl' }),
+    createSession: async () => runtime,
+    acquireCompactionLease: () => {
+      leaseHeld = true
+      return true
+    },
+    releaseCompactionLease: () => {
+      leaseHeld = false
+    },
+  })
+  const id = sessionId('compaction-lease-session')
+
+  const compaction = registry.compact(id)
+  await new Promise<void>((resolve) => setTimeout(resolve, 0))
+
+  assert.equal(leaseHeld, true)
+
+  finishCompaction()
+
+  assert.deepEqual(await compaction, { status: 'compacted' })
+  assert.equal(leaseHeld, false)
+})
+
+test('queues a Model change until Session context compaction completes', async () => {
+  let finishCompaction: () => void = () => {}
+  const compacted = new Promise<void>((resolve) => {
+    finishCompaction = resolve
+  })
+  let model = { provider: 'provider', id: 'initial' }
+  const runtime: PiSessionRuntime = {
+    isStreaming: false,
+    async prompt() {},
+    compact() {
+      return compacted
+    },
+    async getConfiguration() {
+      return {
+        models: [],
+        model,
+        effort: 'off',
+        supportedEfforts: ['off'],
+      }
+    },
+    async setConfigurationModel(nextModel) {
+      model = nextModel
+    },
+    subscribe() {
+      return () => {}
+    },
+    dispose() {},
+  }
+  const registry = createPiSessionRuntimeRegistry({
+    findSession: () => ({ directoryPath: '/tmp', sessionPath: '/tmp/session.jsonl' }),
+    createSession: async () => runtime,
+  })
+  const id = sessionId('compaction-configuration-session')
+
+  const compaction = registry.compact(id)
+  await Promise.resolve()
+  await Promise.resolve()
+
+  const configuration = registry.setConfigurationModel(id, { provider: 'provider', id: 'selected' })
+  await new Promise<void>((resolve) => setTimeout(resolve, 0))
+
+  assert.deepEqual(model, { provider: 'provider', id: 'initial' })
+
+  finishCompaction()
+
+  assert.deepEqual(await compaction, { status: 'compacted' })
+  assert.equal((await configuration).status, 'applied')
+  assert.deepEqual(model, { provider: 'provider', id: 'selected' })
+})
+
+test('does not compact while a submission is acquiring its Session run lease', async () => {
+  let authorizeSubmission: () => void = () => {}
+  const submissionAuthorized = new Promise<void>((resolve) => {
+    authorizeSubmission = resolve
+  })
+  let prompted = false
+  const runtime: PiSessionRuntime = {
+    isStreaming: false,
+    async prompt(_text, options) {
+      prompted = true
+      options.preflightResult(true)
+    },
+    async compact() {},
+    subscribe() {
+      return () => {}
+    },
+    dispose() {},
+  }
+  const registry = createPiSessionRuntimeRegistry({
+    findSession: () => ({ directoryPath: '/tmp', sessionPath: '/tmp/session.jsonl' }),
+    canSubmit: async () => {
+      await submissionAuthorized
+      return true
+    },
+    createSession: async () => runtime,
+  })
+  const id = sessionId('submission-lease-session')
+
+  const submission = registry.submit({ sessionId: id, text: 'start work', delivery: 'steer' })
+  const compaction = registry.compact(id)
+
+  authorizeSubmission()
+
+  assert.deepEqual(await submission, { status: 'accepted', delivery: 'prompt' })
+  assert.equal(prompted, true)
+  assert.deepEqual(await compaction, {
+    status: 'rejected',
+    message: 'Wait for the Agent Run to finish before compacting.',
+  })
+})

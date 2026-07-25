@@ -127,6 +127,9 @@ export function createDemoBridge(scenarioName?: string): PiWorkspaceBridge {
       },
     },
     composer: {
+      async compact() {
+        return { status: 'compacted' as const }
+      },
       async submit() {
         return { status: 'rejected', reason: 'unexpected' }
       },

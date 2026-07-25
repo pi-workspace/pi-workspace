@@ -7,7 +7,10 @@ type RunLeaseStoreOptions = Readonly<{
 }>
 
 export function createRunLeaseStore({ openDatabase }: RunLeaseStoreOptions) {
-  async function acquireSessionRunLease(sessionId: SessionId): Promise<boolean> {
+  async function acquireSessionLease(
+    sessionId: SessionId,
+    purpose: 'agent-run' | 'context-compaction'
+  ): Promise<boolean> {
     const database = openDatabase()
 
     try {
@@ -25,15 +28,12 @@ export function createRunLeaseStore({ openDatabase }: RunLeaseStoreOptions) {
         database.exec('ROLLBACK;')
         return false
       }
-      if (
-        database
-          .prepare("SELECT lease_id FROM session_run_leases WHERE session_id = ? AND purpose = 'agent-run'")
-          .get(sessionId)
-      ) {
+      if (database.prepare('SELECT lease_id FROM session_run_leases WHERE session_id = ?').get(sessionId)) {
         database.exec('ROLLBACK;')
         return false
       }
       if (
+        purpose === 'agent-run' &&
         database
           .prepare(
             `SELECT 1
@@ -56,9 +56,9 @@ export function createRunLeaseStore({ openDatabase }: RunLeaseStoreOptions) {
       database
         .prepare(
           `INSERT INTO session_run_leases (workstream_id, lease_id, session_id, purpose, acquired_at)
-           VALUES (?, ?, ?, 'agent-run', ?)`
+           VALUES (?, ?, ?, ?, ?)`
         )
-        .run(session.workstream_id, randomUUID(), sessionId, Date.now())
+        .run(session.workstream_id, randomUUID(), sessionId, purpose, Date.now())
       database.exec('COMMIT;')
       return true
     } catch (error) {
@@ -73,12 +73,15 @@ export function createRunLeaseStore({ openDatabase }: RunLeaseStoreOptions) {
     }
   }
 
-  async function settleSessionRunLease(sessionId: SessionId): Promise<boolean> {
+  async function settleSessionLease(
+    sessionId: SessionId,
+    purpose: 'agent-run' | 'context-compaction'
+  ): Promise<boolean> {
     const database = openDatabase()
 
     try {
       database.exec('BEGIN IMMEDIATE;')
-      database.prepare("DELETE FROM session_run_leases WHERE session_id = ? AND purpose = 'agent-run'").run(sessionId)
+      database.prepare('DELETE FROM session_run_leases WHERE session_id = ? AND purpose = ?').run(sessionId, purpose)
       database.exec('COMMIT;')
       return true
     } catch (error) {
@@ -89,5 +92,10 @@ export function createRunLeaseStore({ openDatabase }: RunLeaseStoreOptions) {
     }
   }
 
-  return { acquireSessionRunLease, settleSessionRunLease }
+  return {
+    acquireSessionRunLease: (sessionId: SessionId) => acquireSessionLease(sessionId, 'agent-run'),
+    settleSessionRunLease: (sessionId: SessionId) => settleSessionLease(sessionId, 'agent-run'),
+    acquireSessionCompactionLease: (sessionId: SessionId) => acquireSessionLease(sessionId, 'context-compaction'),
+    settleSessionCompactionLease: (sessionId: SessionId) => settleSessionLease(sessionId, 'context-compaction'),
+  }
 }
