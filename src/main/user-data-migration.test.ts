@@ -14,7 +14,11 @@ const bunSqlite: UserDataMigrationSqlite = { DatabaseSync: Database }
 const temporaryDirectories: string[] = []
 
 afterEach(async () => {
-  await Promise.all(temporaryDirectories.splice(0).map((directory) => rm(directory, { force: true, recursive: true })))
+  const directories = temporaryDirectories.splice(0)
+  // Bun's SQLite adapter retains database handles until the test process ends on Windows.
+  if (process.platform === 'win32') return
+
+  await Promise.all(directories.map((directory) => rm(directory, { force: true, recursive: true, maxRetries: 5 })))
 })
 
 async function createTemporaryDirectory(): Promise<string> {
