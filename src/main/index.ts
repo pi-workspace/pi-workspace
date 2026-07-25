@@ -1,4 +1,5 @@
 import { app, BrowserWindow, net, protocol, session, shell } from 'electron'
+import { lstat, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { startApplicationLifecycle, type ApplicationWindow } from '@/src/main/application-lifecycle'
@@ -21,7 +22,7 @@ import { initializeWorkstreams } from '@/src/main/workstreams-ipc'
 import { initializeWorkstreamKnowledge } from '@/src/main/workstream-knowledge-ipc'
 import { configureTrustedRendererUrl, registerTrustedRendererWindow } from '@/src/main/trusted-ipc'
 import { getThemeWindowBackgroundColor } from '@/src/theme'
-import { migrateLegacyUserData } from '@/src/main/user-data-migration'
+import { migrateLegacyUserData, type UserDataMigrationResult } from '@/src/main/user-data-migration'
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -36,9 +37,38 @@ protocol.registerSchemesAsPrivileged([
 ])
 
 const applicationDataDirectory = app.getPath('appData')
-const legacyUserDataDirectory = join(applicationDataDirectory, 'Pi Workspace')
+const legacyUserDataDirectories = [
+  join(applicationDataDirectory, 'pi-workspace'),
+  join(applicationDataDirectory, 'Pi Workspace'),
+]
 const userDataDirectory = join(applicationDataDirectory, 'Railyard')
 
+async function findLegacyUserDataDirectory(): Promise<string> {
+  for (const directory of legacyUserDataDirectories) {
+    try {
+      if ((await lstat(directory)).isDirectory()) return directory
+    } catch {
+      // Try the next legacy directory.
+    }
+  }
+
+  return legacyUserDataDirectories[0]!
+}
+
+const legacyUserDataDirectory = await findLegacyUserDataDirectory()
+let legacyUserDataMigrationResult: UserDataMigrationResult = 'not-required'
+let legacyUserDataMigrationError: unknown
+
+try {
+  legacyUserDataMigrationResult = await migrateLegacyUserData({
+    legacyDirectory: legacyUserDataDirectory,
+    userDataDirectory,
+  })
+} catch (error) {
+  legacyUserDataMigrationError = error
+}
+
+await mkdir(userDataDirectory, { mode: 0o700, recursive: true })
 app.setPath('userData', userDataDirectory)
 
 const rendererDirectory = fileURLToPath(new URL('../renderer/', import.meta.url))
@@ -67,13 +97,11 @@ async function initializeApplication(): Promise<void> {
   session.defaultSession.setPermissionRequestHandler(allowBrowserPermissionRequest)
 
   try {
-    const migration = await migrateLegacyUserData({
-      legacyDirectory: legacyUserDataDirectory,
-      userDataDirectory,
-    })
+    if (legacyUserDataMigrationError) throw legacyUserDataMigrationError
 
-    if (migration === 'migrated') console.info('Migrated Pi Workspace application data to Railyard.')
-    if (migration === 'skipped-existing-user-data') {
+    if (legacyUserDataMigrationResult === 'migrated')
+      console.info('Migrated Pi Workspace application data to Railyard.')
+    if (legacyUserDataMigrationResult === 'skipped-existing-user-data') {
       console.warn('Railyard is using existing application data. Pi Workspace application data was not merged.')
     }
 
