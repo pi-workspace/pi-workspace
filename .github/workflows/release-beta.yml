@@ -256,7 +256,7 @@ jobs:
       - name: Verify packaged application files
         shell: pwsh
         run: |
-          $packageContents = & .\node_modules\.bin\asar.cmd list release/win-unpacked/resources/app.asar
+          $packageContents = & bun x asar list release/win-unpacked/resources/app.asar
           $expectedPaths = @(
             '/assets/pi-workspace-mark.png'
             '/dist/main/index.js'
@@ -295,7 +295,7 @@ jobs:
       - name: Unpack packaged application for SBOM
         shell: pwsh
         run: |
-          & .\node_modules\.bin\asar.cmd extract `
+          & bun x asar extract `
             release/win-unpacked/resources/app.asar `
             release/win-unpacked/resources/app-asar
 
