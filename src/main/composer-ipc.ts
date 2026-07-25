@@ -160,11 +160,11 @@ export async function createPiSessionRuntime(
   const suggestAction = defineTool({
     name: 'suggest_action',
     label: 'Suggest action',
-    description: 'Show the user an optional Pi Workspace action card for an allowlisted next step.',
+    description: 'Show the user an optional Railyard action card for an allowlisted next step.',
     promptGuidelines: [
       'Use only when the suggested action follows clearly from the completed work.',
       'Use start-implement-session only in a Brainstorm Session when planning is ready for implementation.',
-      'Use prepare-pull-request only after implementation is ready for the user to review and create a pull request.',
+      'When implementation is ready for user review and a pull request can be created, call suggest_action with prepare-pull-request before completing your response.',
     ],
     parameters: Type.Object({
       kind: Type.Union([Type.Literal('start-implement-session'), Type.Literal('prepare-pull-request')]),
