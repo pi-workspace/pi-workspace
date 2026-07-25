@@ -20,6 +20,9 @@ type SqliteDatabase = Readonly<{
   }>
 }>
 
+const renameRetryDelayMs = 100
+const renameRetryCount = 5
+
 export type UserDataMigrationSqlite = Readonly<{
   DatabaseSync: new (path: string) => SqliteDatabase
 }>
@@ -38,6 +41,24 @@ async function isDirectory(path: string): Promise<boolean> {
     return (await lstat(path)).isDirectory()
   } catch {
     return false
+  }
+}
+
+function isRetryableRenameError(error: unknown): boolean {
+  return (
+    typeof error === 'object' && error !== null && 'code' in error && (error.code === 'EBUSY' || error.code === 'EPERM')
+  )
+}
+
+async function renameWhenAvailable(sourcePath: string, destinationPath: string): Promise<void> {
+  for (let attempt = 1; attempt <= renameRetryCount; attempt += 1) {
+    try {
+      await rename(sourcePath, destinationPath)
+      return
+    } catch (error) {
+      if (!isRetryableRenameError(error) || attempt === renameRetryCount) throw error
+      await new Promise<void>((resolve) => setTimeout(resolve, renameRetryDelayMs))
+    }
   }
 }
 
@@ -172,7 +193,7 @@ export async function migrateLegacyUserData({
       await rewriteApplicationStatePaths(legacyDirectory, stagingDirectory, userDataDirectory, sqlite)
     }
     await chmod(stagingDirectory, 0o700)
-    await rename(stagingDirectory, userDataDirectory)
+    await renameWhenAvailable(stagingDirectory, userDataDirectory)
 
     return 'migrated'
   } catch (error) {
