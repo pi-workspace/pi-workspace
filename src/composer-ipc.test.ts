@@ -1,12 +1,14 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { sessionId } from '@/src/domain/session'
+import type { ManagedSessionRuntimePolicy } from '@/src/domain/managed-session'
 import {
   maximumSessionMessageLength,
   parseQueuedFollowUpRemovalRequest,
   parseSessionMessageSubmission,
   parseSessionRunStopRequest,
 } from './composer-ipc'
+import { managedSessionFileRoots } from './main/managed-session-file-roots'
 
 test('accepts a narrow serializable Agent Run stop request', () => {
   assert.deepEqual(parseSessionRunStopRequest({ sessionId: 'session-a' }), { sessionId: sessionId('session-a') })
@@ -54,6 +56,45 @@ test('rejects unsupported delivery behavior at the IPC boundary', () => {
 
 test('rejects an invalid Session id at the IPC boundary', () => {
   assert.equal(parseSessionMessageSubmission({ sessionId: '', text: 'Hello', delivery: 'steer' }), undefined)
+})
+
+test('uses managed Repository IDs as unambiguous file prefixes', () => {
+  const policy: ManagedSessionRuntimePolicy = {
+    workspaceId: 'workspace-a',
+    workstreamId: 'workstream-a',
+    sessionId: sessionId('session-a'),
+    mode: 'implement',
+    lifecycle: 'active',
+    piSessionPath: '/tmp/session.jsonl',
+    resourcePolicyRevision: 1,
+    repositories: [
+      {
+        id: 'repository-one',
+        name: 'app',
+        commonDirectoryPath: '/tmp/one/.git',
+        role: '',
+        relationships: [],
+        availability: 'available',
+        workingPath: '/tmp/one/app',
+        workingLocation: 'session-worktree',
+      },
+      {
+        id: 'repository-two',
+        name: 'app',
+        commonDirectoryPath: '/tmp/two/.git',
+        role: '',
+        relationships: [],
+        availability: 'available',
+        workingPath: '/tmp/two/app',
+        workingLocation: 'session-worktree',
+      },
+    ],
+  }
+
+  assert.deepEqual(managedSessionFileRoots(policy), [
+    { path: '/tmp/one/app', prefix: 'repository-one' },
+    { path: '/tmp/two/app', prefix: 'repository-two' },
+  ])
 })
 
 test('rejects message text beyond the IPC limit', () => {

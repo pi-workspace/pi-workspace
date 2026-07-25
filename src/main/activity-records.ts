@@ -100,7 +100,9 @@ function isQueuedFollowUp(value: unknown): value is QueuedFollowUp {
   return (
     isNonEmptyString(value.id) &&
     typeof value.text === 'string' &&
+    (value.sourceText === undefined || typeof value.sourceText === 'string') &&
     (value.skills === undefined || (Array.isArray(value.skills) && value.skills.every(isSessionSkillMention))) &&
+    (value.files === undefined || (Array.isArray(value.files) && value.files.every(isSessionFileMention))) &&
     isTimestamp(value.createdAt)
   )
 }
@@ -113,6 +115,17 @@ function isSessionSkillMention(value: unknown): boolean {
   return (
     (value.skill.availability === 'available' && typeof value.skill.description === 'string') ||
     value.skill.availability === 'unavailable'
+  )
+}
+
+function isSessionFileMention(value: unknown): boolean {
+  if (!isRecord(value) || !isCount(value.offset) || !isRecord(value.file) || !isNonEmptyString(value.file.path)) {
+    return false
+  }
+
+  return (
+    (value.file.kind === 'file' || value.file.kind === 'folder') &&
+    (value.file.availability === 'available' || value.file.availability === 'unavailable')
   )
 }
 

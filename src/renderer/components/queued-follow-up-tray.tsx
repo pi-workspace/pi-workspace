@@ -3,7 +3,8 @@ import { useCallback, useState } from 'react'
 import type { ComposerBridge } from '@/src/composer'
 import type { SessionId } from '@/src/domain/session'
 import type { QueuedFollowUp } from '@/src/queued-follow-up'
-import { SkillMentionText } from '@/src/renderer/components/skill-mention-text'
+import { ReferenceMentionText } from '@/src/renderer/components/reference-mention-text'
+import { projectSessionFileSelections } from '@/src/session-files'
 import { projectSessionSkillSelections } from '@/src/session-skills'
 
 const maximumVisibleFollowUps = 3
@@ -22,11 +23,22 @@ type QueuedFollowUpTrayProperties = Readonly<{
 
 function QueuedFollowUpContent({ followUp, next }: Readonly<{ followUp: QueuedFollowUp; next: boolean }>) {
   const projected = projectSessionSkillSelections(followUp.text)
+  const fileProjected = projectSessionFileSelections(projected.text)
   const skills =
     followUp.skills ??
     projected.selections.map(({ name, offset }) => ({
-      offset,
+      offset:
+        offset -
+        fileProjected.selections
+          .filter((selection) => selection.offset < offset)
+          .reduce((sum, selection) => sum + selection.tokenLength, 0),
       skill: { name, availability: 'unavailable' as const },
+    }))
+  const files =
+    followUp.files ??
+    fileProjected.selections.map(({ path, offset }) => ({
+      offset,
+      file: { path, kind: 'file' as const, availability: 'unavailable' as const },
     }))
 
   return (
@@ -35,7 +47,7 @@ function QueuedFollowUpContent({ followUp, next }: Readonly<{ followUp: QueuedFo
         {next ? 'Next follow-up' : 'Follow-up'}
       </span>
       <span className="mt-0.5 line-clamp-2 block whitespace-pre-wrap break-words">
-        <SkillMentionText text={projected.text} skills={skills} />
+        <ReferenceMentionText text={fileProjected.text} skills={skills} files={files} />
       </span>
     </>
   )

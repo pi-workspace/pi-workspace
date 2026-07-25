@@ -4,6 +4,7 @@ import type { SessionId } from '@/src/domain/session'
 import type { OwnedSession, WorkstreamLifecycle } from '@/src/domain/workstream'
 import type { SessionConfigurationBridge } from '@/src/session-configuration'
 import type { SessionSkillsBridge } from '@/src/session-skills'
+import type { SessionFilesBridge } from '@/src/session-files'
 import type { SessionTranscriptBridge } from '@/src/session-transcript'
 import { SessionContainer } from '@/src/renderer/components/session-container'
 
@@ -35,6 +36,7 @@ type SessionAreaProperties = {
   resumeQueuedFollowUps?: NonNullable<ComposerBridge['resumeQueuedFollowUps']>
   sessionConfiguration?: SessionConfigurationBridge
   sessionSkills?: SessionSkillsBridge
+  sessionFiles?: SessionFilesBridge
   onToggleSessionPin: (sessionId: SessionId) => void
   acceptActionCard?: SessionTranscriptBridge['acceptActionCard']
   onStartImplementSession?: (workstreamId: string) => Promise<void>
@@ -62,6 +64,7 @@ export function SessionArea({
   resumeQueuedFollowUps,
   sessionConfiguration,
   sessionSkills,
+  sessionFiles,
   onToggleSessionPin,
   acceptActionCard = async () => false,
   onStartImplementSession = async () => {},
@@ -119,6 +122,7 @@ export function SessionArea({
             resumeQueuedFollowUps={resumeQueuedFollowUps}
             sessionConfiguration={sessionConfiguration}
             sessionSkills={sessionSkills}
+            sessionFiles={sessionFiles}
             onTogglePin={() => onToggleSessionPin(session.id)}
             acceptActionCard={acceptActionCard}
             onStartImplementSession={onStartImplementSession}

@@ -9,6 +9,7 @@ import { sessionId, type Session, type SessionId } from '@/src/domain/session'
 import type { OwnedSession } from '@/src/domain/workstream'
 import type { SessionConfigurationBridge, SessionConfigurationSnapshot } from '@/src/session-configuration'
 import type { SessionSkillsBridge } from '@/src/session-skills'
+import type { SessionFilesBridge } from '@/src/session-files'
 import { Composer } from './composer'
 import { SessionArea } from './session-area'
 
@@ -88,6 +89,28 @@ function DelayedDraftPublicationComposer({ submitMessage }: { submitMessage: Com
         }}
       />
     </>
+  )
+}
+
+function FileComposer({
+  submitMessage,
+  sessionFiles,
+}: {
+  submitMessage: ComposerBridge['submit']
+  sessionFiles: SessionFilesBridge
+}) {
+  const [draft, setDraft] = useState('')
+
+  return (
+    <Composer
+      session={session}
+      draft={draft}
+      isWorking={false}
+      onActivate={() => {}}
+      onDraftChange={setDraft}
+      submitMessage={submitMessage}
+      sessionFiles={sessionFiles}
+    />
   )
 }
 
@@ -202,6 +225,35 @@ test('Enter submits the exact draft to the owning Session once', async () => {
   await user.keyboard('{Enter}')
 
   assert.deepEqual(submissions, [{ sessionId: session.id, text: 'Keep  internal spaces', delivery: 'steer' }])
+})
+
+test('selects a whitespace path from at-sign autocomplete and sends its canonical tag', async () => {
+  const submissions: Parameters<ComposerBridge['submit']>[0][] = []
+  const user = createUser()
+  const view = renderInBrowser(
+    <FileComposer
+      submitMessage={async (submission) => {
+        submissions.push(submission)
+        return { status: 'accepted', delivery: 'prompt' }
+      }}
+      sessionFiles={{
+        async getAvailable() {
+          return [{ path: 'src/my file.ts', name: 'my file.ts', kind: 'file' }]
+        },
+      }}
+    />
+  )
+
+  const editor = view.getByRole('textbox')
+  await user.click(editor)
+  await user.keyboard('@')
+  await waitFor(() => assert.ok(view.getByRole('option', { name: /src\/my file\.ts/ })))
+  await user.keyboard('{Enter}')
+  await user.click(view.getByRole('button', { name: 'Send message' }))
+
+  await waitFor(() =>
+    assert.deepEqual(submissions, [{ sessionId: session.id, text: '@@"src/my file.ts"', delivery: 'steer' }])
+  )
 })
 
 test('selects a Skill from autocomplete and sends it without prompt text', async () => {

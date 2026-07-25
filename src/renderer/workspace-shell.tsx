@@ -468,6 +468,7 @@ export function WorkspaceShell({ initialWorkspacesSnapshot, initialSessionDispla
             resumeQueuedFollowUps={resumeQueuedFollowUps}
             sessionConfiguration={window.piWorkspace.sessionConfiguration}
             sessionSkills={window.piWorkspace.sessionSkills}
+            sessionFiles={window.piWorkspace.sessionFiles}
             onToggleSessionPin={toggleSessionPin}
             acceptActionCard={window.piWorkspace.transcript.acceptActionCard}
             onStartImplementSession={(workstreamId) => createSession(workstreamId, { mode: 'implement' })}

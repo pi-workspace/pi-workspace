@@ -14,6 +14,13 @@ import {
   type SessionSkill,
   type SessionSkillMention,
 } from '@/src/session-skills'
+import {
+  projectSessionFileSelections,
+  replaceSessionFileTokensAsync,
+  type SessionFile,
+  type SessionFileMention,
+  type SessionFileReference,
+} from '@/src/session-files'
 import type { ActivityLayerRecord, AgentRunDiagnosticKind } from '@/src/main/activity-records'
 import {
   countArtifactFiles,
@@ -77,6 +84,9 @@ export interface PiSessionRuntime {
   loadRawOperation?(toolCallId: string): Readonly<{ input: unknown; result?: unknown }> | undefined
   getSkills?(): readonly SessionSkill[]
   getSkillPrompt?(name: string): string | undefined
+  getFiles?(query?: string): Promise<readonly SessionFile[]>
+  getFileReference?(path: string): Promise<SessionFileReference>
+  getFileContext?(path: string): Promise<string | undefined>
   getContextUsage?(): SessionContextUsage | undefined
   getConfiguration?(): Promise<Omit<SessionConfigurationSnapshot, 'sessionId' | 'revision' | 'persistenceWarning'>>
   setConfigurationModel?(model: SessionConfigurationModelSelection): Promise<void>
@@ -159,6 +169,7 @@ export interface PiSessionRuntimeRegistry {
   loadActivityDetails(sessionId: SessionId, activityId: string): Promise<AgentActivityDetails | undefined>
   getTranscript(sessionId: SessionId): Promise<SessionTranscriptSnapshot>
   getAvailableSkills(sessionId: SessionId): Promise<readonly SessionSkill[]>
+  getAvailableFiles(sessionId: SessionId, query?: string): Promise<readonly SessionFile[]>
   subscribeTranscript(listener: (mutation: SessionTranscriptMutation) => void): () => void
   getConfigurationSnapshot(sessionId: SessionId): Promise<SessionConfigurationSnapshot>
   setConfigurationModel(
@@ -181,6 +192,8 @@ const declaredActivityKinds = new Set<AgentActivityKind>(agentActivityKinds)
 export const maximumConcurrentAgentRuns = 10
 /** Preserves normal follow-up use while bounding queued future provider work per Session. */
 export const maximumPendingSessionFollowUps = 3
+/** Bounds injected tagged-file context independently of the user message limit. */
+export const maximumSessionFileContextLength = 100_000
 
 export function createPiSessionRuntimeRegistry({
   findSession,
@@ -287,7 +300,7 @@ export function createPiSessionRuntimeRegistry({
 
     if (!followUp) return
 
-    const result = await submit({ sessionId, text: followUp.text, delivery: 'follow-up' })
+    const result = await submit({ sessionId, text: followUp.sourceText ?? followUp.text, delivery: 'follow-up' })
 
     if (result.status === 'accepted' && result.delivery !== 'follow-up') {
       if (!removeQueuedFollowUp(sessionId, followUp.id)) {
@@ -1062,6 +1075,7 @@ export function createPiSessionRuntimeRegistry({
     messageId: string,
     text: string,
     skills?: readonly SessionSkillMention[],
+    files?: readonly SessionFileMention[],
     delivery?: 'steer'
   ): void {
     const timeline = getTimeline(sessionId)
@@ -1070,6 +1084,7 @@ export function createPiSessionRuntimeRegistry({
       role: 'user',
       text,
       skills,
+      files,
       delivery,
       state: 'complete',
       revision: timeline.revision + 1,
@@ -1078,10 +1093,10 @@ export function createPiSessionRuntimeRegistry({
     timeline.messages.set(message.id, message)
   }
 
-  function queueFollowUp(
+  async function queueFollowUp(
     submission: SessionMessageSubmission,
     runtime: PiSessionRuntime
-  ): SessionMessageSubmissionResult {
+  ): Promise<SessionMessageSubmissionResult> {
     const projected = projectSessionSkillSelections(submission.text)
     const availableSkills = runtime.getSkills?.() ?? []
     const skillsAvailable = projected.selections.every((selection) =>
@@ -1109,10 +1124,18 @@ export function createPiSessionRuntimeRegistry({
 
       return available ? [{ offset: selection.offset, skill: { ...available, availability: 'available' } }] : []
     })
+    const files = await fileMentions(projected.text, runtime)
+    if (!files) return { status: 'rejected', reason: 'unexpected' }
+
     const followUp = {
       id: createId(),
-      text: submission.text,
-      skills: skills.length > 0 ? skills : undefined,
+      text: files.text,
+      sourceText: submission.text,
+      skills:
+        skills.length > 0
+          ? skills.map((mention) => ({ ...mention, offset: files.skillOffsetAdjustment(mention.offset) }))
+          : undefined,
+      files: files.files,
       createdAt: now(),
     }
     const persisted = persistActivityRecord(getTimeline(submission.sessionId), {
@@ -1129,11 +1152,60 @@ export function createPiSessionRuntimeRegistry({
     return { status: 'accepted', delivery: 'follow-up' }
   }
 
+  async function fileMentions(
+    source: string,
+    runtime: PiSessionRuntime
+  ): Promise<
+    | Readonly<{
+        text: string
+        files?: readonly SessionFileMention[]
+        skillOffsetAdjustment: (offset: number) => number
+      }>
+    | undefined
+  > {
+    const projected = projectSessionFileSelections(source)
+    const files = await Promise.all(
+      projected.selections.map(async ({ path, offset }) => ({
+        offset,
+        file: await runtime.getFileReference?.(path),
+      }))
+    ).catch(() => undefined)
+    if (!files) return undefined
+
+    const mentions = files.map(({ offset, file }, index) => ({
+      offset,
+      file: file ?? {
+        path: projected.selections[index]!.path,
+        kind: 'file' as const,
+        availability: 'unavailable' as const,
+      },
+    }))
+
+    return {
+      text: projected.text,
+      files: mentions.length > 0 ? mentions : undefined,
+      skillOffsetAdjustment(offset) {
+        return (
+          offset -
+          projected.selections
+            .filter((selection) => selection.offset < offset)
+            .reduce((sum, selection) => sum + selection.tokenLength, 0)
+        )
+      },
+    }
+  }
+
   async function deliverSubmission(
     submission: SessionMessageSubmission,
     runtime: PiSessionRuntime,
     authorize: () => boolean | Promise<boolean>
   ): Promise<SessionMessageSubmissionResult> {
+    try {
+      if (!(await authorize())) return { status: 'rejected', reason: 'session-unavailable' }
+    } catch {
+      return { status: 'rejected', reason: 'unexpected' }
+    }
+
     const projected = projectSessionSkillSelections(submission.text)
     const availableSkills = runtime.getSkills?.() ?? []
     const skills = projected.selections.flatMap((selection): SessionSkillMention[] => {
@@ -1144,15 +1216,62 @@ export function createPiSessionRuntimeRegistry({
     if (skills.length !== projected.selections.length) {
       return { status: 'rejected', reason: 'skill-unavailable' }
     }
-    const skillMentions = skills.length > 0 ? skills : undefined
+    const files = await fileMentions(projected.text, runtime)
+    if (!files) return { status: 'rejected', reason: 'unexpected' }
 
+    const skillMentions =
+      skills.length > 0
+        ? skills.map((mention) => ({ ...mention, offset: files.skillOffsetAdjustment(mention.offset) }))
+        : undefined
+
+    const skillPrompts = new Map<string, string>()
+    let nextSkillPrompt = 0
     let promptText: string | undefined
     try {
-      promptText = replaceSessionSkillTokens(submission.text, (name) => runtime.getSkillPrompt?.(name))
+      promptText = replaceSessionSkillTokens(submission.text, (name) => {
+        const prompt = runtime.getSkillPrompt?.(name)
+        if (prompt === undefined) return undefined
+
+        const placeholder = `\uE000${nextSkillPrompt++}\uE001`
+        skillPrompts.set(placeholder, prompt)
+        return placeholder
+      })
     } catch {
       return { status: 'rejected', reason: 'unexpected' }
     }
     if (promptText === undefined) return { status: 'rejected', reason: 'skill-unavailable' }
+
+    const sourceMetadata = files.files?.length
+      ? `\n\n<!-- pi-workspace-source:${Buffer.from(submission.text).toString('base64url')} -->`
+      : ''
+    let fileContextLength = Buffer.byteLength(sourceMetadata)
+    if (fileContextLength > maximumSessionFileContextLength) {
+      return { status: 'rejected', reason: 'preflight-rejected' }
+    }
+    try {
+      promptText = await replaceSessionFileTokensAsync(promptText, async (path) => {
+        const context = await runtime.getFileContext?.(path)
+        const contextLength = context === undefined ? undefined : Buffer.byteLength(context)
+        if (
+          context === undefined ||
+          contextLength === undefined ||
+          fileContextLength + contextLength > maximumSessionFileContextLength
+        ) {
+          return undefined
+        }
+
+        fileContextLength += contextLength
+        return context
+      })
+    } catch {
+      return { status: 'rejected', reason: 'unexpected' }
+    }
+    if (promptText === undefined) return { status: 'rejected', reason: 'preflight-rejected' }
+    for (const [placeholder, prompt] of skillPrompts) {
+      promptText = promptText.replace(placeholder, prompt)
+    }
+    promptText += sourceMetadata
+
     const result = await activationGate.run<SessionMessageSubmissionResult>(submission.sessionId, async () => {
       try {
         if (!(await authorize())) return { status: 'rejected', reason: 'session-unavailable' }
@@ -1213,8 +1332,9 @@ export function createPiSessionRuntimeRegistry({
               acceptRun(
                 submission.sessionId,
                 messageId,
-                projected.text,
+                files.text,
                 skillMentions,
+                files.files,
                 acceptedDelivery === 'steer' ? 'steer' : undefined
               )
             }
@@ -1589,6 +1709,13 @@ export function createPiSessionRuntimeRegistry({
     },
     async getAvailableSkills(sessionId) {
       return (await getRuntime(sessionId))?.getSkills?.() ?? []
+    },
+    async getAvailableFiles(sessionId, query) {
+      try {
+        return (await getRuntime(sessionId))?.getFiles?.(query) ?? []
+      } catch {
+        return []
+      }
     },
     subscribeTranscript(listener) {
       transcriptListeners.add(listener)

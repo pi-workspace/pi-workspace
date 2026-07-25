@@ -1,5 +1,6 @@
 import type { SessionId } from '@/src/domain/session'
 import type { SessionSkillMention } from '@/src/session-skills'
+import type { SessionFileMention } from '@/src/session-files'
 
 export const agentActivityKinds = [
   'exploration',
@@ -22,6 +23,7 @@ export type ConversationEntry = Readonly<{
   role: 'user' | 'assistant'
   text: string
   skills?: readonly SessionSkillMention[]
+  files?: readonly SessionFileMention[]
   delivery?: 'steer'
   timestamp: number
 }>

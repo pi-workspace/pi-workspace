@@ -2,6 +2,7 @@ import type { AgentSessionEvent, SessionEntry } from '@earendil-works/pi-coding-
 import type { AgentMessage } from '@earendil-works/pi-agent-core'
 import type { TextContent } from '@earendil-works/pi-ai'
 import { projectSessionSkillSelections, type SessionSkill } from '@/src/session-skills'
+import { projectSessionFileSelections } from '@/src/session-files'
 import type { SessionTranscriptMessage } from '@/src/session-transcript'
 
 export type PiSessionMessageEvent = Readonly<{
@@ -132,7 +133,7 @@ function toSessionMessage(
   const content = textFromMessage(message)
   const projected = message.role === 'user' ? projectPiUserMessage(content, skills) : { text: content }
 
-  if (!projected.text && !projected.skills?.length) {
+  if (!projected.text && !projected.skills?.length && !projected.files?.length) {
     return undefined
   }
 
@@ -147,8 +148,18 @@ function toSessionMessage(
 
 export function projectPiUserMessage(
   source: string,
-  skills: readonly SessionSkill[] = []
-): Pick<SessionTranscriptMessage, 'text' | 'skills'> {
+  skills: readonly SessionSkill[] = [],
+  readMetadata = true
+): Pick<SessionTranscriptMessage, 'text' | 'skills' | 'files'> {
+  const persistedSource = readMetadata ? /\n\n<!-- pi-workspace-source:([A-Za-z0-9_-]+) -->$/.exec(source) : undefined
+  if (persistedSource?.[1]) {
+    try {
+      return projectPiUserMessage(Buffer.from(persistedSource[1], 'base64url').toString('utf8'), skills, false)
+    } catch {
+      // Fall through to the visible prompt when a persisted marker is malformed.
+    }
+  }
+
   const nativeInvocation = source.match(
     /^<skill name="([^"]+)" location="[^"]+">\n[\s\S]*?\n<\/skill>(?:\n\n([\s\S]+))?$/
   )
@@ -179,11 +190,31 @@ export function projectPiUserMessage(
   if (mentions.length > 0) return { text: text + source.slice(sourceOffset), skills: mentions }
 
   const projected = projectSessionSkillSelections(source)
-  if (projected.selections.length === 0) return { text: source }
+  const fileProjected = projectSessionFileSelections(projected.text)
+  if (projected.selections.length === 0 && fileProjected.selections.length === 0) return { text: source }
 
   return {
-    text: projected.text,
-    skills: projected.selections.map(({ name, offset }) => ({ offset, skill: skillReference(name, skills) })),
+    text: fileProjected.text,
+    ...(projected.selections.length > 0
+      ? {
+          skills: projected.selections.map(({ name, offset }) => ({
+            offset:
+              offset -
+              fileProjected.selections
+                .filter((selection) => selection.offset < offset)
+                .reduce((sum, selection) => sum + selection.tokenLength, 0),
+            skill: skillReference(name, skills),
+          })),
+        }
+      : {}),
+    ...(fileProjected.selections.length > 0
+      ? {
+          files: fileProjected.selections.map(({ path, offset }) => ({
+            offset,
+            file: { path, kind: 'file' as const, availability: 'unavailable' as const },
+          })),
+        }
+      : {}),
   }
 }
 

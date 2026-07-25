@@ -168,6 +168,14 @@ export function createDemoBridge(scenarioName?: string): PiWorkspaceBridge {
         ]
       },
     },
+    sessionFiles: {
+      async getAvailable() {
+        return [
+          { path: 'src/main/composer-ipc.ts', name: 'composer-ipc.ts', kind: 'file' as const },
+          { path: 'src/renderer/components', name: 'components', kind: 'folder' as const },
+        ]
+      },
+    },
     sessionConfiguration: {
       async getSnapshot(sessionId) {
         return {

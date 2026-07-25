@@ -5,6 +5,7 @@ import type { OwnedSession, WorkstreamLifecycle } from '@/src/domain/workstream'
 import type { SessionConfigurationBridge } from '@/src/session-configuration'
 import type { SessionSkillsBridge } from '@/src/session-skills'
 import type { SessionActionCard } from '@/src/session-action-cards'
+import type { SessionFilesBridge } from '@/src/session-files'
 import type { SessionTranscriptBridge } from '@/src/session-transcript'
 import { Composer } from '@/src/renderer/components/composer'
 import { QueuedFollowUpTray } from '@/src/renderer/components/queued-follow-up-tray'
@@ -34,6 +35,7 @@ type SessionContainerProperties = {
   resumeQueuedFollowUps?: NonNullable<ComposerBridge['resumeQueuedFollowUps']>
   sessionConfiguration?: SessionConfigurationBridge
   sessionSkills?: SessionSkillsBridge
+  sessionFiles?: SessionFilesBridge
   onTogglePin: () => void
   acceptActionCard?: SessionTranscriptBridge['acceptActionCard']
   onStartImplementSession?: (workstreamId: string) => Promise<void>
@@ -59,6 +61,7 @@ export function SessionContainer({
   resumeQueuedFollowUps,
   sessionConfiguration,
   sessionSkills,
+  sessionFiles,
   onTogglePin,
   acceptActionCard = async () => false,
   onStartImplementSession = async () => {},
@@ -205,6 +208,7 @@ export function SessionContainer({
           stopRun={stopRun}
           sessionConfiguration={sessionConfiguration}
           sessionSkills={sessionSkills}
+          sessionFiles={sessionFiles}
         />
       )}
     </section>

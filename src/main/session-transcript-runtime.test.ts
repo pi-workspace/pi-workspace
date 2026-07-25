@@ -96,6 +96,65 @@ test('persists an accepted action card across a runtime restart', async () => {
   assert.equal((await restartedRegistry.getTranscript(id)).actionCards?.[0]?.status, 'accepted')
 })
 
+test('rejects a tagged submission when file reference lookup fails', async () => {
+  const runtime: PiSessionRuntime = {
+    isStreaming: false,
+    async prompt() {
+      assert.fail('A rejected file reference must not prompt the Agent.')
+    },
+    subscribe() {
+      return () => {}
+    },
+    async getFileReference() {
+      throw new Error('The managed Session policy is stale.')
+    },
+    dispose() {},
+  }
+  const registry = createPiSessionRuntimeRegistry({
+    findSession: () => ({ directoryPath: '/tmp', sessionPath: '/tmp/session.jsonl' }),
+    createSession: async () => runtime,
+  })
+
+  assert.deepEqual(
+    await registry.submit({ sessionId: sessionId('file-lookup-session'), text: '@src/app.ts', delivery: 'steer' }),
+    { status: 'rejected', reason: 'unexpected' }
+  )
+})
+
+test('keeps file source metadata within the file context budget', async () => {
+  const prompts: string[] = []
+  const runtime: PiSessionRuntime = {
+    isStreaming: false,
+    async prompt(text) {
+      prompts.push(text)
+    },
+    subscribe() {
+      return () => {}
+    },
+    async getFileReference() {
+      return { path: 'src/app.ts', kind: 'file', availability: 'available' }
+    },
+    async getFileContext() {
+      return '## Referenced file: `src/app.ts`\\n\\n```ts\\nexport {}\\n```'
+    },
+    dispose() {},
+  }
+  const registry = createPiSessionRuntimeRegistry({
+    findSession: () => ({ directoryPath: '/tmp', sessionPath: '/tmp/session.jsonl' }),
+    createSession: async () => runtime,
+  })
+
+  assert.deepEqual(
+    await registry.submit({
+      sessionId: sessionId('file-source-budget-session'),
+      text: `@src/app.ts ${'a'.repeat(75_000)}`,
+      delivery: 'steer',
+    }),
+    { status: 'rejected', reason: 'preflight-rejected' }
+  )
+  assert.deepEqual(prompts, [])
+})
+
 test('persists queued follow-ups until the user resumes the queue', async () => {
   let streaming = true
   let emit: (event: Parameters<Parameters<PiSessionRuntime['subscribe']>[0]>[0]) => void = () => {}
