@@ -1,6 +1,7 @@
 import type { ActivityLayerRecord } from '@/src/main/activity-records'
 import type { AgentActivity, AgentRun, SessionTimelineEntry, ToolExecution } from '@/src/session-timeline'
 import type { SessionContextUsage, SessionTranscriptMessage } from '@/src/session-transcript'
+import type { SessionActionCard } from '@/src/session-action-cards'
 import type { PiSessionRuntime, PiSessionRuntimeHistory } from './pi-session-runtimes'
 
 export type SessionRuntimeTimeline = {
@@ -10,6 +11,7 @@ export type SessionRuntimeTimeline = {
   isCompacting: boolean
   runs: AgentRun[]
   entries: SessionTimelineEntry[]
+  actionCards: SessionActionCard[]
   messages: Map<string, SessionTranscriptMessage>
   currentActivityId?: string
   activities: Map<string, SessionRuntimeActivity>
@@ -70,21 +72,31 @@ export function hydrateTimeline(timeline: SessionRuntimeTimeline, history: PiSes
   const runs = new Map<string, AgentRun>()
   const activities = new Map<string, AgentActivity>()
   const operations = new Map<string, Omit<ToolExecution, 'input'>>()
+  const actionCards = new Map<string, SessionActionCard>()
+  const actionCardStatuses = new Map<string, SessionActionCard['status']>()
 
   for (const record of history.activityRecords) {
     if (record.type === 'run') runs.set(record.run.id, record.run)
     if (record.type === 'activity') activities.set(record.activity.id, record.activity)
     if (record.type === 'operation') operations.set(record.execution.toolCallId, record.execution)
     if (record.type === 'activity-removed') activities.delete(record.activityId)
+    if (record.type === 'action-card') actionCards.set(record.card.id, record.card)
+    if (record.type === 'action-card-status') actionCardStatuses.set(record.actionCardId, record.status)
   }
 
   timeline.runs = [...runs.values()].sort((left, right) => left.startedAt - right.startedAt)
+  timeline.actionCards = [...actionCards.values()].map((card) => {
+    const status = actionCardStatuses.get(card.id)
 
+    return status ? { ...card, status } : card
+  })
+
+  const hiddenMessageIds = new Set<string>()
   const steeringMessageIds = new Set<string>()
   const unmatchedConversations = [...history.conversations]
 
   for (const record of history.activityRecords) {
-    if (record.type !== 'steering-message') continue
+    if (record.type !== 'steering-message' && record.type !== 'action-message') continue
 
     let index = -1
     let nearestTimestampDifference = Number.POSITIVE_INFINITY
@@ -102,10 +114,18 @@ export function hydrateTimeline(timeline: SessionRuntimeTimeline, history: PiSes
     if (index < 0) continue
 
     const [conversation] = unmatchedConversations.splice(index, 1)
-    if (conversation) steeringMessageIds.add(conversation.id)
+    if (!conversation) continue
+
+    if (record.type === 'action-message') {
+      hiddenMessageIds.add(conversation.id)
+    } else {
+      steeringMessageIds.add(conversation.id)
+    }
   }
 
   for (const conversation of history.conversations) {
+    if (hiddenMessageIds.has(conversation.id)) continue
+
     timeline.messages.set(conversation.id, {
       id: conversation.id,
       role: conversation.role,
@@ -117,12 +137,14 @@ export function hydrateTimeline(timeline: SessionRuntimeTimeline, history: PiSes
     })
   }
 
-  const conversations = history.conversations.map((conversation) => {
-    const ownerIndex = timeline.runs.findLastIndex((run) => run.startedAt <= conversation.timestamp + 1_000)
-    const owner = ownerIndex >= 0 ? timeline.runs[ownerIndex] : undefined
+  const conversations = history.conversations
+    .filter((conversation) => !hiddenMessageIds.has(conversation.id))
+    .map((conversation) => {
+      const ownerIndex = timeline.runs.findLastIndex((run) => run.startedAt <= conversation.timestamp + 1_000)
+      const owner = ownerIndex >= 0 ? timeline.runs[ownerIndex] : undefined
 
-    return owner ? { ...conversation, runId: owner.id } : conversation
-  })
+      return owner ? { ...conversation, runId: owner.id } : conversation
+    })
 
   timeline.runs = timeline.runs.map((run) => {
     const initiatingMessage = conversations.find(

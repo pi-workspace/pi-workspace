@@ -7,6 +7,7 @@ import type {
 } from '@/src/composer'
 import type { ManagedSessionRuntimePolicy } from '@/src/domain/managed-session'
 import type { SessionId } from '@/src/domain/session'
+import type { SessionActionCardToolInput } from '@/src/session-action-cards'
 import {
   projectSessionSkillSelections,
   replaceSessionSkillTokens,
@@ -100,6 +101,7 @@ export type PiSessionRuntimeEvent =
       toolCallId: string
       toolName: 'start_activity' | 'complete_activity'
     }>
+  | Readonly<{ type: 'action_card_created'; input: SessionActionCardToolInput; createdAt: number }>
   | Readonly<{
       type: 'tool_execution_end'
       toolCallId: string
@@ -151,6 +153,7 @@ export interface PiSessionRuntimeRegistry {
   compact(sessionId: SessionId): Promise<SessionContextCompactionResult>
   removeQueuedFollowUp(sessionId: SessionId, followUpId: string): Promise<boolean>
   resumeQueuedFollowUps(sessionId: SessionId): Promise<boolean>
+  acceptActionCard(sessionId: SessionId, actionCardId: string): Promise<boolean>
   renameSession(sessionId: SessionId, title: string): Promise<void>
   getWorkingStateSnapshots(): readonly SessionWorkingStateSnapshot[]
   loadActivityDetails(sessionId: SessionId, activityId: string): Promise<AgentActivityDetails | undefined>
@@ -212,6 +215,7 @@ export function createPiSessionRuntimeRegistry({
         revision: 0,
         runs: [],
         entries: [],
+        actionCards: [],
         messages: new Map(),
         activities: new Map(),
         operations: new Map(),
@@ -247,6 +251,31 @@ export function createPiSessionRuntimeRegistry({
     if (!persisted) return false
 
     queuedFollowUpQueue.remove(sessionId, followUpId)
+    publishTimeline(sessionId)
+    return true
+  }
+
+  function acceptActionCard(sessionId: SessionId, actionCardId: string): boolean {
+    const timeline = getTimeline(sessionId)
+    const cardIndex = timeline.actionCards.findIndex(
+      (card) => card.id === actionCardId && card.sessionId === sessionId && card.status === 'available'
+    )
+
+    if (cardIndex < 0) return false
+
+    const card = timeline.actionCards[cardIndex]
+    if (!card) return false
+
+    const persisted = persistActivityRecord(timeline, {
+      version: 1,
+      type: 'action-card-status',
+      actionCardId,
+      status: 'accepted',
+    })
+
+    if (!persisted) return false
+
+    timeline.actionCards[cardIndex] = { ...card, status: 'accepted' }
     publishTimeline(sessionId)
     return true
   }
@@ -326,6 +355,7 @@ export function createPiSessionRuntimeRegistry({
       contextUsage: timeline.contextUsage,
       runs: timeline.runs,
       entries,
+      actionCards: timeline.actionCards,
       queuedFollowUps: queuedFollowUpQueue.queuedFollowUps(sessionId),
       queuedFollowUpsPaused: queuedFollowUpQueue.isPaused(sessionId),
       runFailureReason:
@@ -698,6 +728,22 @@ export function createPiSessionRuntimeRegistry({
 
     if (event.type === 'activity_control_accepted') {
       acceptActivityControl(sessionId, timeline, event.toolCallId)
+      return
+    }
+
+    if (event.type === 'action_card_created') {
+      const card = {
+        id: createId(),
+        sessionId,
+        kind: event.input.kind,
+        title: event.input.title,
+        description: event.input.description,
+        status: 'available' as const,
+        createdAt: event.createdAt,
+      }
+      timeline.actionCards.push(card)
+      persistActivityRecord(timeline, { version: 1, type: 'action-card', card })
+      publishTimeline(sessionId, 'Action available.')
       return
     }
 
@@ -1115,7 +1161,8 @@ export function createPiSessionRuntimeRegistry({
       }
 
       const wasWorking = runtime.isStreaming
-      const acceptedDelivery: AcceptedSessionMessageDelivery = wasWorking ? submission.delivery : 'prompt'
+      const acceptedDelivery: AcceptedSessionMessageDelivery =
+        submission.delivery === 'action' ? 'action' : wasWorking ? submission.delivery : 'prompt'
       const streamingBehavior = wasWorking ? (submission.delivery === 'follow-up' ? 'followUp' : 'steer') : undefined
 
       return new Promise<SessionMessageSubmissionResult>((resolve) => {
@@ -1147,7 +1194,7 @@ export function createPiSessionRuntimeRegistry({
               timestamp,
             }
 
-            timeline.entries.push(message)
+            if (acceptedDelivery !== 'action') timeline.entries.push(message)
 
             if (!activeRun) {
               const run: AgentRun = {
@@ -1162,18 +1209,20 @@ export function createPiSessionRuntimeRegistry({
               persistActivityRecord(timeline, { version: 1, type: 'run', run })
             }
 
-            acceptRun(
-              submission.sessionId,
-              messageId,
-              projected.text,
-              skillMentions,
-              acceptedDelivery === 'steer' ? 'steer' : undefined
-            )
+            if (acceptedDelivery !== 'action') {
+              acceptRun(
+                submission.sessionId,
+                messageId,
+                projected.text,
+                skillMentions,
+                acceptedDelivery === 'steer' ? 'steer' : undefined
+              )
+            }
 
-            if (acceptedDelivery === 'steer') {
+            if (acceptedDelivery === 'steer' || acceptedDelivery === 'action') {
               persistActivityRecord(timeline, {
                 version: 1,
-                type: 'steering-message',
+                type: acceptedDelivery === 'action' ? 'action-message' : 'steering-message',
                 text: projected.text,
                 acceptedAt: timestamp,
               })
@@ -1481,6 +1530,10 @@ export function createPiSessionRuntimeRegistry({
 
       await dispatchNextQueuedFollowUp(sessionId)
       return true
+    },
+    async acceptActionCard(sessionId, actionCardId) {
+      await getRuntime(sessionId)
+      return acceptActionCard(sessionId, actionCardId)
     },
     async renameSession(sessionId, title) {
       const runtime = await getRuntime(sessionId)

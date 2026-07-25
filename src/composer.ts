@@ -1,6 +1,6 @@
 import type { SessionId } from '@/src/domain/session'
 
-export const sessionMessageDeliveries = ['steer', 'follow-up'] as const
+export const sessionMessageDeliveries = ['steer', 'follow-up', 'action'] as const
 
 export type SessionMessageDelivery = (typeof sessionMessageDeliveries)[number]
 

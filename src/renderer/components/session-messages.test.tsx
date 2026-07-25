@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { afterEach, test } from 'node:test'
 import { browser } from '@/src/renderer/test-dom'
-import { cleanup, render } from '@testing-library/react'
+import { act, cleanup, render } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { sessionId } from '@/src/domain/session'
 import type { SessionTranscriptSnapshot } from '@/src/session-transcript'
@@ -165,6 +165,72 @@ test('labels a steering message separately from an ordinary user message', () =>
 
   assert.ok(view.getByText('Steering', { exact: true }))
   assert.ok(view.getByText('Prioritize transcript delivery.', { exact: true }))
+})
+
+test('hides an accepted action card', () => {
+  const view = render(
+    <SessionMessages
+      sessionId={id}
+      isWorking={false}
+      transcript={{
+        ...transcript([]),
+        actionCards: [
+          {
+            id: 'card-1',
+            sessionId: id,
+            kind: 'start-implement-session',
+            title: 'Start implementation',
+            description: 'Create an Implement Session.',
+            status: 'accepted',
+            createdAt: 1,
+          },
+        ],
+      }}
+    />,
+    { container: browser.document.body as unknown as HTMLElement }
+  )
+
+  assert.equal(view.queryByText('Start implementation', { exact: true }), null)
+})
+
+test('allows retrying an action after its request fails', async () => {
+  let attempts = 0
+  const view = render(
+    <SessionMessages
+      sessionId={id}
+      isWorking={false}
+      transcript={{
+        ...transcript([]),
+        actionCards: [
+          {
+            id: 'card-1',
+            sessionId: id,
+            kind: 'start-implement-session',
+            title: 'Start implementation',
+            description: 'Create an Implement Session.',
+            status: 'available',
+            createdAt: 1,
+          },
+        ],
+      }}
+      onActionCard={async () => {
+        attempts += 1
+        throw new Error('Session unavailable')
+      }}
+    />,
+    { container: browser.document.body as unknown as HTMLElement }
+  )
+
+  await act(async () => {
+    await view.getByRole('button', { name: 'Start Implement Session' }).click()
+  })
+  assert.equal(attempts, 1)
+  assert.ok(view.getByText('Could not start this action.', { exact: true }))
+
+  await act(async () => {
+    await view.getByRole('button', { name: 'Start Implement Session' }).click()
+  })
+  assert.equal(attempts, 2)
 })
 
 test('keeps a streaming assistant message in one identity when it completes', () => {

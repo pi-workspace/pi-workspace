@@ -221,6 +221,12 @@ const sessionTranscriptBridge: SessionTranscriptBridge = {
       AgentActivityDetails | undefined
     >
   },
+  acceptActionCard(sessionId, actionCardId) {
+    return ipcRenderer.invoke(sessionTranscriptIpcChannels.acceptActionCard, {
+      sessionId,
+      actionCardId,
+    }) as Promise<boolean>
+  },
   openExternalLink(url) {
     return ipcRenderer.invoke(sessionTranscriptIpcChannels.openExternalLink, url) as Promise<void>
   },

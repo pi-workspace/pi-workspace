@@ -1,6 +1,7 @@
 import type { SessionId } from '@/src/domain/session'
 import type { QueuedFollowUp } from '@/src/queued-follow-up'
 import type { SessionSkillMention } from '@/src/session-skills'
+import type { SessionActionCard } from '@/src/session-action-cards'
 
 const allowedExternalUrlProtocols = new Set(['http:', 'https:', 'mailto:'])
 export const maximumExternalUrlLength = 8_192
@@ -52,6 +53,7 @@ export type SessionTranscriptSnapshot = Readonly<{
   contextUsage?: SessionContextUsage
   runs: readonly AgentRun[]
   entries: readonly SessionTranscriptEntry[]
+  actionCards?: readonly SessionActionCard[]
   queuedFollowUps?: readonly QueuedFollowUp[]
   queuedFollowUpsPaused?: boolean
   runFailureReason?: 'failed' | 'cancelled'
@@ -68,6 +70,7 @@ export interface SessionTranscriptBridge {
   getSnapshot(sessionId: SessionId): Promise<SessionTranscriptSnapshot>
   getWorkingStateSnapshots(): Promise<readonly SessionWorkingStateSnapshot[]>
   loadActivityDetails(sessionId: SessionId, activityId: string): Promise<AgentActivityDetails | undefined>
+  acceptActionCard(sessionId: SessionId, actionCardId: string): Promise<boolean>
   openExternalLink(url: string): Promise<void>
   subscribe(listener: (mutation: SessionTranscriptMutation) => void): () => void
 }

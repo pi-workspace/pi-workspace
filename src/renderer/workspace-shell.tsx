@@ -473,6 +473,8 @@ export function WorkspaceShell({ initialWorkspacesSnapshot, initialSessionDispla
             sessionConfiguration={window.piWorkspace.sessionConfiguration}
             sessionSkills={window.piWorkspace.sessionSkills}
             onToggleSessionPin={toggleSessionPin}
+            acceptActionCard={window.piWorkspace.transcript.acceptActionCard}
+            onStartImplementSession={(workstreamId) => createSession(workstreamId, { mode: 'implement' })}
           />
         ) : selectedWorkstream?.goal ? (
           <WorkstreamSelectionScreen workstream={selectedWorkstream} />

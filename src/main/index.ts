@@ -23,6 +23,7 @@ import { initializeWorkstreamKnowledge } from '@/src/main/workstream-knowledge-i
 import { configureTrustedRendererUrl, registerTrustedRendererWindow } from '@/src/main/trusted-ipc'
 import { getThemeWindowBackgroundColor } from '@/src/theme'
 import { migrateLegacyUserData, type UserDataMigrationResult } from '@/src/main/user-data-migration'
+import { resolveUserDataDirectory } from '@/src/main/user-data-directory'
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -37,11 +38,12 @@ protocol.registerSchemesAsPrivileged([
 ])
 
 const applicationDataDirectory = app.getPath('appData')
+const developmentSpace = process.env.RAILYARD_DEV_SPACE
 const legacyUserDataDirectories = [
   join(applicationDataDirectory, 'pi-workspace'),
   join(applicationDataDirectory, 'Pi Workspace'),
 ]
-const userDataDirectory = join(applicationDataDirectory, 'Railyard')
+const userDataDirectory = resolveUserDataDirectory(applicationDataDirectory, developmentSpace)
 
 async function findLegacyUserDataDirectory(): Promise<string> {
   for (const directory of legacyUserDataDirectories) {
@@ -55,17 +57,20 @@ async function findLegacyUserDataDirectory(): Promise<string> {
   return legacyUserDataDirectories[0]!
 }
 
-const legacyUserDataDirectory = await findLegacyUserDataDirectory()
 let legacyUserDataMigrationResult: UserDataMigrationResult = 'not-required'
 let legacyUserDataMigrationError: unknown
 
-try {
-  legacyUserDataMigrationResult = await migrateLegacyUserData({
-    legacyDirectory: legacyUserDataDirectory,
-    userDataDirectory,
-  })
-} catch (error) {
-  legacyUserDataMigrationError = error
+if (!developmentSpace) {
+  const legacyUserDataDirectory = await findLegacyUserDataDirectory()
+
+  try {
+    legacyUserDataMigrationResult = await migrateLegacyUserData({
+      legacyDirectory: legacyUserDataDirectory,
+      userDataDirectory,
+    })
+  } catch (error) {
+    legacyUserDataMigrationError = error
+  }
 }
 
 await mkdir(userDataDirectory, { mode: 0o700, recursive: true })

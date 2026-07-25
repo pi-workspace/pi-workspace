@@ -4,6 +4,7 @@ import type { SessionId } from '@/src/domain/session'
 import type { OwnedSession, WorkstreamLifecycle } from '@/src/domain/workstream'
 import type { SessionConfigurationBridge } from '@/src/session-configuration'
 import type { SessionSkillsBridge } from '@/src/session-skills'
+import type { SessionTranscriptBridge } from '@/src/session-transcript'
 import { SessionContainer } from '@/src/renderer/components/session-container'
 
 type SessionAreaProperties = {
@@ -35,6 +36,8 @@ type SessionAreaProperties = {
   sessionConfiguration?: SessionConfigurationBridge
   sessionSkills?: SessionSkillsBridge
   onToggleSessionPin: (sessionId: SessionId) => void
+  acceptActionCard?: SessionTranscriptBridge['acceptActionCard']
+  onStartImplementSession?: (workstreamId: string) => Promise<void>
 }
 
 export function SessionArea({
@@ -60,6 +63,8 @@ export function SessionArea({
   sessionConfiguration,
   sessionSkills,
   onToggleSessionPin,
+  acceptActionCard = async () => false,
+  onStartImplementSession = async () => {},
 }: SessionAreaProperties) {
   const sessionPaneRefs = useRef(new Map<SessionId, HTMLDivElement>())
 
@@ -115,6 +120,8 @@ export function SessionArea({
             sessionConfiguration={sessionConfiguration}
             sessionSkills={sessionSkills}
             onTogglePin={() => onToggleSessionPin(session.id)}
+            acceptActionCard={acceptActionCard}
+            onStartImplementSession={onStartImplementSession}
           />
         </div>
       ))}
