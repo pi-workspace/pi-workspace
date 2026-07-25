@@ -61,7 +61,10 @@ export function Composer({
   const configurationPending = pendingConfiguration.size > 0
 
   useEffect(() => {
+    if (draft === currentDraft.current) return
+
     currentDraft.current = draft
+    setSubmissionState(getComposerSubmissionState({ type: 'edit', draft }))
   }, [draft])
 
   useEffect(() => {
@@ -149,7 +152,7 @@ export function Composer({
     [configuration, configurationPending, onDraftChange, session.id, submitMessage]
   )
 
-  const empty = draft.trim().length === 0
+  const empty = submissionState.draft.trim().length === 0
   const sendLabel = isWorking ? 'Steer session' : 'Send message'
   const { awaiting, error, status } = submissionState
   const configurationDisabled = isWorking || awaiting
@@ -240,7 +243,7 @@ export function Composer({
           ref={editorHandle}
           availableSkills={availableSkills}
           describedBy={`${descriptionId} ${statusId}`}
-          draft={draft}
+          draft={submissionState.draft}
           label={`Message for ${session.title}`}
           readOnly={agentRunDisabled}
           onChange={updateDraft}
