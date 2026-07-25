@@ -127,6 +127,9 @@ export function createDemoBridge(scenarioName?: string): PiWorkspaceBridge {
       },
     },
     composer: {
+      async compact() {
+        return { status: 'compacted' as const }
+      },
       async submit() {
         return { status: 'rejected', reason: 'unexpected' }
       },
@@ -202,6 +205,9 @@ export function createDemoBridge(scenarioName?: string): PiWorkspaceBridge {
       },
       async loadActivityDetails(sessionId, activityId) {
         return scenario.activityDetailsBySessionId[sessionId]?.[activityId]
+      },
+      async acceptActionCard() {
+        return false
       },
       async openExternalLink() {},
       subscribe(listener) {

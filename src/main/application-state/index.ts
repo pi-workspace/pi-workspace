@@ -88,6 +88,8 @@ export type ApplicationAuthority = Readonly<{
   subscribeWorkstreamKnowledge(listener: (state: WorkstreamKnowledge) => void): () => void
   acquireSessionRunLease(sessionId: SessionId): Promise<boolean>
   settleSessionRunLease(sessionId: SessionId): Promise<boolean>
+  acquireSessionCompactionLease(sessionId: SessionId): Promise<boolean>
+  settleSessionCompactionLease(sessionId: SessionId): Promise<boolean>
   getCurrentWorkstreamRepositorySet(workstreamId: string): Promise<readonly string[]>
 }>
 
@@ -125,7 +127,8 @@ export async function initializeApplicationAuthority(
   } = workspaceRepositoryStore
   const { reconcilePendingSessionFiles, refreshOwnedSessionAvailability, reconcileCommittedSession } =
     sessionFileReconciliation
-  const { acquireSessionRunLease, settleSessionRunLease } = runLeaseStore
+  const { acquireSessionRunLease, settleSessionRunLease, acquireSessionCompactionLease, settleSessionCompactionLease } =
+    runLeaseStore
   const {
     getWorkstreamKnowledge,
     applyUserWorkstreamKnowledgeCommand,
@@ -186,6 +189,8 @@ export async function initializeApplicationAuthority(
     subscribeWorkstreamKnowledge,
     acquireSessionRunLease,
     settleSessionRunLease,
+    acquireSessionCompactionLease,
+    settleSessionCompactionLease,
     getCurrentWorkstreamRepositorySet,
   }
 }

@@ -1,5 +1,6 @@
-import { Send, Square } from 'lucide-react'
+import { Minimize2, Send, Square } from 'lucide-react'
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
+import { Button } from '@/components/ui-kit/button'
 import { Combobox, ComboboxDescription, ComboboxLabel, ComboboxOption } from '@/components/ui-kit/combobox'
 import { Listbox, ListboxOption } from '@/components/ui-kit/listbox'
 import type { ComposerBridge, SessionMessageDelivery } from '@/src/composer'
@@ -22,6 +23,7 @@ type ComposerProperties = Readonly<{
   draft: string
   focusRequest?: number
   isWorking: boolean
+  isCompacting?: boolean
   contextUsage?: SessionContextUsage
   onActivate: () => void
   onDraftChange: (draft: string) => void
@@ -36,6 +38,7 @@ export function Composer({
   draft,
   focusRequest,
   isWorking,
+  isCompacting = false,
   contextUsage,
   onActivate,
   onDraftChange,
@@ -55,7 +58,9 @@ export function Composer({
   const [pendingConfiguration, setPendingConfiguration] = useState<ReadonlySet<'model' | 'effort'>>(() => new Set())
   const [configurationError, setConfigurationError] = useState<string>()
   const [stopping, setStopping] = useState(false)
+  const [compacting, setCompacting] = useState(false)
   const [stopError, setStopError] = useState<string>()
+  const [compactError, setCompactError] = useState<string>()
   const [availableSkills, setAvailableSkills] = useState<readonly SessionSkill[]>([])
   const [skillsError, setSkillsError] = useState<string>()
   const configurationPending = pendingConfiguration.size > 0
@@ -155,14 +160,20 @@ export function Composer({
   const empty = submissionState.draft.trim().length === 0
   const sendLabel = isWorking ? 'Steer session' : 'Send message'
   const { awaiting, error, status } = submissionState
-  const configurationDisabled = isWorking || awaiting
-  const agentRunDisabled = awaiting || configurationPending
+  const configurationDisabled = isWorking || awaiting || compacting || isCompacting
+  const agentRunDisabled = awaiting || configurationPending || compacting || isCompacting
   const modelConfigurationRequired = configuration !== undefined && configuration.models.length === 0
   const configurationMessage = modelConfigurationRequired
     ? 'No Model is available. Install Pi CLI, sign in to a provider, then restart Railyard.'
     : undefined
   const errorMessage =
-    error || stopError || configurationError || skillsError || configurationMessage || configuration?.persistenceWarning
+    error ||
+    stopError ||
+    compactError ||
+    configurationError ||
+    skillsError ||
+    configurationMessage ||
+    configuration?.persistenceWarning
   const statusMessage = errorMessage || status
 
   const changeConfiguration = useCallback(
@@ -210,6 +221,20 @@ export function Composer({
       ),
     [changeConfiguration, session.id]
   )
+
+  const compact = useCallback(async () => {
+    if (compacting || configurationPending || isCompacting || isWorking || !contextUsage?.canCompact) return
+    setCompacting(true)
+    setCompactError(undefined)
+    try {
+      const result = await window.piWorkspace.composer.compact(session.id)
+      if (result.status === 'rejected') setCompactError(result.message ?? 'Context could not be compacted.')
+    } catch {
+      setCompactError('Context could not be compacted.')
+    } finally {
+      setCompacting(false)
+    }
+  }, [compacting, configurationPending, contextUsage?.canCompact, isCompacting, isWorking, session.id])
 
   const stop = useCallback(async () => {
     if (!stopRun || stopping) return
@@ -263,6 +288,22 @@ export function Composer({
           )}
           <div className="ml-auto flex items-end gap-1">
             {contextUsage && <ContextWindowUsage usage={contextUsage} />}
+            {contextUsage?.canCompact && !isWorking && !isCompacting && (
+              <Button
+                plain
+                type="button"
+                aria-label="Compact context"
+                className="size-11 !items-center !justify-center !p-0 text-composer-muted-foreground data-hover:!bg-composer-interaction data-hover:!text-content-foreground"
+                disabled={compacting || configurationPending}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  void compact()
+                }}
+                title={compacting ? 'Compacting context…' : 'Compact context'}
+              >
+                <Minimize2 aria-hidden="true" className={compacting ? 'size-4 animate-pulse' : 'size-4'} />
+              </Button>
+            )}
             {isWorking && stopRun && (
               <button
                 type="button"
@@ -280,10 +321,11 @@ export function Composer({
                 </span>
               </button>
             )}
-            <button
+            <Button
+              plain
               type="button"
               aria-label={sendLabel}
-              className="flex size-11 items-end justify-center rounded-lg text-composer-action-foreground outline-none transition-opacity motion-reduce:transition-none enabled:cursor-pointer focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-composer-background disabled:cursor-not-allowed disabled:opacity-35"
+              className="size-11 !items-center !justify-center !p-0 !text-composer-action-foreground data-disabled:opacity-35"
               disabled={empty || agentRunDisabled || modelConfigurationRequired}
               onClick={(event) => {
                 event.stopPropagation()
@@ -296,7 +338,7 @@ export function Composer({
               <span className="flex size-9 items-center justify-center rounded-lg bg-composer-action-background">
                 <Send aria-hidden="true" className="size-4" strokeWidth={2.25} />
               </span>
-            </button>
+            </Button>
           </div>
         </div>
       </div>
@@ -339,26 +381,7 @@ function contextUsageLevel(percent: number): ContextUsageLevel {
 function ContextWindowUsage({ usage }: ContextWindowUsageProperties) {
   const contextWindow = formatTokenCount(usage.contextWindow)
 
-  if (usage.tokens === null || usage.percent === null) {
-    return (
-      <div className="flex h-11 items-end pb-3">
-        <span
-          className="context-usage"
-          data-level="nominal"
-          role="status"
-          title="Context window usage is updating after compaction"
-        >
-          <span aria-hidden="true" className="context-usage-track" />
-          <span aria-hidden="true" className="context-usage-value">
-            —
-          </span>
-          <span className="sr-only">
-            Context window usage is updating after compaction, and is unavailable until Pi finishes its next response.
-          </span>
-        </span>
-      </div>
-    )
-  }
+  if (usage.tokens === null || usage.percent === null) return null
 
   // The runtime reports an unrounded float. The bar is drawn from it directly so
   // sub-percent growth still moves;

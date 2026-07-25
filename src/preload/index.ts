@@ -148,6 +148,9 @@ const workstreamKnowledgeBridge: WorkstreamKnowledgeBridge = {
 }
 
 const composerBridge: ComposerBridge = {
+  compact(sessionId) {
+    return ipcRenderer.invoke(composerIpcChannels.compact, { sessionId })
+  },
   submit(submission) {
     return ipcRenderer.invoke(composerIpcChannels.submit, submission) as Promise<SessionMessageSubmissionResult>
   },
@@ -217,6 +220,12 @@ const sessionTranscriptBridge: SessionTranscriptBridge = {
     return ipcRenderer.invoke(sessionTranscriptIpcChannels.loadActivityDetails, { sessionId, activityId }) as Promise<
       AgentActivityDetails | undefined
     >
+  },
+  acceptActionCard(sessionId, actionCardId) {
+    return ipcRenderer.invoke(sessionTranscriptIpcChannels.acceptActionCard, {
+      sessionId,
+      actionCardId,
+    }) as Promise<boolean>
   },
   openExternalLink(url) {
     return ipcRenderer.invoke(sessionTranscriptIpcChannels.openExternalLink, url) as Promise<void>

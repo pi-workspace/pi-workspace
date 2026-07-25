@@ -84,7 +84,14 @@ export type AgentActivity = Readonly<{
   completedAt?: number
 }>
 
-export type SessionTimelineEntry = ConversationEntry | AgentActivity
+export type ContextCompaction = Readonly<{
+  type: 'context-compaction'
+  id: string
+  summary: string
+  timestamp: number
+}>
+
+export type SessionTimelineEntry = ConversationEntry | AgentActivity | ContextCompaction
 
 export type AgentRun = Readonly<{
   id: string

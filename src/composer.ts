@@ -1,6 +1,6 @@
 import type { SessionId } from '@/src/domain/session'
 
-export const sessionMessageDeliveries = ['steer', 'follow-up'] as const
+export const sessionMessageDeliveries = ['steer', 'follow-up', 'action'] as const
 
 export type SessionMessageDelivery = (typeof sessionMessageDeliveries)[number]
 
@@ -23,6 +23,9 @@ export function isSessionSkillName(value: unknown): value is string {
 }
 
 export type AcceptedSessionMessageDelivery = 'prompt' | SessionMessageDelivery
+
+export type SessionContextCompactionResult =
+  Readonly<{ status: 'compacted' }> | Readonly<{ status: 'rejected'; message: string }>
 
 export type SessionRunStopResult = Readonly<{ status: 'stopped' | 'not-running' }>
 
@@ -51,6 +54,7 @@ export type SessionMessageSubmissionResult =
     }>
 
 export interface ComposerBridge {
+  compact(sessionId: SessionId): Promise<SessionContextCompactionResult>
   submit(submission: SessionMessageSubmission): Promise<SessionMessageSubmissionResult>
   stop(sessionId: SessionId): Promise<SessionRunStopResult>
   removeQueuedFollowUp(sessionId: SessionId, followUpId: string): Promise<boolean>

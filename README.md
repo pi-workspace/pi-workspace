@@ -167,22 +167,22 @@ Unknown scenario names use `startup`. Use a 1200 by 800 browser viewport as the 
 
 ### Development commands
 
-| Command                    | Description                                                      |
-| -------------------------- | ---------------------------------------------------------------- |
-| `bun run build`            | Build the production Electron application into `dist/`.          |
-| `bun run check`            | Run the complete local and CI quality gate.                      |
-| `bun run demo`             | Open the isolated product screenshot demo.                       |
-| `bun run dev`              | Run the development application.                                 |
-| `bun run start`            | Build and launch the production application.                     |
-| `bun run test`             | Run the test suite.                                              |
-| `bun run lint`             | Lint the source files.                                           |
-| `bun run format:check`     | Check formatting.                                                |
-| `bun run package:linux`    | Build a local Debian package for release troubleshooting.        |
-| `bun run package:mac`      | Build a local universal macOS DMG for release troubleshooting.   |
-| `bun run package:win`      | Build a local Windows x64 installer for release troubleshooting. |
-| `bun run release:validate` | Validate the beta version and latest bundled Release Note.       |
-| `bun run security:scan`    | Scan Git history and dependencies for known risks.               |
-| `bun run typecheck`        | Check TypeScript types.                                          |
+| Command                    | Description                                                            |
+| -------------------------- | ---------------------------------------------------------------------- |
+| `bun run build`            | Build the production Electron application into `dist/`.                |
+| `bun run check`            | Run the complete local and CI quality gate.                            |
+| `bun run demo`             | Open the isolated product screenshot demo.                             |
+| `bun run dev`              | Run the development application with data isolated to its Git branch.  |
+| `bun run start`            | Build and launch the production application with normal Railyard data. |
+| `bun run test`             | Run the test suite.                                                    |
+| `bun run lint`             | Lint the source files.                                                 |
+| `bun run format:check`     | Check formatting.                                                      |
+| `bun run package:linux`    | Build a local Debian package for release troubleshooting.              |
+| `bun run package:mac`      | Build a local universal macOS DMG for release troubleshooting.         |
+| `bun run package:win`      | Build a local Windows x64 installer for release troubleshooting.       |
+| `bun run release:validate` | Validate the beta version and latest bundled Release Note.             |
+| `bun run security:scan`    | Scan Git history and dependencies for known risks.                     |
+| `bun run typecheck`        | Check TypeScript types.                                                |
 
 ## License
 

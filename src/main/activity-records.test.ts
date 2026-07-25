@@ -121,6 +121,18 @@ test('accepts a steering message record', () => {
   )
 })
 
+test('accepts an action-card status record', () => {
+  assert.equal(
+    isActivityLayerRecord({
+      version: 1,
+      type: 'action-card-status',
+      actionCardId: 'card-1',
+      status: 'accepted',
+    }),
+    true
+  )
+})
+
 test('rejects malformed diagnostic records', () => {
   assert.equal(
     isActivityLayerRecord({

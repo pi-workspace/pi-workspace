@@ -113,7 +113,7 @@
       ],
       "artifactName": "railyard-${version}-${arch}.${ext}",
       "category": "Development",
-      "description": "Railyard is a local desktop app for working with Pi across Git repositories and long-running goals.\n\nOrganize related repositories into Workspaces, use Quick Sessions for focused tasks, and carry shared context across long-running Workstreams. Plan with Brainstorm Sessions, then make and validate changes with Implement Sessions.\n\nApplication data is stored locally. Railyard uses Pi's existing model-provider configuration; it does not provide a separate account or provider login.",
+      "description": "Railyard is a local desktop app for working with Pi across Git repositories and long-running goals. Organize related repositories into Workspaces, use Quick Sessions for focused tasks, and carry shared context across long-running Workstreams. Plan with Brainstorm Sessions, then make and validate changes with Implement Sessions. Application data is stored locally. Railyard uses Pi's existing model-provider configuration; it does not provide a separate account or provider login.",
       "executableName": "railyard",
       "icon": "assets/icons",
       "maintainer": "Railyard contributors <7268075+OfficialOzzy@users.noreply.github.com>",

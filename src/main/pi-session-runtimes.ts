@@ -2,10 +2,12 @@ import type {
   AcceptedSessionMessageDelivery,
   SessionMessageSubmission,
   SessionMessageSubmissionResult,
+  SessionContextCompactionResult,
   SessionRunStopResult,
 } from '@/src/composer'
 import type { ManagedSessionRuntimePolicy } from '@/src/domain/managed-session'
 import type { SessionId } from '@/src/domain/session'
+import type { SessionActionCardToolInput } from '@/src/session-action-cards'
 import {
   projectSessionSkillSelections,
   replaceSessionSkillTokens,
@@ -25,6 +27,7 @@ import {
   type AgentActivityDetails,
   type AgentActivityKind,
   type AgentRun,
+  type ContextCompaction,
   type ConversationEntry,
   type SessionWorkingStateSnapshot,
   type ToolExecution,
@@ -67,6 +70,8 @@ export interface PiSessionRuntime {
   rename?(title: string): void
   subscribe(listener: (event: PiSessionRuntimeEvent) => void): () => void
   abort?(): Promise<void>
+  compact?(): Promise<void>
+  canCompact?(): boolean
   loadHistory?(): PiSessionRuntimeHistory
   appendActivityRecord?(record: ActivityLayerRecord): void
   loadRawOperation?(toolCallId: string): Readonly<{ input: unknown; result?: unknown }> | undefined
@@ -83,17 +88,20 @@ export interface PiSessionRuntime {
 export type PiSessionRuntimeHistory = Readonly<{
   conversations: readonly ConversationEntry[]
   activityRecords: readonly ActivityLayerRecord[]
+  compactions?: readonly ContextCompaction[]
   finalState: 'completed' | 'failed' | 'cancelled' | 'indeterminate'
 }>
 
 export type PiSessionRuntimeEvent =
   | Readonly<{ type: 'context_usage'; usage?: SessionContextUsage }>
+  | Readonly<{ type: 'compaction_completed'; summary: string }>
   | Readonly<{ type: 'tool_execution_start'; toolCallId: string; toolName: string; input: unknown }>
   | Readonly<{
       type: 'activity_control_accepted'
       toolCallId: string
       toolName: 'start_activity' | 'complete_activity'
     }>
+  | Readonly<{ type: 'action_card_created'; input: SessionActionCardToolInput; createdAt: number }>
   | Readonly<{
       type: 'tool_execution_end'
       toolCallId: string
@@ -127,6 +135,8 @@ type PiSessionRuntimeRegistryOptions = Readonly<{
   reconcileAfterRun?: (sessionId: SessionId) => Promise<boolean>
   acquireRunLease?: (sessionId: SessionId) => boolean | Promise<boolean>
   releaseRunLease?: (sessionId: SessionId) => void | Promise<void>
+  acquireCompactionLease?: (sessionId: SessionId) => boolean | Promise<boolean>
+  releaseCompactionLease?: (sessionId: SessionId) => void | Promise<void>
   noProgressTimeoutMs?: number
   stopTimeoutMs?: number
 }>
@@ -140,8 +150,10 @@ export interface PiSessionRuntimeRegistry {
   ): void
   submit(submission: SessionMessageSubmission): Promise<SessionMessageSubmissionResult>
   stop(sessionId: SessionId): Promise<SessionRunStopResult>
+  compact(sessionId: SessionId): Promise<SessionContextCompactionResult>
   removeQueuedFollowUp(sessionId: SessionId, followUpId: string): Promise<boolean>
   resumeQueuedFollowUps(sessionId: SessionId): Promise<boolean>
+  acceptActionCard(sessionId: SessionId, actionCardId: string): Promise<boolean>
   renameSession(sessionId: SessionId, title: string): Promise<void>
   getWorkingStateSnapshots(): readonly SessionWorkingStateSnapshot[]
   loadActivityDetails(sessionId: SessionId, activityId: string): Promise<AgentActivityDetails | undefined>
@@ -179,6 +191,8 @@ export function createPiSessionRuntimeRegistry({
   reconcileAfterRun,
   acquireRunLease = () => true,
   releaseRunLease = () => {},
+  acquireCompactionLease = () => true,
+  releaseCompactionLease = () => {},
   noProgressTimeoutMs = 30_000,
   stopTimeoutMs = 5_000,
 }: PiSessionRuntimeRegistryOptions): PiSessionRuntimeRegistry {
@@ -201,10 +215,12 @@ export function createPiSessionRuntimeRegistry({
         revision: 0,
         runs: [],
         entries: [],
+        actionCards: [],
         messages: new Map(),
         activities: new Map(),
         operations: new Map(),
         controlTransitions: new Map(),
+        isCompacting: false,
       }
 
       timelineBySessionId.set(sessionId, timeline)
@@ -235,6 +251,31 @@ export function createPiSessionRuntimeRegistry({
     if (!persisted) return false
 
     queuedFollowUpQueue.remove(sessionId, followUpId)
+    publishTimeline(sessionId)
+    return true
+  }
+
+  function acceptActionCard(sessionId: SessionId, actionCardId: string): boolean {
+    const timeline = getTimeline(sessionId)
+    const cardIndex = timeline.actionCards.findIndex(
+      (card) => card.id === actionCardId && card.sessionId === sessionId && card.status === 'available'
+    )
+
+    if (cardIndex < 0) return false
+
+    const card = timeline.actionCards[cardIndex]
+    if (!card) return false
+
+    const persisted = persistActivityRecord(timeline, {
+      version: 1,
+      type: 'action-card-status',
+      actionCardId,
+      status: 'accepted',
+    })
+
+    if (!persisted) return false
+
+    timeline.actionCards[cardIndex] = { ...card, status: 'accepted' }
     publishTimeline(sessionId)
     return true
   }
@@ -288,6 +329,10 @@ export function createPiSessionRuntimeRegistry({
         entries.push({ type: 'activity', activity: entry })
         return
       }
+      if (entry.type === 'context-compaction') {
+        entries.push({ type: 'compaction', compaction: entry })
+        return
+      }
 
       const message = messagesById.get(entry.id)
       if (!message) return
@@ -306,9 +351,11 @@ export function createPiSessionRuntimeRegistry({
       sessionId,
       revision: timeline.revision,
       isWorking: timeline.runs.some((run) => run.status === 'running'),
+      isCompacting: timeline.isCompacting,
       contextUsage: timeline.contextUsage,
       runs: timeline.runs,
       entries,
+      actionCards: timeline.actionCards,
       queuedFollowUps: queuedFollowUpQueue.queuedFollowUps(sessionId),
       queuedFollowUpsPaused: queuedFollowUpQueue.isPaused(sessionId),
       runFailureReason:
@@ -585,6 +632,13 @@ export function createPiSessionRuntimeRegistry({
       return
     }
 
+    if (event.type === 'compaction_completed') {
+      timeline.entries.push({ type: 'context-compaction', id: createId(), summary: event.summary, timestamp: now() })
+      publishTimeline(sessionId)
+
+      return
+    }
+
     if (event.type === 'tool_execution_start') {
       clearNoProgressTimeout(sessionId)
 
@@ -674,6 +728,22 @@ export function createPiSessionRuntimeRegistry({
 
     if (event.type === 'activity_control_accepted') {
       acceptActivityControl(sessionId, timeline, event.toolCallId)
+      return
+    }
+
+    if (event.type === 'action_card_created') {
+      const card = {
+        id: createId(),
+        sessionId,
+        kind: event.input.kind,
+        title: event.input.title,
+        description: event.input.description,
+        status: 'available' as const,
+        createdAt: event.createdAt,
+      }
+      timeline.actionCards.push(card)
+      persistActivityRecord(timeline, { version: 1, type: 'action-card', card })
+      publishTimeline(sessionId, 'Action available.')
       return
     }
 
@@ -1091,7 +1161,8 @@ export function createPiSessionRuntimeRegistry({
       }
 
       const wasWorking = runtime.isStreaming
-      const acceptedDelivery: AcceptedSessionMessageDelivery = wasWorking ? submission.delivery : 'prompt'
+      const acceptedDelivery: AcceptedSessionMessageDelivery =
+        submission.delivery === 'action' ? 'action' : wasWorking ? submission.delivery : 'prompt'
       const streamingBehavior = wasWorking ? (submission.delivery === 'follow-up' ? 'followUp' : 'steer') : undefined
 
       return new Promise<SessionMessageSubmissionResult>((resolve) => {
@@ -1123,7 +1194,7 @@ export function createPiSessionRuntimeRegistry({
               timestamp,
             }
 
-            timeline.entries.push(message)
+            if (acceptedDelivery !== 'action') timeline.entries.push(message)
 
             if (!activeRun) {
               const run: AgentRun = {
@@ -1138,18 +1209,20 @@ export function createPiSessionRuntimeRegistry({
               persistActivityRecord(timeline, { version: 1, type: 'run', run })
             }
 
-            acceptRun(
-              submission.sessionId,
-              messageId,
-              projected.text,
-              skillMentions,
-              acceptedDelivery === 'steer' ? 'steer' : undefined
-            )
+            if (acceptedDelivery !== 'action') {
+              acceptRun(
+                submission.sessionId,
+                messageId,
+                projected.text,
+                skillMentions,
+                acceptedDelivery === 'steer' ? 'steer' : undefined
+              )
+            }
 
-            if (acceptedDelivery === 'steer') {
+            if (acceptedDelivery === 'steer' || acceptedDelivery === 'action') {
               persistActivityRecord(timeline, {
                 version: 1,
-                type: 'steering-message',
+                type: acceptedDelivery === 'action' ? 'action-message' : 'steering-message',
                 text: projected.text,
                 acceptedAt: timestamp,
               })
@@ -1195,6 +1268,95 @@ export function createPiSessionRuntimeRegistry({
     })
 
     return result
+  }
+
+  async function compactImmediately(sessionId: SessionId): Promise<SessionContextCompactionResult> {
+    const timeline = getTimeline(sessionId)
+    if (timeline.runs.some((run) => run.status === 'running'))
+      return { status: 'rejected', message: 'Wait for the Agent Run to finish before compacting.' }
+    if (timeline.isCompacting) return { status: 'rejected', message: 'Session context is already compacting.' }
+
+    let leaseAcquired: boolean
+    try {
+      leaseAcquired = await acquireCompactionLease(sessionId)
+    } catch {
+      return { status: 'rejected', message: 'Pi couldn’t reserve this Session for context compaction.' }
+    }
+
+    if (!leaseAcquired) {
+      return { status: 'rejected', message: 'This Session is unavailable or already busy.' }
+    }
+
+    try {
+      timeline.isCompacting = true
+      publishTimeline(sessionId, 'Compacting Session context…')
+
+      let runtime: SessionRuntimeEntry | undefined
+      try {
+        const entry = lifecycle.getEntry(sessionId)
+        runtime = entry
+          ? await entry
+          : await getRuntime(sessionId).then((value) =>
+              value ? ({ runtime: value } as SessionRuntimeEntry) : undefined
+            )
+      } catch {
+        timeline.isCompacting = false
+        publishTimeline(sessionId, 'Session context compaction failed.')
+        return { status: 'rejected', message: 'Pi couldn’t open this Session.' }
+      }
+
+      if (!runtime?.runtime.compact || runtime.runtime.canCompact?.() === false) {
+        timeline.isCompacting = false
+        publishTimeline(sessionId)
+        return {
+          status: 'rejected',
+          message: runtime?.runtime.compact
+            ? 'More Session context is needed before it can be compacted.'
+            : 'This Session does not support manual compaction.',
+        }
+      }
+
+      try {
+        await runtime.runtime.compact()
+        timeline.isCompacting = false
+        publishTimeline(sessionId, 'Session context compacted.')
+        return { status: 'compacted' }
+      } catch (error) {
+        timeline.isCompacting = false
+        publishTimeline(sessionId, 'Session context compaction failed.')
+        return {
+          status: 'rejected',
+          message: error instanceof Error ? error.message : 'Context could not be compacted.',
+        }
+      }
+    } finally {
+      try {
+        await releaseCompactionLease(sessionId)
+      } catch (error) {
+        console.error('Unable to release a Session context compaction lease.', error)
+      }
+    }
+  }
+
+  async function compact(sessionId: SessionId): Promise<SessionContextCompactionResult> {
+    const previous = submissionQueuesBySessionId.get(sessionId) ?? Promise.resolve()
+    let release!: () => void
+    const current = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const queued = previous.then(() => current)
+
+    submissionQueuesBySessionId.set(sessionId, queued)
+
+    try {
+      await previous
+      return await activationGate.run(sessionId, () => compactImmediately(sessionId))
+    } finally {
+      release()
+      if (submissionQueuesBySessionId.get(sessionId) === queued) {
+        submissionQueuesBySessionId.delete(sessionId)
+      }
+    }
   }
 
   async function stop(sessionId: SessionId): Promise<SessionRunStopResult> {
@@ -1356,6 +1518,7 @@ export function createPiSessionRuntimeRegistry({
     },
     submit,
     stop,
+    compact,
     async removeQueuedFollowUp(sessionId, followUpId) {
       await getRuntime(sessionId)
       return removeQueuedFollowUp(sessionId, followUpId)
@@ -1367,6 +1530,10 @@ export function createPiSessionRuntimeRegistry({
 
       await dispatchNextQueuedFollowUp(sessionId)
       return true
+    },
+    async acceptActionCard(sessionId, actionCardId) {
+      await getRuntime(sessionId)
+      return acceptActionCard(sessionId, actionCardId)
     },
     async renameSession(sessionId, title) {
       const runtime = await getRuntime(sessionId)
