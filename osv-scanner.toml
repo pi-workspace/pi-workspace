@@ -1,0 +1,4 @@
+[[IgnoredVulns]]
+id = "GHSA-mh99-v99m-4gvg"
+ignoreUntil = 2026-10-25
+reason = "brace-expansion v5 has the only available fix; forcing it into legacy Electron Builder dependencies breaks macOS packaging. These build-time glob patterns are fixed repository configuration, not untrusted input."
