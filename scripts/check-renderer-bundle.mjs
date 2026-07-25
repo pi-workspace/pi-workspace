@@ -1,5 +1,6 @@
 import { readdir, stat } from 'node:fs/promises'
 import { join } from 'node:path'
+import { identifyRendererBundleFiles } from './renderer-bundle-files.mjs'
 
 const rendererDirectory = 'dist/renderer'
 const initialJavaScriptBudget = 1100 * 1024
@@ -19,9 +20,7 @@ async function filesIn(directory) {
 }
 
 const files = await filesIn(rendererDirectory)
-const assets = files.filter((path) => path.includes('/assets/'))
-const javascriptAssets = assets.filter((path) => path.endsWith('.js'))
-const entry = javascriptAssets.find((path) => /\/index-[^/]+\.js$/.test(path))
+const { assets, entry } = identifyRendererBundleFiles(files)
 
 if (!entry) throw new Error('Renderer bundle entry was not found.')
 
