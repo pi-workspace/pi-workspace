@@ -67,14 +67,18 @@ test('rewrites copied application-state Session paths to the Railyard directory'
   const railyardDirectory = join(root, 'Railyard')
   const legacySessionPath = join(legacyDirectory, 'sessions', 'session-a.jsonl')
   const railyardSessionPath = join(railyardDirectory, 'sessions', 'session-a.jsonl')
+  const legacySessionDirectory = join(legacyDirectory, 'session-cwd')
+  const railyardSessionDirectory = join(railyardDirectory, 'session-cwd')
 
   await mkdir(legacyDirectory, { recursive: true })
   const database = new Database(join(legacyDirectory, 'application-state.sqlite'))
   database.exec(
-    'CREATE TABLE sessions (expected_jsonl_path TEXT NOT NULL); CREATE TABLE external_side_effect_intents (session_path TEXT NOT NULL);'
+    'CREATE TABLE sessions (expected_jsonl_path TEXT NOT NULL); CREATE TABLE external_side_effect_intents (directory_path TEXT NOT NULL, session_path TEXT NOT NULL);'
   )
   database.prepare('INSERT INTO sessions (expected_jsonl_path) VALUES (?)').run(legacySessionPath)
-  database.prepare('INSERT INTO external_side_effect_intents (session_path) VALUES (?)').run(legacySessionPath)
+  database
+    .prepare('INSERT INTO external_side_effect_intents (directory_path, session_path) VALUES (?, ?)')
+    .run(legacySessionDirectory, legacySessionPath)
   database.close()
 
   const result = await migrateLegacyUserData({
@@ -89,11 +93,12 @@ test('rewrites copied application-state Session paths to the Railyard directory'
   const migratedSession = migratedDatabase.prepare('SELECT expected_jsonl_path FROM sessions').get() as {
     expected_jsonl_path: string
   }
-  const migratedIntent = migratedDatabase.prepare('SELECT session_path FROM external_side_effect_intents').get() as {
-    session_path: string
-  }
+  const migratedIntent = migratedDatabase
+    .prepare('SELECT directory_path, session_path FROM external_side_effect_intents')
+    .get() as { directory_path: string; session_path: string }
 
   assert.equal(migratedSession.expected_jsonl_path, railyardSessionPath)
+  assert.equal(migratedIntent.directory_path, railyardSessionDirectory)
   assert.equal(migratedIntent.session_path, railyardSessionPath)
   migratedDatabase.close()
 })

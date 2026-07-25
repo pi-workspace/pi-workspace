@@ -74,9 +74,9 @@ async function rewriteApplicationStatePaths(
     if (tableExists(database, 'external_side_effect_intents')) {
       database
         .prepare(
-          'UPDATE external_side_effect_intents SET session_path = replace(session_path, ?, ?) WHERE session_path LIKE ?'
+          'UPDATE external_side_effect_intents SET directory_path = replace(directory_path, ?, ?), session_path = replace(session_path, ?, ?) WHERE directory_path LIKE ? OR session_path LIKE ?'
         )
-        .run(sourcePrefix, destinationPrefix, `${sourcePrefix}%`)
+        .run(sourcePrefix, destinationPrefix, sourcePrefix, destinationPrefix, `${sourcePrefix}%`, `${sourcePrefix}%`)
     }
 
     database.exec('COMMIT;')
