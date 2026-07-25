@@ -9,7 +9,7 @@ These guidelines apply to all changes in this repository.
 ## Scope
 
 - Make focused changes that address only the requested behavior.
-- Pi Workspace is in live beta. Preserve backwards compatibility for persisted state and add explicit data migrations when schema or stored contracts change.
+- Railyard is in live beta. Preserve backwards compatibility for persisted state and add explicit data migrations when schema or stored contracts change.
 - Do not add speculative concepts, states, abstractions, or supporting features before their requirements are known.
 - Apply YAGNI and KISS. Apply DRY to repeated knowledge or behavior, not coincidentally similar code.
 - Reuse existing code when it is a natural fit, but do not introduce an abstraction solely to remove small amounts of duplication.

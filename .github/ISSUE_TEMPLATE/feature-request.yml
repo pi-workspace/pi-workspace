@@ -1,5 +1,5 @@
 name: Feature request
-description: Propose an outcome or improvement for Pi Workspace
+description: Propose an outcome or improvement for Railyard
 title: '[Feature]: '
 body:
   - type: markdown
@@ -11,7 +11,7 @@ body:
     id: problem
     attributes:
       label: Problem
-      description: What user or contributor problem should Pi Workspace solve?
+      description: What user or contributor problem should Railyard solve?
     validations:
       required: true
 

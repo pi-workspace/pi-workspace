@@ -53,7 +53,7 @@ test('Brainstorm methodology directs investigation and structured knowledge capt
   assert.equal(
     managedSessionMethodology('brainstorm'),
     [
-      'You are operating a Pi Workspace Brainstorm Session.',
+      'You are operating a Railyard Brainstorm Session.',
       'Call workspace_overview before Repository work, then use the supplied Repository working paths.',
       'Read workstream_knowledge before investigating. Use update_workstream_knowledge to preserve relevant evidence, findings, questions, proposed decisions, Repository impact, plan steps, and validation requirements for the Workstream.',
       'Investigate the Workspace and produce an implementation-ready specification. Do not modify Repository content.',
@@ -65,7 +65,7 @@ test('Implement methodology directs implementation from shared knowledge and rec
   assert.equal(
     managedSessionMethodology('implement'),
     [
-      'You are operating a Pi Workspace Implement Session.',
+      'You are operating a Railyard Implement Session.',
       'Call workspace_overview before Repository work. Source checkout paths are for inspection only.',
       'Read workstream_knowledge before implementing. Use update_workstream_knowledge to preserve relevant implementation progress and newly discovered Workstream knowledge.',
       'Before modifying a Repository, call prepare_repository with its id. Make and validate all changes in the returned Session worktree path.',

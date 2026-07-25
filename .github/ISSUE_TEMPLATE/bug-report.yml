@@ -1,5 +1,5 @@
 name: Bug report
-description: Report reproducible incorrect behavior in Pi Workspace
+description: Report reproducible incorrect behavior in Railyard
 title: '[Bug]: '
 body:
   - type: markdown
@@ -10,7 +10,7 @@ body:
   - type: input
     id: version
     attributes:
-      label: Pi Workspace version
+      label: Railyard version
       description: Use the version shown in the release or application Changelog.
       placeholder: 0.2.0-beta.1
     validations:

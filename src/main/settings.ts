@@ -20,7 +20,7 @@ let lastBroadcastSnapshot: SettingsSnapshot | undefined
 const settingsListeners = new Set<(snapshot: SettingsSnapshot) => void>()
 
 const loadWarning =
-  'Settings could not be loaded. Default appearance is in use. Fix or remove settings.json, then restart Pi Workspace.'
+  'Settings could not be loaded. Default appearance is in use. Fix or remove settings.json, then restart Railyard.'
 const migrationWarning = 'Settings could not be updated. The default theme is in use.'
 const saveWarning = 'Settings could not be saved. Your appearance change was not applied.'
 
@@ -43,7 +43,16 @@ async function loadSettings(): Promise<Readonly<{ settings: Settings; warning?: 
       return { settings: defaultSettings, warning: loadWarning }
     }
 
-    if (typeof savedSettings === 'object' && savedSettings !== null && !Object.hasOwn(savedSettings, 'theme')) {
+    const savedTheme =
+      typeof savedSettings === 'object' && savedSettings !== null
+        ? (savedSettings as { theme?: unknown }).theme
+        : undefined
+
+    if (
+      typeof savedSettings === 'object' &&
+      savedSettings !== null &&
+      (!Object.hasOwn(savedSettings, 'theme') || savedTheme !== parsed.theme)
+    ) {
       try {
         await saveSettings(parsed)
       } catch (error) {

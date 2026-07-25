@@ -23,9 +23,9 @@ test('unexpected React rendering failures show a safe reload fallback', async ()
     )
 
     const alert = await view.findByRole('alert')
-    assert.match(alert.textContent ?? '', /Pi Workspace encountered a problem/)
+    assert.match(alert.textContent ?? '', /Railyard encountered a problem/)
     assert.doesNotMatch(alert.textContent ?? '', /private renderer detail/)
-    assert.ok(view.getByRole('button', { name: 'Reload Pi Workspace' }))
+    assert.ok(view.getByRole('button', { name: 'Reload Railyard' }))
   } finally {
     console.error = originalError
   }

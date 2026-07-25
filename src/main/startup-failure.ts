@@ -1,11 +1,11 @@
-export const startupRetryUrl = 'pi-workspace-retry:'
+export const startupRetryUrl = 'railyard-retry:'
 
 export function createStartupFailureUrl(kind: 'initialization' | 'renderer-load'): string {
-  const title = kind === 'initialization' ? 'Pi Workspace could not start' : 'Pi Workspace could not open its window'
+  const title = kind === 'initialization' ? 'Railyard could not start' : 'Railyard could not open its window'
   const guidance =
     kind === 'initialization'
-      ? 'Your saved Workspaces and Sessions are unaffected. Restart Pi Workspace to try initialization again.'
-      : 'Your saved Workspaces and Sessions are unaffected. Restart Pi Workspace to load the window again.'
+      ? 'Your saved Workspaces and Sessions are unaffected. Restart Railyard to try initialization again.'
+      : 'Your saved Workspaces and Sessions are unaffected. Restart Railyard to load the window again.'
   const html = `<!doctype html>
 <html lang="en">
 <head>
@@ -23,7 +23,7 @@ a { display: inline-block; margin-top: .75rem; border: 1px solid ButtonBorder; b
 a:focus-visible { outline: 2px solid Highlight; outline-offset: 2px; }
 </style>
 </head>
-<body><main role="alert"><h1>${title}</h1><p>${guidance}</p><a href="${startupRetryUrl}">Restart Pi Workspace</a></main></body>
+<body><main role="alert"><h1>${title}</h1><p>${guidance}</p><a href="${startupRetryUrl}">Restart Railyard</a></main></body>
 </html>`
 
   return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`

@@ -223,7 +223,7 @@ export function createDemoBridge(scenarioName?: string): PiWorkspaceBridge {
             repositoryId: repository.id,
             repositoryName: repository.name,
             workingPath: `/Users/maya/Projects/.worktrees/${workstreamId}/${repository.id}`,
-            branch: `pi-workspace/${workstreamId}/${repository.id}`,
+            branch: `railyard/${workstreamId}/${repository.id}`,
             baseCommit: index === 0 ? '8f31c2a' : 'c941a0e',
           })),
         }

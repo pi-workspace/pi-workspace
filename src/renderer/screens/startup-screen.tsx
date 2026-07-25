@@ -36,7 +36,7 @@ export function StartupScreen({
       <div className="relative flex flex-1 items-center">
         <div className="mx-auto grid w-full max-w-5xl gap-14 lg:grid-cols-[minmax(0,1.15fr)_minmax(17rem,0.85fr)] lg:gap-24">
           <section className="flex flex-col items-start">
-            <p className="text-sm/6 font-medium text-content-muted-foreground">Pi Workspace</p>
+            <p className="text-sm/6 font-medium text-content-muted-foreground">Railyard</p>
             <h1 className="mt-3 max-w-xl text-3xl/10 font-semibold tracking-tight text-content-foreground sm:text-4xl/12">
               Move one durable goal forward.
             </h1>

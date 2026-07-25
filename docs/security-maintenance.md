@@ -1,6 +1,6 @@
 # Security maintenance
 
-This policy defines how Pi Workspace maintains dependencies and responds to vulnerability findings.
+This policy defines how Railyard maintains dependencies and responds to vulnerability findings.
 
 ## Automated checks
 

@@ -9,14 +9,14 @@ import {
   githubTheme,
   nightOwlTheme,
   oneTheme,
-  piWorkspaceTheme,
+  railyardTheme,
   resolveThemeColorScheme,
   themes,
   tokyoNightTheme,
 } from './theme'
 
 test('looks up each selectable theme by its identifier', () => {
-  assert.equal(getTheme('pi-workspace'), piWorkspaceTheme)
+  assert.equal(getTheme('railyard'), railyardTheme)
   assert.equal(getTheme('one'), oneTheme)
   assert.equal(getTheme('github'), githubTheme)
   assert.equal(getTheme('dracula'), draculaTheme)
@@ -47,9 +47,9 @@ test('pairs One Light and One Dark under one theme', () => {
   assert.equal(oneTheme.windowBackgroundColor.dark, '#282c34')
 })
 
-test('keeps Pi Workspace window backgrounds neutral', () => {
-  assert.equal(piWorkspaceTheme.windowBackgroundColor.light, '#ffffff')
-  assert.equal(piWorkspaceTheme.windowBackgroundColor.dark, '#18181b')
+test('uses Railyard paper and ink window backgrounds', () => {
+  assert.equal(railyardTheme.windowBackgroundColor.light, '#efece4')
+  assert.equal(railyardTheme.windowBackgroundColor.dark, '#141210')
 })
 
 test('new themes provide a caution color for context usage', () => {

@@ -156,7 +156,7 @@ export function Composer({
   const agentRunDisabled = awaiting || configurationPending
   const modelConfigurationRequired = configuration !== undefined && configuration.models.length === 0
   const configurationMessage = modelConfigurationRequired
-    ? 'No Model is available. Install Pi CLI, sign in to a provider, then restart Pi Workspace.'
+    ? 'No Model is available. Install Pi CLI, sign in to a provider, then restart Railyard.'
     : undefined
   const errorMessage =
     error || stopError || configurationError || skillsError || configurationMessage || configuration?.persistenceWarning

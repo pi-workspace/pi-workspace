@@ -1,17 +1,17 @@
-# Pi Workspace
+# Railyard
 
-Pi Workspace is a desktop application for navigating Pi sessions by the local directories they belong to.
+Railyard is a desktop application for navigating Pi sessions by the local directories they belong to.
 
 ## Language
 
-**Pi Workspace**:
+**Railyard**:
 The desktop application that lets a user work across Workspaces, their Repositories, and their Sessions.
 
 **Workspace**:
-A persistent collection of related Repositories registered with Pi Workspace.
+A persistent collection of related Repositories registered with Railyard.
 
 **Repository**:
-A local Git repository registered with Pi Workspace. A Repository can belong to one or more Workspaces.
+A local Git repository registered with Railyard. A Repository can belong to one or more Workspaces.
 _Avoid_: Project
 
 **Workstream**:
@@ -60,7 +60,7 @@ _Avoid_: Chat, thread
 The complete chronological collection shown by the Changelog page.
 
 **Release Note**:
-The entry describing one released version of Pi Workspace.
+The entry describing one released version of Railyard.
 
 **Latest Release Note**:
 The newest bundled Release Note, which must match the current application version.

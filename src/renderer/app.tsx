@@ -71,7 +71,7 @@ export function App({ initialSessionDisplay }: AppProperties = {}) {
   if (failure?.stage === 'startup') {
     return (
       <ApplicationLoadScreen
-        title="Could not start Pi Workspace"
+        title="Could not start Railyard"
         error={failure.message}
         onRetry={() => {
           setApplicationStartup(undefined)
@@ -81,7 +81,7 @@ export function App({ initialSessionDisplay }: AppProperties = {}) {
     )
   }
 
-  if (!applicationStartup) return <ApplicationLoadScreen title="Starting Pi Workspace" />
+  if (!applicationStartup) return <ApplicationLoadScreen title="Starting Railyard" />
 
   if (applicationStartup.status === 'recovery-only') {
     return (

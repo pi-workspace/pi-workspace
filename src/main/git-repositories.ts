@@ -43,7 +43,7 @@ export async function proposeWorktree(options: {
       worktreeName(options.worktreeId),
       options.repositoryId
     ),
-    branch: `pi-workspace/${worktreeName(options.worktreeId)}/${options.repositoryId}`,
+    branch: `railyard/${worktreeName(options.worktreeId)}/${options.repositoryId}`,
     baseCommit,
   }
 }
@@ -105,7 +105,7 @@ async function addWorktree(
     expectedBranch: proposal.branch,
   })
   if (availability !== 'available') {
-    throw new Error(`Git created the worktree at ${proposal.worktreePath}, but Pi Workspace could not verify it.`)
+    throw new Error(`Git created the worktree at ${proposal.worktreePath}, but Railyard could not verify it.`)
   }
 
   return proposal

@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-Pi Workspace is currently in beta. Security fixes are provided only for the latest published beta release.
+Railyard is currently in beta. Security fixes are provided only for the latest published beta release.
 
 | Version                         | Supported |
 | ------------------------------- | --------- |
@@ -16,11 +16,11 @@ A security advisory may instruct users to stop using an affected release while a
 
 Do not disclose a suspected vulnerability in a public issue, discussion, pull request, or social-media post.
 
-When GitHub private vulnerability reporting is available, use the repository's [private vulnerability report](https://github.com/pi-workspace/pi-workspace/security/advisories/new). If that form is unavailable, email **security@pi-workspace.com** with the subject `Pi Workspace security report`.
+When GitHub private vulnerability reporting is available, use the repository's [private vulnerability report](https://github.com/pi-workspace/pi-workspace/security/advisories/new). If that form is unavailable, email **security@pi-workspace.com** with the subject `Railyard security report`.
 
 Include as much of the following as is safe to share:
 
-- The affected Pi Workspace version or commit.
+- The affected Railyard version or commit.
 - Operating system and architecture.
 - A description of the vulnerability and its potential impact.
 - Minimal reproduction steps or a proof of concept.
@@ -38,6 +38,6 @@ A maintainer will acknowledge and triage credible reports privately as soon as p
 
 The maintainer may ask for clarification or help validating a fix. Please allow time for investigation and coordinated remediation before public disclosure. After a fix or mitigation is available, the project will coordinate an advisory and credit according to the reporter's preference.
 
-Reports concerning an upstream dependency may need to be coordinated with its maintainers. Pi Workspace will still assess and address the effect on supported Pi Workspace releases.
+Reports concerning an upstream dependency may need to be coordinated with its maintainers. Railyard will still assess and address the effect on supported Railyard releases.
 
 The project's dependency-update, vulnerability-response, disclosure, release revocation, and rollback practices are documented in [`docs/security-maintenance.md`](./docs/security-maintenance.md) and [`docs/releases.md`](./docs/releases.md).

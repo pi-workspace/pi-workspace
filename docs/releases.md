@@ -1,6 +1,6 @@
-# Release Pi Workspace
+# Release Railyard
 
-Pi Workspace beta releases are manually started from GitHub Actions. The workflow reads the version from
+Railyard beta releases are manually started from GitHub Actions. The workflow reads the version from
 `package.json`; there is no version field to enter when starting it.
 
 ## Release contract
@@ -80,7 +80,7 @@ prerelease.
 Download a release's packages, checksums, and SBOMs, then verify every downloaded asset against this repository:
 
 ```sh
-for artifact in pi-workspace-*; do
+for artifact in railyard-*; do
   gh attestation verify "$artifact" --repo pi-workspace/pi-workspace
 done
 ```
@@ -103,13 +103,13 @@ each supported platform:
 7. If the release promises compatibility with the previous beta's application data, upgrade and verify that exact
    compatibility claim. Otherwise, confirm the Release Note states the compatibility limitation before sharing the
    prerelease.
-8. Uninstall Pi Workspace and confirm its launcher is removed.
+8. Uninstall Railyard and confirm its launcher is removed.
 
 On macOS, launch the application from `/Applications` after dragging it from the mounted DMG. Confirm macOS shows the
-expected Pi Workspace icon and does not show an unidentified-developer warning.
+expected Railyard icon and does not show an unidentified-developer warning.
 
 On Windows 11 x64, use a local Git Repository whose path has a drive letter and spaces. Confirm Git is available on
-`PATH`, Pi Workspace detects the Pi provider configuration created by `pi` and `/login`, Quick Sessions work from both
+`PATH`, Railyard detects the Pi provider configuration created by `pi` and `/login`, Quick Sessions work from both
 the current checkout and a dedicated worktree, and Brainstorm and Implement Sessions can run a shell command.
 
 ## Revoke a compromised release
@@ -143,7 +143,7 @@ Before publishing rollback instructions:
 
 1. Install the revoked version in an isolated test environment and exercise the affected data path without using real
    credentials.
-2. Back up its complete Pi Workspace application-data directory, including its app-owned Session files.
+2. Back up its complete Railyard application-data directory, including its app-owned Session files.
 3. Install the proposed known-good package or application and complete the normal release-candidate checklist.
 4. Confirm whether restoring the backup is necessary and document that exact process.
 5. Publish the verified package or DMG filename, checksum, and rollback instructions in the incident advisory.

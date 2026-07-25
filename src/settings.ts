@@ -1,6 +1,7 @@
 import {
   isAppearancePreference,
   isThemeId,
+  normalizeThemeId,
   resolveThemeColorScheme,
   type AppearancePreference,
   type ColorScheme,
@@ -28,7 +29,7 @@ export interface SettingsBridge {
 
 export const defaultSettings: Settings = {
   appearance: 'system',
-  theme: 'pi-workspace',
+  theme: 'railyard',
 }
 
 export function parseSettings(value: unknown): Settings | undefined {
@@ -39,16 +40,11 @@ export function parseSettings(value: unknown): Settings | undefined {
   const settings = value as Record<string, unknown>
 
   const hasTheme = Object.hasOwn(settings, 'theme')
+  const theme = hasTheme ? normalizeThemeId(settings.theme) : defaultSettings.theme
 
-  if (
-    Object.keys(settings).length !== (hasTheme ? 2 : 1) ||
-    !isAppearancePreference(settings.appearance) ||
-    (hasTheme && !isThemeId(settings.theme))
-  ) {
+  if (Object.keys(settings).length !== (hasTheme ? 2 : 1) || !isAppearancePreference(settings.appearance) || !theme) {
     return undefined
   }
-
-  const theme = isThemeId(settings.theme) ? settings.theme : defaultSettings.theme
 
   return { appearance: settings.appearance, theme }
 }

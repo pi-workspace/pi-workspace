@@ -36,7 +36,7 @@ export function managedSessionMethodology(mode: ManagedSessionRuntimePolicy['mod
         ]
 
   return [
-    `You are operating a Pi Workspace ${mode === 'brainstorm' ? 'Brainstorm' : 'Implement'} Session.`,
+    `You are operating a Railyard ${mode === 'brainstorm' ? 'Brainstorm' : 'Implement'} Session.`,
     ...modeMethodology,
   ].join('\n')
 }

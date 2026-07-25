@@ -12,7 +12,14 @@ test('parses saved theme and appearance preferences', () => {
 test('defaults the theme for saved appearance preferences from before themes', () => {
   assert.deepEqual(parseSettings({ appearance: 'dark' }), {
     appearance: 'dark',
-    theme: 'pi-workspace',
+    theme: 'railyard',
+  })
+})
+
+test('migrates a saved Pi Workspace theme preference to Railyard', () => {
+  assert.deepEqual(parseSettings({ appearance: 'dark', theme: 'pi-workspace' }), {
+    appearance: 'dark',
+    theme: 'railyard',
   })
 })
 
@@ -33,9 +40,9 @@ test('rejects unsupported settings updates', () => {
 })
 
 test('resolves the current color scheme without changing the saved appearance preference', () => {
-  assert.deepEqual(createSettingsSnapshot({ appearance: 'system', theme: 'pi-workspace' }, true), {
+  assert.deepEqual(createSettingsSnapshot({ appearance: 'system', theme: 'railyard' }, true), {
     appearance: 'system',
-    theme: 'pi-workspace',
+    theme: 'railyard',
     resolvedColorScheme: 'dark',
   })
 })
