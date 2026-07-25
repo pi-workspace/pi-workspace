@@ -10,6 +10,7 @@ import type {
 import {
   composerIpcChannels,
   parseQueuedFollowUpRemovalRequest,
+  parseSessionCompactRequest,
   parseSessionMessageSubmission,
   parseSessionRunStopRequest,
 } from '@/src/composer-ipc'
@@ -39,6 +40,7 @@ import {
   type PiSessionRuntimeEvent,
   type PiSessionRuntimeRegistry,
 } from '@/src/main/pi-session-runtimes'
+import { canCompactSessionHistory } from '@/src/main/pi-session-compaction'
 import { classifyPersistedAgentState } from '@/src/main/pi-session-history'
 import { createManagedSessionServices } from '@/src/main/managed-session-resources'
 import { createManagedSessionRuntimePolicyGuard } from '@/src/main/managed-session-runtime-policy'
@@ -279,6 +281,19 @@ export async function createPiSessionRuntime(
     })
   }
 
+  const getContextUsage = () => {
+    const usage = session.getContextUsage()
+    if (!usage) return undefined
+
+    return {
+      ...usage,
+      canCompact: canCompactSessionHistory(
+        session.sessionManager.getBranch(),
+        session.settingsManager.getCompactionSettings()
+      ),
+    }
+  }
+
   return {
     get isStreaming() {
       return session.isStreaming
@@ -289,8 +304,12 @@ export async function createPiSessionRuntime(
     rename(title) {
       session.sessionManager.appendSessionInfo(title)
     },
-    getContextUsage() {
-      return session.getContextUsage()
+    getContextUsage,
+    compact() {
+      return session.compact().then(() => undefined)
+    },
+    canCompact() {
+      return getContextUsage()?.canCompact === true
     },
     subscribe(listener) {
       runtimeListeners.add(listener)
@@ -338,7 +357,7 @@ export async function createPiSessionRuntime(
         if (normalized) listener(normalized)
 
         if (event.type === 'message_end' || event.type === 'compaction_end') {
-          listener({ type: 'context_usage', usage: session.getContextUsage() })
+          listener({ type: 'context_usage', usage: getContextUsage() })
         }
       })
 
@@ -378,6 +397,19 @@ export async function createPiSessionRuntime(
         ]
       })
 
+      const compactions = entries.flatMap((entry) =>
+        entry.type === 'compaction'
+          ? [
+              {
+                type: 'context-compaction' as const,
+                id: entry.id,
+                summary: entry.summary,
+                timestamp: Number.isFinite(Date.parse(entry.timestamp)) ? Date.parse(entry.timestamp) : Date.now(),
+              },
+            ]
+          : []
+      )
+
       const activityRecords = entries.flatMap((entry): ActivityLayerRecord[] => {
         return entry.type === 'custom' &&
           entry.customType === activityLayerCustomEntryType &&
@@ -391,7 +423,7 @@ export async function createPiSessionRuntime(
         .at(-1)
       const finalState = classifyPersistedAgentState(lastAssistant)
 
-      return { conversations, activityRecords, finalState }
+      return { conversations, compactions, activityRecords, finalState }
     },
     appendActivityRecord(record) {
       session.sessionManager.appendCustomEntry(activityLayerCustomEntryType, record)
@@ -449,7 +481,7 @@ export async function createPiSessionRuntime(
 
       await session.setModel(model)
       session.settingsManager.setDefaultModelAndProvider(model.provider, model.id)
-      runtimeListeners.forEach((listener) => listener({ type: 'context_usage', usage: session.getContextUsage() }))
+      runtimeListeners.forEach((listener) => listener({ type: 'context_usage', usage: getContextUsage() }))
     },
     async setConfigurationEffort(effort: SessionConfigurationEffort) {
       if (!session.supportsThinking() && effort === 'off') return
@@ -515,6 +547,14 @@ function normalizePiSessionEvent(
     return { type: 'model_turn_started', noProgressTimeoutMs: modelTurnNoProgressTimeoutMs }
   }
   if (
+    event.type === 'compaction_end' &&
+    typeof event.result === 'object' &&
+    event.result !== null &&
+    typeof (event.result as { summary?: unknown }).summary === 'string'
+  ) {
+    return { type: 'compaction_completed', summary: (event.result as { summary: string }).summary }
+  }
+  if (
     event.type === 'message_start' ||
     event.type === 'message_update' ||
     event.type === 'auto_retry_start' ||
@@ -544,6 +584,10 @@ export function initializeComposer(authority: ApplicationAuthority): void {
     releaseRunLease: async (id) => {
       await authority.settleSessionRunLease(id)
     },
+    acquireCompactionLease: (id) => authority.acquireSessionCompactionLease(id),
+    releaseCompactionLease: async (id) => {
+      await authority.settleSessionCompactionLease(id)
+    },
     reconcileAfterRun: (id) => authority.settleSessionRunLease(id),
     createSession: async ({ directoryPath, sessionPath, managedPolicy }) => {
       const { SessionManager } = await import('@earendil-works/pi-coding-agent')
@@ -564,6 +608,13 @@ export function initializeComposer(authority: ApplicationAuthority): void {
     },
   })
   composerRegistry = registry
+
+  handleTrustedIpc(composerIpcChannels.compact, (_event, value: unknown) => {
+    const request = parseSessionCompactRequest(value)
+    return request
+      ? registry.compact(request.sessionId)
+      : Promise.resolve({ status: 'rejected' as const, message: 'Invalid Session.' })
+  })
 
   handleTrustedIpc(composerIpcChannels.submit, (_event, value: unknown): Promise<SessionMessageSubmissionResult> => {
     const submission = parseSessionMessageSubmission(value)

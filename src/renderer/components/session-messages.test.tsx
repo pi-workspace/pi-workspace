@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { afterEach, test } from 'node:test'
 import { browser } from '@/src/renderer/test-dom'
 import { cleanup, render } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { sessionId } from '@/src/domain/session'
 import type { SessionTranscriptSnapshot } from '@/src/session-transcript'
 import { SessionMessages } from './session-messages'
@@ -13,6 +14,49 @@ const id = sessionId('session-a')
 function transcript(entries: SessionTranscriptSnapshot['entries']): SessionTranscriptSnapshot {
   return { sessionId: id, revision: 1, isWorking: false, runs: [], entries }
 }
+
+test('shows a visible status while Session context is compacting', () => {
+  const view = render(<SessionMessages sessionId={id} isWorking={false} isCompacting transcript={transcript([])} />, {
+    container: browser.document.body as unknown as HTMLElement,
+  })
+
+  assert.equal(view.getByRole('status').textContent, 'Pi is compacting this Session…')
+})
+
+test('renders a compaction summary as a collapsed Markdown disclosure', async () => {
+  const user = userEvent.setup({ document: browser.document as unknown as Document })
+  const view = render(
+    <SessionMessages
+      sessionId={id}
+      isWorking={false}
+      transcript={{
+        ...transcript([]),
+        entries: [
+          {
+            type: 'compaction',
+            compaction: {
+              type: 'context-compaction',
+              id: 'compaction-1',
+              summary: '## Goal\nPreserve the **current implementation plan**.',
+              timestamp: 1,
+            },
+          },
+        ],
+      }}
+    />,
+    { container: browser.document.body as unknown as HTMLElement }
+  )
+
+  const disclosure = view.getByText('Context compacted').closest('details')
+  assert.ok(disclosure)
+  assert.equal(disclosure.open, false)
+
+  await user.click(view.getByText('Context compacted'))
+
+  assert.equal(disclosure.open, true)
+  assert.ok(await view.findByRole('heading', { name: 'Goal' }))
+  assert.equal(view.getByText('current implementation plan').tagName, 'STRONG')
+})
 
 test('renders duplicate message text in canonical entry order', () => {
   const view = render(

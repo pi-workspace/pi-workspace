@@ -7,6 +7,7 @@ export type SessionRuntimeTimeline = {
   revision: number
   runtimeDirectory?: string
   contextUsage?: SessionContextUsage
+  isCompacting: boolean
   runs: AgentRun[]
   entries: SessionTimelineEntry[]
   messages: Map<string, SessionTranscriptMessage>
@@ -144,10 +145,10 @@ export function hydrateTimeline(timeline: SessionRuntimeTimeline, history: PiSes
     timeline.operations.set(execution.toolCallId, { execution: { ...execution, input: undefined } })
   }
 
-  timeline.entries = [...conversations, ...activities.values()].sort(
+  timeline.entries = [...conversations, ...activities.values(), ...(history.compactions ?? [])].sort(
     (left, right) =>
-      (left.type === 'conversation' ? left.timestamp : left.startedAt) -
-      (right.type === 'conversation' ? right.timestamp : right.startedAt)
+      (left.type === 'conversation' || left.type === 'context-compaction' ? left.timestamp : left.startedAt) -
+      (right.type === 'conversation' || right.type === 'context-compaction' ? right.timestamp : right.startedAt)
   )
   timeline.revision = history.activityRecords.length
 

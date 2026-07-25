@@ -132,6 +132,7 @@ export function SessionContainer({
       <SessionMessages
         sessionId={session.id}
         isWorking={isWorking}
+        isCompacting={transcriptState.snapshot?.isCompacting ?? false}
         transcript={transcriptState.snapshot}
         timelineAnnouncement={transcriptState.announcement}
         timelineError={transcriptState.error}
@@ -173,6 +174,7 @@ export function SessionContainer({
           draft={draft}
           focusRequest={composerFocusRequest}
           isWorking={isWorking}
+          isCompacting={transcriptState.snapshot?.isCompacting ?? false}
           contextUsage={transcriptState.snapshot?.contextUsage}
           onActivate={onActivate}
           onDraftChange={onDraftChange}

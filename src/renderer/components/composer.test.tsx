@@ -629,7 +629,7 @@ test('restores Composer focus after the creation dialog restores its trigger', a
   assert.equal(browser.document.activeElement, view.getByRole('textbox'))
 })
 
-test('prevents Agent Run acceptance while a Model change is pending', async () => {
+test('prevents Session actions while a Model change is pending', async () => {
   let resolveModelChange: () => void = () => {}
   const configuration = sessionConfigurationSnapshot()
   const bridge: SessionConfigurationBridge = {
@@ -657,6 +657,7 @@ test('prevents Agent Run acceptance while a Model change is pending', async () =
       session={session}
       draft="Send after configuration"
       isWorking={false}
+      contextUsage={{ tokens: 48_000, contextWindow: 200_000, percent: 24, canCompact: true }}
       onActivate={() => {}}
       onDraftChange={() => {}}
       submitMessage={async () => ({ status: 'accepted', delivery: 'prompt' })}
@@ -675,6 +676,7 @@ test('prevents Agent Run acceptance while a Model change is pending', async () =
     )
   )
   assert.equal((view.getByRole('button', { name: 'Send message' }) as HTMLButtonElement).disabled, true)
+  assert.equal((view.getByRole('button', { name: 'Compact context' }) as HTMLButtonElement).disabled, true)
 
   act(() => resolveModelChange())
 
@@ -706,6 +708,63 @@ test('shows the current context window usage in the Composer action cluster', ()
   assert.equal(contextWindow.getAttribute('aria-valuetext'), '48k used of 200k tokens; 152k left')
   assert.equal(contextWindow.getAttribute('title'), '48k used of 200k tokens; 152k left')
   assert.equal(contextWindow.getAttribute('data-level'), 'nominal')
+})
+
+test('hides context compaction until the Session has enough context', () => {
+  const view = renderInBrowser(
+    <Composer
+      session={session}
+      draft=""
+      isWorking={false}
+      contextUsage={{ tokens: 2_000, contextWindow: 200_000, percent: 1, canCompact: false }}
+      onActivate={() => {}}
+      onDraftChange={() => {}}
+      submitMessage={async () => ({ status: 'accepted', delivery: 'prompt' })}
+    />
+  )
+
+  assert.equal(view.queryByRole('button', { name: 'Compact context' }), null)
+})
+
+test('disables the Composer while Session context is compacting', async () => {
+  const configuration = sessionConfigurationSnapshot()
+  const view = renderInBrowser(
+    <Composer
+      session={session}
+      draft="Keep this draft"
+      isWorking={false}
+      isCompacting
+      contextUsage={{ tokens: 48_000, contextWindow: 200_000, percent: 24 }}
+      onActivate={() => {}}
+      onDraftChange={() => {}}
+      submitMessage={async () => ({ status: 'accepted', delivery: 'prompt' })}
+      sessionConfiguration={{
+        async getSnapshot() {
+          return configuration
+        },
+        async setModel() {
+          return { status: 'applied', snapshot: configuration }
+        },
+        async setEffort() {
+          return { status: 'applied', snapshot: configuration }
+        },
+        async dismissWarning() {
+          return configuration
+        },
+        subscribe() {
+          return () => {}
+        },
+      }}
+    />
+  )
+
+  assert.equal(
+    view.getByRole('textbox', { name: 'Message for First Session' }).getAttribute('contenteditable'),
+    'false'
+  )
+  assert.equal(view.getByRole('button', { name: 'Send message' }).hasAttribute('disabled'), true)
+  assert.equal(((await view.findByRole('combobox', { name: 'Model' })) as HTMLButtonElement).disabled, true)
+  assert.equal(view.queryByRole('button', { name: 'Compact context' }), null)
 })
 
 test('grows the context window fill in place so increments animate', () => {
@@ -801,7 +860,7 @@ test('escalates the context window usage level as the window fills', () => {
   }
 })
 
-test('explains when context usage is recalculating after compaction', () => {
+test('hides context usage while Pi recalculates it after compaction', () => {
   const view = renderInBrowser(
     <Composer
       session={session}
@@ -814,10 +873,7 @@ test('explains when context usage is recalculating after compaction', () => {
     />
   )
 
-  const updating = view.getByRole('status')
-
-  assert.equal(updating.querySelector('[data-slot="context-usage-fill"]'), null)
-  assert.equal(updating.getAttribute('title'), 'Context window usage is updating after compaction')
+  assert.equal(view.queryByRole('status'), null)
   assert.equal(view.queryByRole('progressbar', { name: 'Context window' }), null)
 })
 
