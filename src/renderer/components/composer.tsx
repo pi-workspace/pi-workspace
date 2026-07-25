@@ -50,6 +50,7 @@ export function Composer({
   const descriptionId = useId()
   const statusId = useId()
   const editorHandle = useRef<ComposerEditorHandle>(null)
+  const currentSessionId = useRef(session.id)
   const currentDraft = useRef(draft)
   const awaitingAcceptance = useRef(false)
   const restoreFocusAfterAcceptance = useRef(false)
@@ -66,11 +67,14 @@ export function Composer({
   const configurationPending = pendingConfiguration.size > 0
 
   useEffect(() => {
-    if (draft === currentDraft.current) return
+    // Parent draft publications can lag behind local edits. Only a different
+    // Session provides a new draft; local submission outcomes update state below.
+    if (session.id === currentSessionId.current) return
 
+    currentSessionId.current = session.id
     currentDraft.current = draft
     setSubmissionState(getComposerSubmissionState({ type: 'edit', draft }))
-  }, [draft])
+  }, [draft, session.id])
 
   useEffect(() => {
     if (!sessionSkills) return

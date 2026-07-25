@@ -66,6 +66,31 @@ function SkillComposer({
   )
 }
 
+function DelayedDraftPublicationComposer({ submitMessage }: { submitMessage: ComposerBridge['submit'] }) {
+  const [publishedDraft, setPublishedDraft] = useState('/')
+
+  return (
+    <>
+      <button type="button" onClick={() => setPublishedDraft('/skill:code-review Re')}>
+        Publish older draft
+      </button>
+      <Composer
+        session={session}
+        draft={publishedDraft}
+        isWorking={false}
+        onActivate={() => {}}
+        onDraftChange={() => {}}
+        submitMessage={submitMessage}
+        sessionSkills={{
+          async getAvailable() {
+            return [{ name: 'code-review', description: 'Review code changes.' }]
+          },
+        }}
+      />
+    </>
+  )
+}
+
 function ownedSession(candidate: Session): OwnedSession {
   return {
     ...candidate,
@@ -277,6 +302,33 @@ test('keeps prompt text typed after a selected Skill', async () => {
   await user.keyboard('{Enter}')
   await user.click(editor)
   await user.keyboard('Review this change.')
+  await user.click(view.getByRole('button', { name: 'Send message' }))
+
+  assert.deepEqual(submissions, [
+    { sessionId: session.id, text: '/skill:code-review Review this change.', delivery: 'steer' },
+  ])
+})
+
+test('keeps newer local edits when its parent publishes an older draft', async () => {
+  const submissions: unknown[] = []
+  const user = createUser()
+  const view = renderInBrowser(
+    <DelayedDraftPublicationComposer
+      submitMessage={async (submission) => {
+        submissions.push(submission)
+        return { status: 'accepted', delivery: 'prompt' }
+      }}
+    />
+  )
+  const editor = view.getByRole('textbox', { name: 'Message for First Session' })
+
+  await user.click(editor)
+  await user.keyboard('{Enter}')
+  await user.click(editor)
+  await user.keyboard('Review this change.')
+  await user.click(view.getByRole('button', { name: 'Publish older draft' }))
+
+  assert.equal(composerText(editor), 'code-review Review this change.')
   await user.click(view.getByRole('button', { name: 'Send message' }))
 
   assert.deepEqual(submissions, [
