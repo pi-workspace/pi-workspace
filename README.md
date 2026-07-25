@@ -20,6 +20,7 @@ Railyard is a local desktop app for working with [Pi](https://github.com/earendi
 - Create a goal-based **Workstream** with shared context that carries across multiple Sessions.
 - Use **Brainstorm** Sessions to investigate and plan, then **Implement** Sessions to make and validate changes.
 - Pin Sessions side by side when work spans multiple conversations or Repositories.
+- Fork a Session from an earlier user message while keeping the original path intact.
 - Reopen Railyard and continue from locally stored Session history.
 
 ## Install the beta

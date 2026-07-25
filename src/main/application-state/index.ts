@@ -9,6 +9,8 @@ import type {
   CreateQuickSessionOptions,
   CreateSessionOptions,
   CreateWorkstreamOptions,
+  ForkSessionOptions,
+  SessionForkPoint,
   WorkstreamLifecycle,
   WorkstreamsSnapshot,
   WorktreeLocationsPreview,
@@ -30,6 +32,7 @@ import {
   createWorkstreamSessionStore,
   type OwnedSessionResolution,
   type PreparedSessionRepository,
+  type SessionForkResult,
   type WorkstreamCreationResult,
 } from './workstream-session-store'
 import { incrementRevision, initializeApplicationStateStore, loadSqlite } from './application-state-store'
@@ -48,6 +51,7 @@ export type ApplicationAuthorityOptions = Readonly<{
 export type {
   OwnedSessionResolution,
   PreparedSessionRepository,
+  SessionForkResult,
   WorkstreamCreationResult,
 } from './workstream-session-store'
 
@@ -71,6 +75,8 @@ export type ApplicationAuthority = Readonly<{
   createQuickSession(workspaceId: string, options: CreateQuickSessionOptions): Promise<WorkstreamCreationResult>
   prepareSessionRepository(sessionId: SessionId, repositoryId: string): Promise<PreparedSessionRepository>
   createWorkstreamSession(workstreamId: string, options: CreateSessionOptions): Promise<WorkstreamCreationResult>
+  getSessionForkPoints(sessionId: SessionId): Promise<readonly SessionForkPoint[]>
+  forkSession(sessionId: SessionId, options: ForkSessionOptions): Promise<SessionForkResult>
   setWorkstreamLifecycle(workstreamId: string, lifecycle: WorkstreamLifecycle): Promise<WorkstreamsSnapshot>
   renameWorkstreamSession(sessionId: SessionId, title: string): Promise<WorkstreamsSnapshot>
   resolveOwnedSession(sessionId: SessionId): Promise<OwnedSessionResolution | undefined>
@@ -151,6 +157,8 @@ export async function initializeApplicationAuthority(
     createQuickSession,
     prepareSessionRepository,
     createWorkstreamSession,
+    getSessionForkPoints,
+    forkSession,
     setWorkstreamLifecycle,
     renameWorkstreamSession,
     resolveOwnedSession,
@@ -176,6 +184,8 @@ export async function initializeApplicationAuthority(
     createQuickSession,
     prepareSessionRepository,
     createWorkstreamSession,
+    getSessionForkPoints,
+    forkSession,
     setWorkstreamLifecycle,
     renameWorkstreamSession,
     resolveOwnedSession,

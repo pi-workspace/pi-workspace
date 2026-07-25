@@ -4,8 +4,10 @@ import {
   parseCreateQuickSessionRequest,
   parseCreateSessionRequest,
   parseCreateWorkstreamRequest,
+  parseForkSessionRequest,
   parsePreviewWorktreeLocationsRequest,
   parseRenameOwnedSessionRequest,
+  parseSessionForkPointsRequest,
   parseShowWorkingLocationRequest,
   parseWorkstreamLifecycleRequest,
   workstreamsIpcChannels,
@@ -54,6 +56,20 @@ export function initializeWorkstreams(authority: ApplicationAuthority, options: 
     return request
       ? authority.createWorkstreamSession(request.workstreamId, request.options)
       : Promise.reject(new TypeError('A Workstream and valid Session mode are required.'))
+  })
+  handleTrustedIpc(workstreamsIpcChannels.getSessionForkPoints, (_event, value: unknown) => {
+    const request = parseSessionForkPointsRequest(value)
+
+    return request
+      ? authority.getSessionForkPoints(request.sessionId)
+      : Promise.reject(new TypeError('A Session is required.'))
+  })
+  handleTrustedIpc(workstreamsIpcChannels.forkSession, (_event, value: unknown) => {
+    const request = parseForkSessionRequest(value)
+
+    return request
+      ? authority.forkSession(request.sessionId, request.options)
+      : Promise.reject(new TypeError('A Session, user message, and title are required.'))
   })
   handleTrustedIpc(workstreamsIpcChannels.setLifecycle, (_event, value: unknown) => {
     const request = parseWorkstreamLifecycleRequest(value)

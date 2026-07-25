@@ -25,11 +25,7 @@ export function createRunLeaseStore({ openDatabase }: RunLeaseStoreOptions) {
         database.exec('ROLLBACK;')
         return false
       }
-      if (
-        database
-          .prepare("SELECT lease_id FROM session_run_leases WHERE session_id = ? AND purpose = 'agent-run'")
-          .get(sessionId)
-      ) {
+      if (database.prepare('SELECT lease_id FROM session_run_leases WHERE session_id = ?').get(sessionId)) {
         database.exec('ROLLBACK;')
         return false
       }

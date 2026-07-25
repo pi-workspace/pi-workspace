@@ -74,6 +74,18 @@ export type WorktreeLocationsPreview = Readonly<{
   repositories: readonly WorktreeLocationPreview[]
 }>
 
+export type SessionForkPoint = Readonly<{
+  entryId: string
+  text: string
+  position: number
+  total: number
+}>
+
+export type ForkSessionOptions = Readonly<{
+  entryId: string
+  title: string
+}>
+
 export type CreateWorkstreamOptions = Readonly<{
   goal: string
   mode?: ManagedSessionMode

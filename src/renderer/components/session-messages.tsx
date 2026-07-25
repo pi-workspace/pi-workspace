@@ -1,4 +1,4 @@
-import { LoaderCircle } from 'lucide-react'
+import { GitFork, LoaderCircle } from 'lucide-react'
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui-kit/button'
 import type { SessionId } from '@/src/domain/session'
@@ -14,10 +14,11 @@ type SessionMessagesProperties = Readonly<{
   timelineAnnouncement?: string
   timelineError?: string
   onReloadTimeline?: () => void
+  onForkFromMessage?: (position: number) => void
 }>
 
 type TranscriptEntry =
-  | Readonly<{ type: 'message'; key: string; message: SessionTranscriptMessage }>
+  | Readonly<{ type: 'message'; key: string; message: SessionTranscriptMessage; userPosition?: number }>
   | Readonly<{ type: 'activity'; key: string; activity: AgentActivity }>
 
 const bottomThreshold = 24
@@ -32,20 +33,31 @@ export function SessionMessages({
   timelineAnnouncement,
   timelineError,
   onReloadTimeline,
+  onForkFromMessage,
 }: SessionMessagesProperties) {
   const isLoading = !canonicalTranscript
   const loadError = Boolean(timelineError)
   const reload = onReloadTimeline ?? (() => {})
   const revision = canonicalTranscript?.revision ?? 0
-  const transcript = useMemo<readonly TranscriptEntry[]>(
-    () =>
-      canonicalTranscript?.entries.map((entry) =>
-        entry.type === 'activity'
-          ? { type: 'activity', key: `activity-${entry.activity.id}`, activity: entry.activity }
-          : { type: 'message', key: `message-${entry.message.id}`, message: entry.message }
-      ) ?? [],
-    [canonicalTranscript]
-  )
+  const transcript = useMemo<readonly TranscriptEntry[]>(() => {
+    let userPosition = 0
+
+    return (
+      canonicalTranscript?.entries.map((entry) => {
+        if (entry.type === 'activity') {
+          return { type: 'activity' as const, key: `activity-${entry.activity.id}`, activity: entry.activity }
+        }
+
+        const position = entry.message.role === 'user' ? ++userPosition : undefined
+        return {
+          type: 'message' as const,
+          key: `message-${entry.message.id}`,
+          message: entry.message,
+          userPosition: position,
+        }
+      }) ?? []
+    )
+  }, [canonicalTranscript])
   const runFailureReason = canonicalTranscript?.runFailureReason
   const [pendingExternalUrl, setPendingExternalUrl] = useState<string>()
   const [externalLinkError, setExternalLinkError] = useState(false)
@@ -103,6 +115,8 @@ export function SessionMessages({
                   key={entry.key}
                   message={entry.message}
                   isWorking={isWorking}
+                  userPosition={entry.userPosition}
+                  onForkFromMessage={onForkFromMessage}
                   onOpenExternalLink={requestExternalLink}
                 />
               ) : (
@@ -331,10 +345,14 @@ function useTranscriptScroll({
 function SessionMessageRow({
   message,
   isWorking,
+  userPosition,
+  onForkFromMessage,
   onOpenExternalLink,
 }: Readonly<{
   message: SessionTranscriptMessage
   isWorking: boolean
+  userPosition?: number
+  onForkFromMessage?: (position: number) => void
   onOpenExternalLink: (url: string) => void
 }>) {
   if (message.role === 'user') {
@@ -342,7 +360,7 @@ function SessionMessageRow({
 
     return (
       <article
-        className={`ml-auto w-fit max-w-[80%] rounded-xl border px-3 py-2 text-sm/6 ${
+        className={`group/message relative ml-auto w-fit max-w-[80%] rounded-xl border px-3 py-2 text-sm/6 ${
           steering
             ? `border-content-border bg-content-subtle-background text-content-foreground opacity-80${
                 isWorking ? ' motion-safe:animate-pulse' : ''
@@ -354,6 +372,17 @@ function SessionMessageRow({
         <p className="whitespace-pre-wrap break-words">
           <SkillMentionText text={message.text} skills={message.skills ?? []} />
         </p>
+        {onForkFromMessage && userPosition !== undefined && message.state === 'complete' && !isWorking && (
+          <button
+            type="button"
+            aria-label={`Fork from “${message.text.slice(0, 40) || 'this message'}”`}
+            title="Fork from here"
+            className="absolute -bottom-7 right-0 z-10 rounded-sm p-1.5 text-content-muted-foreground opacity-0 transition-opacity motion-reduce:transition-none hover:bg-session-interaction hover:text-content-foreground focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring group-hover/message:opacity-100 group-focus-within/message:opacity-100"
+            onClick={() => onForkFromMessage(userPosition)}
+          >
+            <GitFork aria-hidden="true" className="size-3.5" />
+          </button>
+        )}
       </article>
     )
   }

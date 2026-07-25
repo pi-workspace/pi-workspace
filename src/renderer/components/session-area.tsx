@@ -1,7 +1,13 @@
 import { useEffect, useRef } from 'react'
 import type { ComposerBridge } from '@/src/composer'
 import type { SessionId } from '@/src/domain/session'
-import type { OwnedSession, WorkstreamLifecycle } from '@/src/domain/workstream'
+import type {
+  ForkSessionOptions,
+  OwnedSession,
+  SessionForkPoint,
+  WorkstreamLifecycle,
+  WorkstreamWorkingLocation,
+} from '@/src/domain/workstream'
 import type { SessionConfigurationBridge } from '@/src/session-configuration'
 import type { SessionSkillsBridge } from '@/src/session-skills'
 import { SessionContainer } from '@/src/renderer/components/session-container'
@@ -9,6 +15,7 @@ import { SessionContainer } from '@/src/renderer/components/session-container'
 type SessionAreaProperties = {
   sessions: readonly OwnedSession[]
   workstreamLifecycles?: ReadonlyMap<string, WorkstreamLifecycle>
+  workstreamWorkingLocations?: ReadonlyMap<string, WorkstreamWorkingLocation>
   activeSessionId?: SessionId
   revealRequest?: Readonly<{ sessionId: SessionId; request: number }>
   composerFocusRequest?: Readonly<{ sessionId: SessionId; request: number }>
@@ -34,12 +41,15 @@ type SessionAreaProperties = {
   resumeQueuedFollowUps?: NonNullable<ComposerBridge['resumeQueuedFollowUps']>
   sessionConfiguration?: SessionConfigurationBridge
   sessionSkills?: SessionSkillsBridge
+  getSessionForkPoints?: (sessionId: SessionId) => Promise<readonly SessionForkPoint[]>
+  forkSession?: (sessionId: SessionId, options: ForkSessionOptions) => Promise<void>
   onToggleSessionPin: (sessionId: SessionId) => void
 }
 
 export function SessionArea({
   sessions,
   workstreamLifecycles = new Map(),
+  workstreamWorkingLocations = new Map(),
   activeSessionId,
   revealRequest,
   composerFocusRequest,
@@ -59,6 +69,8 @@ export function SessionArea({
   resumeQueuedFollowUps,
   sessionConfiguration,
   sessionSkills,
+  getSessionForkPoints,
+  forkSession,
   onToggleSessionPin,
 }: SessionAreaProperties) {
   const sessionPaneRefs = useRef(new Map<SessionId, HTMLDivElement>())
@@ -95,6 +107,7 @@ export function SessionArea({
           <SessionContainer
             session={session}
             workstreamLifecycle={workstreamLifecycles.get(session.workstreamId) ?? 'active'}
+            workingLocation={workstreamWorkingLocations.get(session.workstreamId) ?? 'current-checkouts'}
             active={session.id === activeSessionId}
             draft={drafts.get(session.id) ?? ''}
             composerFocusRequest={
@@ -114,6 +127,8 @@ export function SessionArea({
             resumeQueuedFollowUps={resumeQueuedFollowUps}
             sessionConfiguration={sessionConfiguration}
             sessionSkills={sessionSkills}
+            getForkPoints={getSessionForkPoints ? () => getSessionForkPoints(session.id) : undefined}
+            forkSession={forkSession ? (options) => forkSession(session.id, options) : undefined}
             onTogglePin={() => onToggleSessionPin(session.id)}
           />
         </div>

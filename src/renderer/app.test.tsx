@@ -363,6 +363,44 @@ test('selects and reveals a newly created Session from the returned snapshot', a
   )
 })
 
+test('reveals a forked Session with the selected message restored as its draft', async () => {
+  const forkedSessionId = sessionId('forked-session')
+  const updatedWorkstream: Workstream = {
+    ...workspaceAWorkstream,
+    sessions: [
+      ...workspaceAWorkstream.sessions,
+      {
+        ...workspaceAWorkstream.sessions[0]!,
+        id: forkedSessionId,
+        title: 'Fork of Session A',
+      },
+    ],
+  }
+  const bridge = createBridge({
+    getSessionForkPoints: async () => [{ entryId: 'aaaa0001', text: 'Try another approach', position: 1, total: 1 }],
+    forkSession: async () => ({
+      status: 'available',
+      sessionId: forkedSessionId,
+      snapshot: snapshot([updatedWorkstream], 2),
+      draft: 'Try another approach',
+    }),
+  })
+  const user = userEvent.setup({ document: browser.document as unknown as Document })
+  const view = renderApp(bridge)
+
+  await view.findByText('Ship Workspace A')
+  await user.click(view.getByRole('button', { name: 'Session A Implement' }))
+  await view.findByRole('heading', { name: 'Session A' })
+  await user.click(view.getByRole('button', { name: 'Session A options' }))
+  await user.click(await view.findByRole('menuitem', { name: 'Fork Session…' }))
+  await view.findByText('Try another approach', { exact: true })
+  await user.click(view.getByRole('button', { name: 'Fork Session' }))
+
+  await waitFor(() => assert.ok(view.getByRole('heading', { name: 'Fork of Session A' })))
+  const composer = view.getByLabelText('Message for Fork of Session A')
+  await waitFor(() => assert.equal(composer.textContent, 'Try another approach'))
+})
+
 test('ignores an older mutation response within the selected Workspace', async () => {
   const lifecycleUpdate = deferred<WorkstreamsSnapshot>()
   const newSessionId = sessionId('newer-session')

@@ -145,6 +145,25 @@ function toSessionMessage(
   }
 }
 
+export function restorePiUserMessageDraft(source: string): string {
+  const projected = projectPiUserMessage(source)
+  if (!projected.skills?.length) return projected.text
+
+  let draft = ''
+  let textOffset = 0
+
+  for (const mention of projected.skills) {
+    draft += projected.text.slice(textOffset, mention.offset)
+    draft += `/skill:${mention.skill.name}`
+    textOffset = mention.offset
+
+    const nextCharacter = projected.text[textOffset]
+    if (nextCharacter && !/\s/.test(nextCharacter)) draft += ' '
+  }
+
+  return draft + projected.text.slice(textOffset)
+}
+
 export function projectPiUserMessage(
   source: string,
   skills: readonly SessionSkill[] = []
