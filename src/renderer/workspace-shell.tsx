@@ -72,7 +72,7 @@ export function WorkspaceShell({ initialWorkspacesSnapshot, initialSessionDispla
   const initialSessionDisplayRef = useRef(initialSessionDisplay)
   const [mainContent, dispatchMainContent] = useReducer(updateMainContent, initialMainContentState)
   const changelogButtonRef = useRef<HTMLElement>(null)
-  const [drafts, setDrafts] = useState<ReadonlyMap<SessionId, string>>(() => new Map(initialSessionDisplay?.drafts))
+  const draftsRef = useRef(new Map(initialSessionDisplay?.drafts))
   const sessionTitleSavePending = useRef(false)
   const composerFocusRequestNumber = useRef(0)
   const [workstreamCreationRequest, setWorkstreamCreationRequest] = useState<number>()
@@ -232,14 +232,10 @@ export function WorkspaceShell({ initialWorkspacesSnapshot, initialSessionDispla
     requestAnimationFrame(() => changelogButtonRef.current?.focus())
   }
 
-  const updateDraft = (sessionId: SessionId, draft: string) => {
-    setDrafts((currentDrafts) => {
-      const nextDrafts = new Map(currentDrafts)
-      nextDrafts.set(sessionId, draft)
-
-      return nextDrafts
-    })
-  }
+  const updateDraft = useCallback((sessionId: SessionId, draft: string) => {
+    if (draft) draftsRef.current.set(sessionId, draft)
+    else draftsRef.current.delete(sessionId)
+  }, [])
 
   const submitMessage = (submission: SessionMessageSubmission) => window.piWorkspace.composer.submit(submission)
   const stopRun = (sessionId: SessionId) => window.piWorkspace.composer.stop(sessionId)
@@ -383,7 +379,7 @@ export function WorkspaceShell({ initialWorkspacesSnapshot, initialSessionDispla
     setWorkstreamsSnapshot(undefined)
     dispatchSessionPinning({ type: 'reset' })
     dispatchWorkstreamSelection({ type: 'start-workspace-load' })
-    setDrafts(new Map())
+    draftsRef.current = new Map()
     setSessionTitleEditing(undefined)
     setSelectedWorkspaceId(workspaceId)
   }
@@ -454,7 +450,7 @@ export function WorkspaceShell({ initialWorkspacesSnapshot, initialSessionDispla
             activeSessionId={workstreamSelection.sessionId}
             revealRequest={sessionRevealRequest}
             composerFocusRequest={composerFocusRequest}
-            drafts={drafts}
+            drafts={draftsRef.current}
             titleEditing={sessionTitleEditing}
             onSessionRevealed={handleSessionRevealed}
             onStartTitleEditing={(sessionId) => startTitleEditing(sessionId, 'header')}

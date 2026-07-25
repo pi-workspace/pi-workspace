@@ -50,6 +50,7 @@ export function Composer({
   const descriptionId = useId()
   const statusId = useId()
   const editorHandle = useRef<ComposerEditorHandle>(null)
+  const currentSessionId = useRef(session.id)
   const currentDraft = useRef(draft)
   const awaitingAcceptance = useRef(false)
   const restoreFocusAfterAcceptance = useRef(false)
@@ -66,8 +67,14 @@ export function Composer({
   const configurationPending = pendingConfiguration.size > 0
 
   useEffect(() => {
+    // Parent draft publications can lag behind local edits. Only a different
+    // Session provides a new draft; local submission outcomes update state below.
+    if (session.id === currentSessionId.current) return
+
+    currentSessionId.current = session.id
     currentDraft.current = draft
-  }, [draft])
+    setSubmissionState(getComposerSubmissionState({ type: 'edit', draft }))
+  }, [draft, session.id])
 
   useEffect(() => {
     if (!sessionSkills) return
@@ -154,7 +161,7 @@ export function Composer({
     [configuration, configurationPending, onDraftChange, session.id, submitMessage]
   )
 
-  const empty = draft.trim().length === 0
+  const empty = submissionState.draft.trim().length === 0
   const sendLabel = isWorking ? 'Steer session' : 'Send message'
   const { awaiting, error, status } = submissionState
   const configurationDisabled = isWorking || awaiting || compacting || isCompacting
@@ -265,7 +272,7 @@ export function Composer({
           ref={editorHandle}
           availableSkills={availableSkills}
           describedBy={`${descriptionId} ${statusId}`}
-          draft={draft}
+          draft={submissionState.draft}
           label={`Message for ${session.title}`}
           readOnly={agentRunDisabled}
           onChange={updateDraft}

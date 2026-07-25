@@ -92,10 +92,28 @@ test('ignores and preserves an unowned Pi Session file', async () => {
   assert.equal(await readFile(unownedPath, 'utf8'), '{"external":true}\n')
 })
 
-test('treats a malformed finalized file as unavailable', async () => {
+test('treats a malformed Session header as unavailable', async () => {
   const { store } = await createStore()
   const intent = store.intent('session-a')
   await writeFile(intent.sessionPath, '{not-json}\n', 'utf8')
 
   assert.equal(await store.resolve(intent), undefined)
+})
+
+test('resolves Session ownership without parsing the Session history', async () => {
+  const { store } = await createStore()
+  const intent = store.intent('session-a')
+  const header = {
+    type: 'session',
+    version: 3,
+    id: 'session-a',
+    timestamp: new Date().toISOString(),
+    cwd: intent.directoryPath,
+  }
+  await writeFile(intent.sessionPath, `${JSON.stringify(header)}\n{incomplete-history`, 'utf8')
+
+  assert.deepEqual(await store.resolve(intent), {
+    directoryPath: intent.directoryPath,
+    sessionPath: intent.sessionPath,
+  })
 })
