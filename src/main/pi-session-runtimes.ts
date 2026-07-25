@@ -43,6 +43,7 @@ import type {
   SessionConfigurationMutation,
   SessionConfigurationSnapshot,
 } from '@/src/session-configuration'
+import { createQueuedFollowUpQueue } from './queued-follow-up-queue'
 import { createSessionRuntimeActivationGate } from './pi-session-runtime-activation'
 import { createSessionRuntimeLifecycle, type SessionRuntimeEntry } from './pi-session-runtime-lifecycle'
 import {
@@ -139,6 +140,8 @@ export interface PiSessionRuntimeRegistry {
   ): void
   submit(submission: SessionMessageSubmission): Promise<SessionMessageSubmissionResult>
   stop(sessionId: SessionId): Promise<SessionRunStopResult>
+  removeQueuedFollowUp(sessionId: SessionId, followUpId: string): Promise<boolean>
+  resumeQueuedFollowUps(sessionId: SessionId): Promise<boolean>
   renameSession(sessionId: SessionId, title: string): Promise<void>
   getWorkingStateSnapshots(): readonly SessionWorkingStateSnapshot[]
   loadActivityDetails(sessionId: SessionId, activityId: string): Promise<AgentActivityDetails | undefined>
@@ -165,7 +168,7 @@ const declaredActivityKinds = new Set<AgentActivityKind>(agentActivityKinds)
 /** Bounds simultaneous provider-backed Agent Runs across the application. */
 export const maximumConcurrentAgentRuns = 10
 /** Preserves normal follow-up use while bounding queued future provider work per Session. */
-export const maximumPendingSessionFollowUps = 100
+export const maximumPendingSessionFollowUps = 3
 
 export function createPiSessionRuntimeRegistry({
   findSession,
@@ -183,7 +186,8 @@ export function createPiSessionRuntimeRegistry({
   const transcriptListeners = new Set<(mutation: SessionTranscriptMutation) => void>()
   const activationGate = createSessionRuntimeActivationGate()
   const activeAgentRunReservations = new Set<SessionId>()
-  const pendingFollowUpsBySessionId = new Map<SessionId, number>()
+  const queuedFollowUpQueue = createQueuedFollowUpQueue()
+  const submissionQueuesBySessionId = new Map<SessionId, Promise<void>>()
   const sessionReconciliationBySessionId = new Map<SessionId, () => Promise<boolean>>()
   const noProgressTimeoutsBySessionId = new Map<SessionId, ReturnType<typeof setTimeout>>()
   const noProgressTimeoutDurationsBySessionId = new Map<SessionId, number>()
@@ -207,6 +211,54 @@ export function createPiSessionRuntimeRegistry({
     }
 
     return timeline
+  }
+
+  function hydrateQueuedFollowUps(sessionId: SessionId, history: PiSessionRuntimeHistory | undefined): void {
+    const records = (history?.activityRecords ?? []).flatMap((record) =>
+      record.type === 'queued-follow-up' || record.type === 'queued-follow-up-removed' ? [record] : []
+    )
+
+    queuedFollowUpQueue.hydrate(sessionId, records)
+  }
+
+  function removeQueuedFollowUp(sessionId: SessionId, followUpId: string): boolean {
+    const followUp = queuedFollowUpQueue.queuedFollowUps(sessionId).find((candidate) => candidate.id === followUpId)
+
+    if (!followUp) return false
+
+    const persisted = persistActivityRecord(getTimeline(sessionId), {
+      version: 1,
+      type: 'queued-follow-up-removed',
+      followUpId,
+    })
+
+    if (!persisted) return false
+
+    queuedFollowUpQueue.remove(sessionId, followUpId)
+    publishTimeline(sessionId)
+    return true
+  }
+
+  async function dispatchNextQueuedFollowUp(sessionId: SessionId): Promise<void> {
+    if (activeRun(getTimeline(sessionId))) return
+
+    const followUp = queuedFollowUpQueue.next(sessionId)
+
+    if (!followUp) return
+
+    const result = await submit({ sessionId, text: followUp.text, delivery: 'follow-up' })
+
+    if (result.status === 'accepted' && result.delivery !== 'follow-up') {
+      if (!removeQueuedFollowUp(sessionId, followUp.id)) {
+        queuedFollowUpQueue.pause(sessionId)
+        publishTimeline(sessionId, 'Queued follow-ups paused because the delivered follow-up could not be removed.')
+      }
+
+      return
+    }
+
+    queuedFollowUpQueue.pause(sessionId)
+    publishTimeline(sessionId, 'Queued follow-ups paused because the next follow-up could not start.')
   }
 
   function publishTimeline(sessionId: SessionId, announcement?: string): void {
@@ -257,6 +309,8 @@ export function createPiSessionRuntimeRegistry({
       contextUsage: timeline.contextUsage,
       runs: timeline.runs,
       entries,
+      queuedFollowUps: queuedFollowUpQueue.queuedFollowUps(sessionId),
+      queuedFollowUpsPaused: queuedFollowUpQueue.isPaused(sessionId),
       runFailureReason:
         latestRun?.status === 'failed' || latestRun?.status === 'cancelled' ? latestRun.status : undefined,
     }
@@ -874,6 +928,8 @@ export function createPiSessionRuntimeRegistry({
         publishTimeline(sessionId, announcements.join('. ') || undefined)
       }
 
+      void dispatchNextQueuedFollowUp(sessionId)
+
       const reconcileAfterRun = sessionReconciliationBySessionId.get(sessionId)
 
       if (reconcileAfterRun) {
@@ -911,7 +967,9 @@ export function createPiSessionRuntimeRegistry({
     // The attaching runtime is authoritative for the Model's context window;
     // context_usage events keep it current from here.
     timeline.contextUsage = runtime.getContextUsage?.()
-    hydrateTimeline(timeline, runtime.loadHistory?.())
+    const history = runtime.loadHistory?.()
+    hydrateTimeline(timeline, history)
+    hydrateQueuedFollowUps(sessionId, history)
 
     const unsubscribes = [runtime.subscribe((event) => handleRuntimeEvent(sessionId, event))]
     return { runtime, runtimeKey, unsubscribes }
@@ -933,7 +991,8 @@ export function createPiSessionRuntimeRegistry({
     sessionId: SessionId,
     messageId: string,
     text: string,
-    skills?: readonly SessionSkillMention[]
+    skills?: readonly SessionSkillMention[],
+    delivery?: 'steer'
   ): void {
     const timeline = getTimeline(sessionId)
     const message: SessionTranscriptMessage = {
@@ -941,11 +1000,63 @@ export function createPiSessionRuntimeRegistry({
       role: 'user',
       text,
       skills,
+      delivery,
       state: 'complete',
       revision: timeline.revision + 1,
     }
 
     timeline.messages.set(message.id, message)
+  }
+
+  function queueFollowUp(
+    submission: SessionMessageSubmission,
+    runtime: PiSessionRuntime
+  ): SessionMessageSubmissionResult {
+    const projected = projectSessionSkillSelections(submission.text)
+    const availableSkills = runtime.getSkills?.() ?? []
+    const skillsAvailable = projected.selections.every((selection) =>
+      availableSkills.some((skill) => skill.name === selection.name)
+    )
+
+    if (!skillsAvailable) return { status: 'rejected', reason: 'skill-unavailable' }
+
+    try {
+      if (replaceSessionSkillTokens(submission.text, (name) => runtime.getSkillPrompt?.(name)) === undefined) {
+        return { status: 'rejected', reason: 'skill-unavailable' }
+      }
+    } catch {
+      return { status: 'rejected', reason: 'unexpected' }
+    }
+
+    const queue = queuedFollowUpQueue.queuedFollowUps(submission.sessionId)
+
+    if (queue.length >= maximumPendingSessionFollowUps) {
+      return { status: 'rejected', reason: 'follow-up-capacity' }
+    }
+
+    const skills = projected.selections.flatMap((selection): SessionSkillMention[] => {
+      const available = availableSkills.find((skill) => skill.name === selection.name)
+
+      return available ? [{ offset: selection.offset, skill: { ...available, availability: 'available' } }] : []
+    })
+    const followUp = {
+      id: createId(),
+      text: submission.text,
+      skills: skills.length > 0 ? skills : undefined,
+      createdAt: now(),
+    }
+    const persisted = persistActivityRecord(getTimeline(submission.sessionId), {
+      version: 1,
+      type: 'queued-follow-up',
+      followUp,
+    })
+
+    if (!persisted) return { status: 'rejected', reason: 'unexpected' }
+
+    queuedFollowUpQueue.enqueue(submission.sessionId, followUp)
+    publishTimeline(submission.sessionId)
+
+    return { status: 'accepted', delivery: 'follow-up' }
   }
 
   async function deliverSubmission(
@@ -972,26 +1083,6 @@ export function createPiSessionRuntimeRegistry({
       return { status: 'rejected', reason: 'unexpected' }
     }
     if (promptText === undefined) return { status: 'rejected', reason: 'skill-unavailable' }
-    const tracksFollowUp = runtime.isStreaming && submission.delivery === 'follow-up'
-
-    if (tracksFollowUp) {
-      const pendingCount = pendingFollowUpsBySessionId.get(submission.sessionId) ?? 0
-      if (pendingCount >= maximumPendingSessionFollowUps) {
-        return { status: 'rejected', reason: 'follow-up-capacity' }
-      }
-
-      pendingFollowUpsBySessionId.set(submission.sessionId, pendingCount + 1)
-    }
-
-    const releaseFollowUp = () => {
-      if (!tracksFollowUp) return
-
-      const pendingCount = pendingFollowUpsBySessionId.get(submission.sessionId) ?? 1
-      if (pendingCount <= 1) pendingFollowUpsBySessionId.delete(submission.sessionId)
-      else pendingFollowUpsBySessionId.set(submission.sessionId, pendingCount - 1)
-    }
-
-    let promptStarted = false
     const result = await activationGate.run<SessionMessageSubmissionResult>(submission.sessionId, async () => {
       try {
         if (!(await authorize())) return { status: 'rejected', reason: 'session-unavailable' }
@@ -1028,6 +1119,7 @@ export function createPiSessionRuntimeRegistry({
               role: 'user',
               text: projected.text,
               skills: skillMentions,
+              delivery: acceptedDelivery === 'steer' ? 'steer' : undefined,
               timestamp,
             }
 
@@ -1046,7 +1138,23 @@ export function createPiSessionRuntimeRegistry({
               persistActivityRecord(timeline, { version: 1, type: 'run', run })
             }
 
-            acceptRun(submission.sessionId, messageId, projected.text, skillMentions)
+            acceptRun(
+              submission.sessionId,
+              messageId,
+              projected.text,
+              skillMentions,
+              acceptedDelivery === 'steer' ? 'steer' : undefined
+            )
+
+            if (acceptedDelivery === 'steer') {
+              persistActivityRecord(timeline, {
+                version: 1,
+                type: 'steering-message',
+                text: projected.text,
+                acceptedAt: timestamp,
+              })
+            }
+
             publishTimeline(submission.sessionId)
           }
 
@@ -1058,7 +1166,6 @@ export function createPiSessionRuntimeRegistry({
         }
 
         try {
-          promptStarted = true
           void runtime
             .prompt(promptText, {
               streamingBehavior,
@@ -1081,15 +1188,11 @@ export function createPiSessionRuntimeRegistry({
                 })
               }
             })
-            .finally(releaseFollowUp)
         } catch {
-          releaseFollowUp()
           finishPreflight(false)
         }
       })
     })
-
-    if (!promptStarted) releaseFollowUp()
 
     return result
   }
@@ -1134,7 +1237,7 @@ export function createPiSessionRuntimeRegistry({
     return { status: 'stopped' }
   }
 
-  async function submit(submission: SessionMessageSubmission): Promise<SessionMessageSubmissionResult> {
+  async function submitImmediately(submission: SessionMessageSubmission): Promise<SessionMessageSubmissionResult> {
     let runtime: PiSessionRuntime | undefined
     let leaseAcquired = false
     let runCapacityReserved = false
@@ -1144,6 +1247,10 @@ export function createPiSessionRuntimeRegistry({
 
       const existingEntry = lifecycle.getEntry(submission.sessionId)
       const existing = existingEntry ? await existingEntry : undefined
+      if (existing?.runtime.isStreaming && submission.delivery === 'follow-up') {
+        return queueFollowUp(submission, existing.runtime)
+      }
+
       if (existing?.runtime.isStreaming) {
         return deliverSubmission(submission, existing.runtime, async () => {
           if (!(await canSubmit(submission.sessionId))) return false
@@ -1192,6 +1299,12 @@ export function createPiSessionRuntimeRegistry({
       return { status: 'rejected', reason: leaseAcquired ? 'runtime-unavailable' : 'unexpected' }
     }
 
+    if (runtime.isStreaming && submission.delivery === 'follow-up') {
+      activeAgentRunReservations.delete(submission.sessionId)
+      await releaseRunLease(submission.sessionId)
+      return queueFollowUp(submission, runtime)
+    }
+
     const runReconciliation = reconcileAfterRun ? () => reconcileAfterRun(submission.sessionId) : undefined
 
     if (runReconciliation) {
@@ -1212,6 +1325,27 @@ export function createPiSessionRuntimeRegistry({
     return result
   }
 
+  async function submit(submission: SessionMessageSubmission): Promise<SessionMessageSubmissionResult> {
+    const previous = submissionQueuesBySessionId.get(submission.sessionId) ?? Promise.resolve()
+    let release!: () => void
+    const current = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const queued = previous.then(() => current)
+
+    submissionQueuesBySessionId.set(submission.sessionId, queued)
+
+    try {
+      await previous
+      return await submitImmediately(submission)
+    } finally {
+      release()
+      if (submissionQueuesBySessionId.get(submission.sessionId) === queued) {
+        submissionQueuesBySessionId.delete(submission.sessionId)
+      }
+    }
+  }
+
   return {
     registerRuntime(sessionId, runtimeDirectory, runtime, reconcileAfterRun) {
       lifecycle.register(sessionId, runtimeDirectory, runtime)
@@ -1222,6 +1356,18 @@ export function createPiSessionRuntimeRegistry({
     },
     submit,
     stop,
+    async removeQueuedFollowUp(sessionId, followUpId) {
+      await getRuntime(sessionId)
+      return removeQueuedFollowUp(sessionId, followUpId)
+    },
+    async resumeQueuedFollowUps(sessionId) {
+      await getRuntime(sessionId)
+
+      if (activeRun(getTimeline(sessionId)) || !queuedFollowUpQueue.resume(sessionId)) return false
+
+      await dispatchNextQueuedFollowUp(sessionId)
+      return true
+    },
     async renameSession(sessionId, title) {
       const runtime = await getRuntime(sessionId)
 
@@ -1305,7 +1451,8 @@ export function createPiSessionRuntimeRegistry({
       configuration.dispose()
       activationGate.dispose()
       activeAgentRunReservations.clear()
-      pendingFollowUpsBySessionId.clear()
+      submissionQueuesBySessionId.clear()
+      queuedFollowUpQueue.clear()
     },
   }
 }

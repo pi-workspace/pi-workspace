@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { sessionId } from '@/src/domain/session'
-import { maximumSessionMessageLength, parseSessionMessageSubmission, parseSessionRunStopRequest } from './composer-ipc'
+import {
+  maximumSessionMessageLength,
+  parseQueuedFollowUpRemovalRequest,
+  parseSessionMessageSubmission,
+  parseSessionRunStopRequest,
+} from './composer-ipc'
 
 test('accepts a narrow serializable Agent Run stop request', () => {
   assert.deepEqual(parseSessionRunStopRequest({ sessionId: 'session-a' }), { sessionId: sessionId('session-a') })
@@ -9,6 +14,17 @@ test('accepts a narrow serializable Agent Run stop request', () => {
 
 test('rejects an invalid Agent Run stop request', () => {
   assert.equal(parseSessionRunStopRequest({ sessionId: '' }), undefined)
+})
+
+test('accepts a narrow queued follow-up removal request', () => {
+  assert.deepEqual(parseQueuedFollowUpRemovalRequest({ sessionId: 'session-a', followUpId: 'follow-up-1' }), {
+    sessionId: sessionId('session-a'),
+    followUpId: 'follow-up-1',
+  })
+})
+
+test('rejects an invalid queued follow-up removal request', () => {
+  assert.equal(parseQueuedFollowUpRemovalRequest({ sessionId: 'session-a', followUpId: '' }), undefined)
 })
 
 test('accepts a narrow serializable Session message submission', () => {

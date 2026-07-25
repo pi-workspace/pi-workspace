@@ -7,7 +7,12 @@ import type {
   WorkstreamKnowledgeCommand,
   WorkstreamKnowledgeMutationResult,
 } from '@/src/domain/workstream-knowledge-transitions'
-import { composerIpcChannels, parseSessionMessageSubmission, parseSessionRunStopRequest } from '@/src/composer-ipc'
+import {
+  composerIpcChannels,
+  parseQueuedFollowUpRemovalRequest,
+  parseSessionMessageSubmission,
+  parseSessionRunStopRequest,
+} from '@/src/composer-ipc'
 import { sessionId } from '@/src/domain/session'
 import { parseSessionSkillsRequest, sessionSkillsIpcChannels } from '@/src/session-skills-ipc'
 import type {
@@ -572,6 +577,18 @@ export function initializeComposer(authority: ApplicationAuthority): void {
     const request = parseSessionRunStopRequest(value)
 
     return request ? registry.stop(request.sessionId) : Promise.resolve({ status: 'not-running' })
+  })
+
+  handleTrustedIpc(composerIpcChannels.removeQueuedFollowUp, (_event, value: unknown): Promise<boolean> => {
+    const request = parseQueuedFollowUpRemovalRequest(value)
+
+    return request ? registry.removeQueuedFollowUp(request.sessionId, request.followUpId) : Promise.resolve(false)
+  })
+
+  handleTrustedIpc(composerIpcChannels.resumeQueuedFollowUps, (_event, value: unknown): Promise<boolean> => {
+    const request = parseSessionRunStopRequest(value)
+
+    return request ? registry.resumeQueuedFollowUps(request.sessionId) : Promise.resolve(false)
   })
 
   handleTrustedIpc(sessionSkillsIpcChannels.getAvailable, (_event, value: unknown) => {

@@ -22,6 +22,7 @@ export type ConversationEntry = Readonly<{
   role: 'user' | 'assistant'
   text: string
   skills?: readonly SessionSkillMention[]
+  delivery?: 'steer'
   timestamp: number
 }>
 

@@ -7,6 +7,8 @@ export const maximumSessionMessageLength = 200_000
 export const composerIpcChannels = {
   submit: 'composer:submit',
   stop: 'composer:stop',
+  removeQueuedFollowUp: 'composer:remove-queued-follow-up',
+  resumeQueuedFollowUps: 'composer:resume-queued-follow-ups',
 } as const
 
 export function parseSessionRunStopRequest(
@@ -17,6 +19,18 @@ export function parseSessionRunStopRequest(
   const id = (value as Record<string, unknown>).sessionId
 
   return isSessionId(id) ? { sessionId: id } : undefined
+}
+
+export function parseQueuedFollowUpRemovalRequest(
+  value: unknown
+): Readonly<{ sessionId: SessionMessageSubmission['sessionId']; followUpId: string }> | undefined {
+  if (typeof value !== 'object' || value === null) return undefined
+
+  const request = value as Record<string, unknown>
+
+  return isSessionId(request.sessionId) && typeof request.followUpId === 'string' && request.followUpId.length > 0
+    ? { sessionId: request.sessionId, followUpId: request.followUpId }
+    : undefined
 }
 
 export function parseSessionMessageSubmission(value: unknown): SessionMessageSubmission | undefined {

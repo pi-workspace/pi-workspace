@@ -68,6 +68,9 @@ The newest bundled Release Note, which must match the current application versio
 **Agent Run**:
 The user-facing work cycle that begins when an idle Session accepts a user submission and ends when Pi settles.
 
+**Queued Follow-up**:
+A durable user message held for a working Session after its current Agent Run. Live Queued Follow-ups begin automatically when Pi settles. Queued Follow-ups restored after an application restart remain visible, removable, and paused until the user resumes them.
+
 **Agent Activity**:
 One user-understandable outcome within an Agent Run.
 

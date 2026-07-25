@@ -154,6 +154,12 @@ const composerBridge: ComposerBridge = {
   stop(sessionId) {
     return ipcRenderer.invoke(composerIpcChannels.stop, { sessionId }) as Promise<SessionRunStopResult>
   },
+  removeQueuedFollowUp(sessionId, followUpId) {
+    return ipcRenderer.invoke(composerIpcChannels.removeQueuedFollowUp, { sessionId, followUpId }) as Promise<boolean>
+  },
+  resumeQueuedFollowUps(sessionId) {
+    return ipcRenderer.invoke(composerIpcChannels.resumeQueuedFollowUps, { sessionId }) as Promise<boolean>
+  },
 }
 
 const sessionSkillsBridge: SessionSkillsBridge = {

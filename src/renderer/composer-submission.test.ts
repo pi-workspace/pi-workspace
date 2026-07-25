@@ -13,6 +13,33 @@ test('accepted submission clears the exact submitted draft at preflight acceptan
   )
 })
 
+test('accepted queued delivery clears the draft without a persistent Composer notice', () => {
+  assert.deepEqual(
+    getComposerSubmissionState({
+      type: 'resolve',
+      submittedDraft: 'After the current work',
+      result: { status: 'accepted', delivery: 'follow-up' },
+    }),
+    { draft: '', awaiting: false, error: '', status: '' }
+  )
+})
+
+test('full follow-up queue restores the draft and explains the three-item limit', () => {
+  assert.deepEqual(
+    getComposerSubmissionState({
+      type: 'resolve',
+      submittedDraft: 'Fourth follow-up',
+      result: { status: 'rejected', reason: 'follow-up-capacity' },
+    }),
+    {
+      draft: 'Fourth follow-up',
+      awaiting: false,
+      error: 'This Session already has three queued follow-ups. Wait for Pi to process one, then try again.',
+      status: '',
+    }
+  )
+})
+
 test('rejected submission restores the exact submitted draft with an error', () => {
   assert.deepEqual(
     getComposerSubmissionState({

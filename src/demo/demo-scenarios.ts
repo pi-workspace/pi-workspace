@@ -842,6 +842,111 @@ const multiSessionScenario = createEmptyScenario([
   ['harbor-offline', 'Design offline recovery'],
 ])
 
+const queuedMessagesSessionId = sessionId('queued-messages')
+const queuedMessagesStartedAt = Date.UTC(2026, 6, 17, 13, 40)
+const queuedMessagesScenario: DemoScenario = {
+  ...createEmptyScenario([['queued-messages', 'Refine Session message delivery']]),
+  transcriptsBySessionId: {
+    [queuedMessagesSessionId]: {
+      sessionId: queuedMessagesSessionId,
+      revision: 5,
+      isWorking: true,
+      runs: [
+        {
+          id: 'message-delivery-run',
+          initiatingMessageId: 'message-delivery-request',
+          status: 'running',
+          activityIds: ['inspect-message-delivery'],
+          startedAt: queuedMessagesStartedAt,
+        },
+      ],
+      entries: [
+        {
+          type: 'message',
+          message: {
+            id: 'message-delivery-request',
+            role: 'user',
+            text: 'Improve how queued messages appear while Pi is working. Keep the Composer ready for the next message, and make the transcript the clear record of what was sent.',
+            state: 'complete',
+            revision: 0,
+          },
+        },
+        {
+          type: 'activity',
+          activity: {
+            type: 'activity',
+            id: 'inspect-message-delivery',
+            runId: 'message-delivery-run',
+            kind: 'exploration',
+            title: 'Mapped Session message delivery',
+            summary: 'Traced the Composer acknowledgement and the canonical transcript update path.',
+            status: 'completed',
+            operationCount: 2,
+            fileCount: 2,
+            secondaryLine: '2 files inspected',
+            artifacts: [
+              { type: 'inspected-file', path: 'src/renderer/components/composer.tsx' },
+              { type: 'inspected-file', path: 'src/renderer/components/session-messages.tsx' },
+            ],
+            startedAt: queuedMessagesStartedAt + 4_000,
+            completedAt: queuedMessagesStartedAt + 31_000,
+          },
+        },
+        {
+          type: 'message',
+          message: {
+            id: 'message-delivery-response',
+            role: 'assistant',
+            text: 'I found the delivery handoff. I’m keeping the transcript as the visible record while I finish the current response.',
+            state: 'streaming',
+            revision: 0,
+          },
+        },
+        {
+          type: 'message',
+          message: {
+            id: 'message-delivery-steer',
+            role: 'user',
+            text: 'Steer the current work toward the transcript instead of leaving a persistent acknowledgement in the Composer.',
+            delivery: 'steer',
+            state: 'complete',
+            revision: 0,
+          },
+        },
+      ],
+      queuedFollowUps: [
+        {
+          id: 'message-delivery-follow-up',
+          text: 'After this response, also confirm that a new Session focuses its Composer after the creation dialog closes.',
+          createdAt: queuedMessagesStartedAt + 38_000,
+        },
+        {
+          id: 'message-delivery-validation',
+          text: '/skill:code-review Then run the focused Composer and transcript tests before we review the change.',
+          skills: [
+            {
+              offset: 0,
+              skill: {
+                name: 'code-review',
+                description: 'Review code changes for correctness and maintainability.',
+                availability: 'available',
+              },
+            },
+          ],
+          createdAt: queuedMessagesStartedAt + 42_000,
+        },
+        {
+          id: 'message-delivery-accessibility',
+          text: 'Check the queue controls with keyboard navigation and a screen reader.',
+          createdAt: queuedMessagesStartedAt + 46_000,
+        },
+      ],
+    },
+  },
+  activityDetailsBySessionId: {},
+  workstreamKnowledgesByWorkstreamId: {},
+}
+
 const frontendQuickSessionId = sessionId('atlas-web-checkout')
 const apiQuickSessionId = sessionId('atlas-api-checkout')
 const quickSessionsStartedAt = Date.UTC(2026, 6, 16, 11, 5)
@@ -1287,12 +1392,18 @@ const quickSessionsPresentation: DemoScenarioPresentation = {
   pinnedSessionIds: [frontendQuickSessionId, apiQuickSessionId],
 }
 
+const queuedMessagesPresentation: DemoScenarioPresentation = {
+  activeSessionId: queuedMessagesSessionId,
+  pinnedSessionIds: [],
+}
+
 const scenarios: Readonly<Record<string, DemoScenario>> = {
   startup: startupScenario,
   workstream: workstreamScenario,
   'completed-run': completedRunScenario,
   'multi-session': multiSessionScenario,
   'quick-sessions': quickSessionsScenario,
+  'queued-messages': queuedMessagesScenario,
 }
 
 export function getDemoScenario(name: string | undefined): DemoScenario {
@@ -1302,6 +1413,7 @@ export function getDemoScenario(name: string | undefined): DemoScenario {
 export function getDemoScenarioPresentation(name: string | undefined): DemoScenarioPresentation | undefined {
   if (name === 'workstream') return workstreamPresentation
   if (name === 'quick-sessions') return quickSessionsPresentation
+  if (name === 'queued-messages') return queuedMessagesPresentation
 
   return undefined
 }

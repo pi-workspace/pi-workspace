@@ -97,6 +97,32 @@ test('keeps the name of an unavailable Skill in the transcript', () => {
   )
 })
 
+test('labels a steering message separately from an ordinary user message', () => {
+  const view = render(
+    <SessionMessages
+      sessionId={id}
+      isWorking
+      transcript={transcript([
+        {
+          type: 'message',
+          message: {
+            id: 'steer-1',
+            role: 'user',
+            text: 'Prioritize transcript delivery.',
+            delivery: 'steer',
+            state: 'complete',
+            revision: 1,
+          },
+        },
+      ])}
+    />,
+    { container: browser.document.body as unknown as HTMLElement }
+  )
+
+  assert.ok(view.getByText('Steering', { exact: true }))
+  assert.ok(view.getByText('Prioritize transcript delivery.', { exact: true }))
+})
+
 test('keeps a streaming assistant message in one identity when it completes', () => {
   const view = render(
     <SessionMessages

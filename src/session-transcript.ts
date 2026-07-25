@@ -1,4 +1,5 @@
 import type { SessionId } from '@/src/domain/session'
+import type { QueuedFollowUp } from '@/src/queued-follow-up'
 import type { SessionSkillMention } from '@/src/session-skills'
 
 const allowedExternalUrlProtocols = new Set(['http:', 'https:', 'mailto:'])
@@ -20,6 +21,7 @@ export type SessionTranscriptMessage = Readonly<{
   role: 'user' | 'assistant'
   text: string
   skills?: readonly SessionSkillMention[]
+  delivery?: 'steer'
   state: 'complete' | 'streaming'
   revision: number
 }>
@@ -41,6 +43,8 @@ export type SessionTranscriptSnapshot = Readonly<{
   contextUsage?: SessionContextUsage
   runs: readonly AgentRun[]
   entries: readonly SessionTranscriptEntry[]
+  queuedFollowUps?: readonly QueuedFollowUp[]
+  queuedFollowUpsPaused?: boolean
   runFailureReason?: 'failed' | 'cancelled'
 }>
 
