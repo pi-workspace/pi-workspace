@@ -258,10 +258,12 @@ export async function initializeApplicationStateStore(storageDirectory: string, 
 
     try {
       database.exec('BEGIN IMMEDIATE;')
-      const leases = database.prepare("SELECT lease_id FROM session_run_leases WHERE purpose = 'agent-run'").all()
+      const leases = database
+        .prepare("SELECT lease_id FROM session_run_leases WHERE purpose IN ('agent-run', 'context-compaction')")
+        .all()
 
       if (leases.length > 0) {
-        database.prepare("DELETE FROM session_run_leases WHERE purpose = 'agent-run'").run()
+        database.prepare("DELETE FROM session_run_leases WHERE purpose IN ('agent-run', 'context-compaction')").run()
         incrementRevision(database)
       }
 
@@ -272,7 +274,7 @@ export async function initializeApplicationStateStore(storageDirectory: string, 
       } catch {
         // Startup reconciliation failed before a transaction was active.
       }
-      startup = { status: 'recovery-only', diagnostic: 'Interrupted Agent Run recovery failed.' }
+      startup = { status: 'recovery-only', diagnostic: 'Interrupted Session activity recovery failed.' }
     } finally {
       database.close()
     }

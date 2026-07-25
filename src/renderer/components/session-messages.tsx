@@ -1,15 +1,16 @@
-import { LoaderCircle } from 'lucide-react'
+import { FoldHorizontal, LoaderCircle } from 'lucide-react'
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui-kit/button'
 import type { SessionId } from '@/src/domain/session'
 import { AgentActivityCard } from '@/src/renderer/components/agent-activity-card'
 import { SkillMentionText } from '@/src/renderer/components/skill-mention-text'
-import type { AgentActivity } from '@/src/session-timeline'
+import type { AgentActivity, ContextCompaction } from '@/src/session-timeline'
 import type { SessionTranscriptMessage, SessionTranscriptSnapshot } from '@/src/session-transcript'
 
 type SessionMessagesProperties = Readonly<{
   sessionId: SessionId
   isWorking: boolean
+  isCompacting?: boolean
   transcript?: SessionTranscriptSnapshot
   timelineAnnouncement?: string
   timelineError?: string
@@ -19,6 +20,7 @@ type SessionMessagesProperties = Readonly<{
 type TranscriptEntry =
   | Readonly<{ type: 'message'; key: string; message: SessionTranscriptMessage }>
   | Readonly<{ type: 'activity'; key: string; activity: AgentActivity }>
+  | Readonly<{ type: 'compaction'; key: string; compaction: ContextCompaction }>
 
 const bottomThreshold = 24
 const MarkdownMessage = lazy(async () =>
@@ -28,6 +30,7 @@ const MarkdownMessage = lazy(async () =>
 export function SessionMessages({
   sessionId,
   isWorking,
+  isCompacting,
   transcript: canonicalTranscript,
   timelineAnnouncement,
   timelineError,
@@ -42,7 +45,9 @@ export function SessionMessages({
       canonicalTranscript?.entries.map((entry) =>
         entry.type === 'activity'
           ? { type: 'activity', key: `activity-${entry.activity.id}`, activity: entry.activity }
-          : { type: 'message', key: `message-${entry.message.id}`, message: entry.message }
+          : entry.type === 'compaction'
+            ? { type: 'compaction', key: `compaction-${entry.compaction.id}`, compaction: entry.compaction }
+            : { type: 'message', key: `message-${entry.message.id}`, message: entry.message }
       ) ?? [],
     [canonicalTranscript]
   )
@@ -66,7 +71,7 @@ export function SessionMessages({
     scrollContainerRef,
     messageListRef,
     isLoading,
-    contentVersion: `${revision}:${isWorking ? 'working' : 'idle'}:${runFailureReason ?? 'ready'}`,
+    contentVersion: `${revision}:${isWorking ? 'working' : 'idle'}:${isCompacting ? 'compacting' : 'ready'}:${runFailureReason ?? 'ready'}`,
   })
 
   const requestExternalLink = useCallback((url: string) => {
@@ -105,6 +110,12 @@ export function SessionMessages({
                   isWorking={isWorking}
                   onOpenExternalLink={requestExternalLink}
                 />
+              ) : entry.type === 'compaction' ? (
+                <SessionCompactionSummary
+                  key={entry.key}
+                  compaction={entry.compaction}
+                  onOpenExternalLink={requestExternalLink}
+                />
               ) : (
                 <AgentActivityCard
                   key={entry.key}
@@ -113,6 +124,7 @@ export function SessionMessages({
                 />
               )
             )}
+          {isCompacting && <SessionActivityIndicator label="Pi is compacting this Session…" />}
           {!isLoading && runFailureReason ? (
             <SessionRunFailure reason={runFailureReason} />
           ) : !isLoading && isWorking ? (
@@ -372,11 +384,32 @@ function SessionMessageRow({
   )
 }
 
-function SessionActivityIndicator() {
+function SessionCompactionSummary({
+  compaction,
+  onOpenExternalLink,
+}: Readonly<{ compaction: ContextCompaction; onOpenExternalLink: (url: string) => void }>) {
+  return (
+    <details className="group rounded-xl border border-content-border bg-content-subtle-background px-4 py-3 text-content-foreground">
+      <summary className="flex cursor-pointer list-none items-center gap-2 text-xs/5 font-medium text-session-message-status-foreground outline-none focus-visible:ring-2 focus-visible:ring-focus-ring">
+        <FoldHorizontal aria-hidden="true" className="size-3.5 shrink-0" />
+        <span>Context compacted</span>
+        <span className="ml-auto font-normal text-content-muted-foreground group-open:hidden">View summary</span>
+        <span className="ml-auto hidden font-normal text-content-muted-foreground group-open:inline">Hide summary</span>
+      </summary>
+      <div className="mt-3 border-t border-content-border pt-3 text-sm/6">
+        <Suspense fallback={<p className="text-content-muted-foreground">Loading summary…</p>}>
+          <MarkdownMessage source={compaction.summary} streaming={false} onOpenExternalLink={onOpenExternalLink} />
+        </Suspense>
+      </div>
+    </details>
+  )
+}
+
+function SessionActivityIndicator({ label = 'Pi is working' }: Readonly<{ label?: string }>) {
   return (
     <div className="flex items-center gap-2 text-xs/5 text-session-message-status-foreground" role="status">
       <LoaderCircle aria-hidden="true" className="size-3.5 animate-spin motion-reduce:animate-none" />
-      <span>Pi is working</span>
+      <span>{label}</span>
     </div>
   )
 }

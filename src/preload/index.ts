@@ -148,6 +148,9 @@ const workstreamKnowledgeBridge: WorkstreamKnowledgeBridge = {
 }
 
 const composerBridge: ComposerBridge = {
+  compact(sessionId) {
+    return ipcRenderer.invoke(composerIpcChannels.compact, { sessionId })
+  },
   submit(submission) {
     return ipcRenderer.invoke(composerIpcChannels.submit, submission) as Promise<SessionMessageSubmissionResult>
   },
