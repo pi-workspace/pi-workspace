@@ -58,7 +58,7 @@ function createEmptyScenario(sessionValues: ReadonlyArray<readonly [string, stri
         {
           id: 'Product reliability',
           workspaceId: 'Atlas Product',
-          goal: 'Explore the Pi Workspace demo',
+          goal: 'Explore the Railyard demo',
           lifecycle: 'active',
           workingLocation: 'current-checkouts',
           repositoryWorkingLocations: [],

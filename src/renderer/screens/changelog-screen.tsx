@@ -43,7 +43,7 @@ export function ChangelogScreen({ releaseNotes, onBack }: ChangelogScreenPropert
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-3xl px-6 py-8 sm:px-8 sm:py-10">
-          <p className="text-sm/6 text-content-muted-foreground">What’s new, improved, and fixed in Pi Workspace.</p>
+          <p className="text-sm/6 text-content-muted-foreground">What’s new, improved, and fixed in Railyard.</p>
 
           <div className="mt-8">
             {releaseNotes.map((releaseNote, index) => (

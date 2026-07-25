@@ -1,4 +1,6 @@
 import { app, BrowserWindow, net, protocol, session, shell } from 'electron'
+import { lstat, mkdir } from 'node:fs/promises'
+import { join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { startApplicationLifecycle, type ApplicationWindow } from '@/src/main/application-lifecycle'
 import { initializeApplicationAuthority } from '@/src/main/application-state'
@@ -20,6 +22,7 @@ import { initializeWorkstreams } from '@/src/main/workstreams-ipc'
 import { initializeWorkstreamKnowledge } from '@/src/main/workstream-knowledge-ipc'
 import { configureTrustedRendererUrl, registerTrustedRendererWindow } from '@/src/main/trusted-ipc'
 import { getThemeWindowBackgroundColor } from '@/src/theme'
+import { migrateLegacyUserData, type UserDataMigrationResult } from '@/src/main/user-data-migration'
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -33,9 +36,44 @@ protocol.registerSchemesAsPrivileged([
   },
 ])
 
+const applicationDataDirectory = app.getPath('appData')
+const legacyUserDataDirectories = [
+  join(applicationDataDirectory, 'pi-workspace'),
+  join(applicationDataDirectory, 'Pi Workspace'),
+]
+const userDataDirectory = join(applicationDataDirectory, 'Railyard')
+
+async function findLegacyUserDataDirectory(): Promise<string> {
+  for (const directory of legacyUserDataDirectories) {
+    try {
+      if ((await lstat(directory)).isDirectory()) return directory
+    } catch {
+      // Try the next legacy directory.
+    }
+  }
+
+  return legacyUserDataDirectories[0]!
+}
+
+const legacyUserDataDirectory = await findLegacyUserDataDirectory()
+let legacyUserDataMigrationResult: UserDataMigrationResult = 'not-required'
+let legacyUserDataMigrationError: unknown
+
+try {
+  legacyUserDataMigrationResult = await migrateLegacyUserData({
+    legacyDirectory: legacyUserDataDirectory,
+    userDataDirectory,
+  })
+} catch (error) {
+  legacyUserDataMigrationError = error
+}
+
+await mkdir(userDataDirectory, { mode: 0o700, recursive: true })
+app.setPath('userData', userDataDirectory)
+
 const rendererDirectory = fileURLToPath(new URL('../renderer/', import.meta.url))
 const preloadPath = fileURLToPath(new URL('../preload/index.cjs', import.meta.url))
-const applicationIconPath = fileURLToPath(new URL('../../assets/pi-workspace-mark.png', import.meta.url))
+const applicationIconPath = fileURLToPath(new URL('../../assets/railyard-appicon.png', import.meta.url))
 const developmentServerUrl = process.env.VITE_DEV_SERVER_URL
 const trustedRendererUrl = resolveRendererUrl({
   isPackaged: app.isPackaged,
@@ -44,7 +82,7 @@ const trustedRendererUrl = resolveRendererUrl({
 })
 configureTrustedRendererUrl(trustedRendererUrl)
 
-let windowBackgroundColor: string = getThemeWindowBackgroundColor('pi-workspace', 'light')
+let windowBackgroundColor: string = getThemeWindowBackgroundColor('railyard', 'light')
 let initializationFailed = false
 
 async function initializeApplication(): Promise<void> {
@@ -59,6 +97,14 @@ async function initializeApplication(): Promise<void> {
   session.defaultSession.setPermissionRequestHandler(allowBrowserPermissionRequest)
 
   try {
+    if (legacyUserDataMigrationError) throw legacyUserDataMigrationError
+
+    if (legacyUserDataMigrationResult === 'migrated')
+      console.info('Migrated Pi Workspace application data to Railyard.')
+    if (legacyUserDataMigrationResult === 'skipped-existing-user-data') {
+      console.warn('Railyard is using existing application data. Pi Workspace application data was not merged.')
+    }
+
     const authority = await initializeApplicationAuthority(app.getPath('userData'))
     initializeApplicationStateIpc(authority)
     initializeWorkstreams(authority, { openPath: (path) => shell.openPath(path) })
@@ -68,7 +114,7 @@ async function initializeApplication(): Promise<void> {
     windowBackgroundColor = getThemeWindowBackgroundColor(settings.theme, settings.resolvedColorScheme)
   } catch (error) {
     initializationFailed = true
-    console.error('Pi Workspace initialization failed.', error)
+    console.error('Railyard initialization failed.', error)
   }
 
   if (process.platform === 'darwin') {
@@ -82,7 +128,7 @@ function createWindow(): ApplicationWindow {
     height: 800,
     minWidth: 800,
     minHeight: 600,
-    title: 'Pi Workspace',
+    title: 'Railyard',
     icon: applicationIconPath,
     autoHideMenuBar: true,
     backgroundColor: windowBackgroundColor,
@@ -132,7 +178,7 @@ function createWindow(): ApplicationWindow {
     showFailure('initialization')
   } else {
     void window.loadURL(trustedRendererUrl).catch((error: unknown) => {
-      console.error('The Pi Workspace renderer failed to load.', error)
+      console.error('The Railyard renderer failed to load.', error)
       showFailure('renderer-load')
     })
   }

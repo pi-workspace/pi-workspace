@@ -9,7 +9,7 @@ function decodeDataUrl(url: string): string {
 test('initialization failure fallback offers a restart without exposing internal details', () => {
   const html = decodeDataUrl(createStartupFailureUrl('initialization'))
 
-  assert.match(html, /Pi Workspace could not start/)
+  assert.match(html, /Railyard could not start/)
   assert.match(html, new RegExp(`href="${startupRetryUrl}"`))
   assert.doesNotMatch(html, /stack|sqlite|provider/i)
 })

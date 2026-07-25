@@ -189,9 +189,10 @@ export function WorkspaceNavigation({
               className="flex min-w-0 flex-1 items-center gap-3 rounded-l-lg px-2 py-2 text-left hover:bg-sidebar-interaction focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
               onClick={onOpenChangelog}
             >
-              <img alt="" className="size-7 shrink-0" src="./pi-workspace-mark.svg" />
+              <img alt="" className="size-7 shrink-0 dark:hidden" src="./railyard-symbol-light.svg" />
+              <img alt="" className="hidden size-7 shrink-0 dark:block" src="./railyard-symbol-dark.svg" />
               <span className="min-w-0">
-                <span className="block truncate text-sm/5 font-medium text-sidebar-foreground">Pi Workspace</span>
+                <span className="block truncate text-sm/5 font-medium text-sidebar-foreground">Railyard</span>
                 <span className="block truncate text-xs/5 text-sidebar-muted-foreground">
                   v{applicationVersion} · Release notes
                 </span>
@@ -235,7 +236,7 @@ export function WorkspaceNavigation({
 
       <Dialog open={dialog?.type === 'workspace-settings'} onClose={closeDialog} size="xl">
         <DialogTitle>Workspace settings</DialogTitle>
-        <DialogDescription>Change how this Workspace appears in Pi Workspace.</DialogDescription>
+        <DialogDescription>Change how this Workspace appears in Railyard.</DialogDescription>
         <DialogBody>
           <Fieldset>
             <FieldGroup>

@@ -106,10 +106,10 @@ function createBridge(
       subscribe: () => () => {},
     },
     settings: {
-      getSnapshot: async () => ({ appearance: 'system', theme: 'pi-workspace', resolvedColorScheme: 'light' }),
+      getSnapshot: async () => ({ appearance: 'system', theme: 'railyard', resolvedColorScheme: 'light' }),
       update: async (update: SettingsUpdate) => ({
         appearance: update.appearance ?? 'system',
-        theme: update.theme ?? 'pi-workspace',
+        theme: update.theme ?? 'railyard',
         resolvedColorScheme: 'light',
       }),
       subscribe: () => () => {},
@@ -172,7 +172,7 @@ test('updates theme immediately from global Settings', async () => {
   Object.assign(bridge.settings, {
     update: async (update: SettingsUpdate) => {
       updates.push(update)
-      return { appearance: 'system', theme: update.theme ?? 'pi-workspace', resolvedColorScheme: 'light' }
+      return { appearance: 'system', theme: update.theme ?? 'railyard', resolvedColorScheme: 'light' }
     },
   })
   const user = userEvent.setup({ document: browser.document as unknown as Document })
@@ -211,7 +211,7 @@ test('renders a named accessible state while startup is pending', async () => {
   const startup = deferred<Awaited<ReturnType<PiWorkspaceBridge['applicationState']['getStartup']>>>()
   const view = renderApp(createBridge({}, { getStartup: () => startup.promise }))
 
-  assert.equal((await view.findByRole('status')).textContent, 'Starting Pi Workspace')
+  assert.equal((await view.findByRole('status')).textContent, 'Starting Railyard')
 })
 
 test('renders a named accessible state while Workspaces are loading', async () => {
@@ -233,10 +233,7 @@ test('renders a named accessible error when startup fails', async () => {
     )
   )
 
-  assert.match(
-    (await view.findByRole('alert')).textContent ?? '',
-    /Could not start Pi Workspace.*Startup authority failed/
-  )
+  assert.match((await view.findByRole('alert')).textContent ?? '', /Could not start Railyard.*Startup authority failed/)
 })
 
 test('retries startup without reloading the renderer', async () => {

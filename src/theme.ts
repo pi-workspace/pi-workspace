@@ -3,7 +3,7 @@ export const appearancePreferences = ['system', 'light', 'dark'] as const
 export type AppearancePreference = (typeof appearancePreferences)[number]
 export type ColorScheme = Exclude<AppearancePreference, 'system'>
 
-export const themeIds = ['pi-workspace', 'one', 'github', 'dracula', 'night-owl', 'tokyo-night'] as const
+export const themeIds = ['railyard', 'one', 'github', 'dracula', 'night-owl', 'tokyo-night'] as const
 export type ThemeId = (typeof themeIds)[number]
 
 export type Theme = Readonly<{
@@ -13,13 +13,13 @@ export type Theme = Readonly<{
   windowBackgroundColor: Readonly<Partial<Record<ColorScheme, string>>>
 }>
 
-export const piWorkspaceTheme = {
-  id: 'pi-workspace',
-  name: 'Pi Workspace',
+export const railyardTheme = {
+  id: 'railyard',
+  name: 'Railyard',
   colorSchemes: ['light', 'dark'],
   windowBackgroundColor: {
-    light: '#ffffff',
-    dark: '#18181b',
+    light: '#efece4',
+    dark: '#141210',
   },
 } as const satisfies Theme
 
@@ -71,7 +71,7 @@ export const tokyoNightTheme = {
 } as const satisfies Theme
 
 export const themes = [
-  piWorkspaceTheme,
+  railyardTheme,
   oneTheme,
   githubTheme,
   draculaTheme,
@@ -81,6 +81,13 @@ export const themes = [
 
 export function isThemeId(value: unknown): value is ThemeId {
   return themeIds.some((themeId) => themeId === value)
+}
+
+export function normalizeThemeId(value: unknown): ThemeId | undefined {
+  if (isThemeId(value)) return value
+  if (value === 'pi-workspace') return 'railyard'
+
+  return undefined
 }
 
 export function getTheme(themeId: ThemeId): Theme {

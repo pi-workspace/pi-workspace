@@ -43,7 +43,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProperties) {
           <header className="flex items-start justify-between gap-6 border-b border-content-border px-8 py-6">
             <div>
               <h2 className="text-xl/7 font-semibold tracking-tight text-content-foreground">Appearance</h2>
-              <DialogDescription className="mt-1">Choose how Pi Workspace looks on this device.</DialogDescription>
+              <DialogDescription className="mt-1">Choose how Railyard looks on this device.</DialogDescription>
             </div>
             <Button plain aria-label="Close settings" className="-mt-2 -mr-2 shrink-0 px-3! py-2!" onClick={onClose}>
               <X aria-hidden="true" data-slot="icon" />
@@ -54,7 +54,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProperties) {
               <Fieldset className="max-w-xl space-y-8">
                 <Field>
                   <Label>Theme</Label>
-                  <Description>Choose Pi Workspace’s visual language.</Description>
+                  <Description>Choose Railyard’s visual language.</Description>
                   <RadioGroup
                     aria-label="Theme"
                     className="mt-4 divide-y divide-content-border overflow-hidden rounded-lg border border-content-border space-y-0!"

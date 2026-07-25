@@ -4,7 +4,7 @@ This inventory records the declared licenses of the production dependency tree i
 
 It was regenerated with `license-checker` against a frozen production installation. Package licenses can change when dependencies are updated, so regenerate and review this inventory as part of dependency and release maintenance.
 
-**Packages audited:** 426
+**Packages audited:** 428
 
 ## Summary
 
@@ -19,9 +19,10 @@ It was regenerated with `license-checker` against a frozen production installati
 | ISC                     |       42 |
 | MIT                     |      294 |
 | MIT*                    |        1 |
+| OFL-1.1                 |        2 |
 | Unlicense               |        1 |
 
-All declared production dependency licenses in this inventory are permissive and compatible with distribution in the Apache-2.0-licensed Pi Workspace application. `license-checker` marks `khroma@2.1.0` as `MIT*`; its bundled license text was reviewed and is MIT. Dependencies remain subject to their own license texts and attribution requirements.
+All declared production dependency licenses in this inventory are permissive and compatible with distribution in the Apache-2.0-licensed Railyard application. `license-checker` marks `khroma@2.1.0` as `MIT*`; its bundled license text was reviewed and is MIT. Dependencies remain subject to their own license texts and attribution requirements.
 
 ## Packages
 
@@ -67,6 +68,8 @@ All declared production dependency licenses in this inventory are permissive and
 | `@floating-ui/react@0.26.28`                              | MIT                     |
 | `@floating-ui/react@0.27.20`                              | MIT                     |
 | `@floating-ui/utils@0.2.12`                               | MIT                     |
+| `@fontsource/ibm-plex-mono@5.3.0`                         | OFL-1.1                 |
+| `@fontsource/space-grotesk@5.3.0`                         | OFL-1.1                 |
 | `@google/genai@1.52.0`                                    | Apache-2.0              |
 | `@headlessui/react@2.2.10`                                | MIT                     |
 | `@iconify/types@2.0.0`                                    | MIT                     |

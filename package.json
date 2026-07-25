@@ -1,5 +1,5 @@
 {
-  "name": "pi-workspace",
+  "name": "railyard",
   "version": "0.6.0-beta.1",
   "private": true,
   "license": "Apache-2.0",
@@ -19,8 +19,8 @@
     "developer-tools"
   ],
   "description": "A local desktop app for working with Pi across Git repositories and long-running goals. Plan, implement, and pick up where you left off.",
-  "desktopName": "pi-workspace.desktop",
-  "author": "Pi Workspace contributors",
+  "desktopName": "railyard.desktop",
+  "author": "Railyard contributors",
   "homepage": "https://github.com/pi-workspace/pi-workspace",
   "type": "module",
   "main": "dist/main/index.js",
@@ -44,15 +44,15 @@
     "typecheck": "tsc --noEmit"
   },
   "build": {
-    "appId": "com.github.pi-workspace.pi-workspace",
-    "productName": "Pi Workspace",
+    "appId": "com.github.railyard.railyard",
+    "productName": "Railyard",
     "asar": true,
     "directories": {
       "output": "release"
     },
     "files": [
       "dist/**/*",
-      "assets/pi-workspace-mark.png",
+      "assets/railyard-appicon.png",
       "LICENSE",
       "NOTICE",
       "THIRD_PARTY_NOTICES.md",
@@ -73,11 +73,11 @@
       ]
     },
     "mac": {
-      "artifactName": "pi-workspace-${version}-mac-${arch}.${ext}",
+      "artifactName": "railyard-${version}-mac-${arch}.${ext}",
       "category": "public.app-category.developer-tools",
       "entitlements": "assets/entitlements.mac.plist",
       "entitlementsInherit": "assets/entitlements.mac.plist",
-      "icon": "assets/icons/pi-workspace.icns",
+      "icon": "assets/icons/railyard.icns",
       "minimumSystemVersion": "12.0",
       "notarize": true,
       "x64ArchFiles": "{Contents/Resources/app.asar.unpacked/node_modules/@earendil-works/pi-tui/native/darwin/prebuilds/**/darwin-modifiers.node,Contents/Resources/app.asar.unpacked/node_modules/@mariozechner/clipboard-darwin-arm64/clipboard.darwin-arm64.node,Contents/Resources/app.asar.unpacked/node_modules/@mariozechner/clipboard-darwin-x64/clipboard.darwin-x64.node}",
@@ -91,8 +91,8 @@
       ]
     },
     "win": {
-      "artifactName": "pi-workspace-${version}-win-${arch}-setup.${ext}",
-      "icon": "assets/icons/pi-workspace.ico",
+      "artifactName": "railyard-${version}-win-${arch}-setup.${ext}",
+      "icon": "assets/icons/railyard.ico",
       "target": [
         {
           "target": "nsis",
@@ -111,12 +111,12 @@
           ]
         }
       ],
-      "artifactName": "pi-workspace-${version}-${arch}.${ext}",
+      "artifactName": "railyard-${version}-${arch}.${ext}",
       "category": "Development",
-      "description": "Pi Workspace is a local desktop app for working with Pi across Git repositories and long-running goals.\n\nOrganize related repositories into Workspaces, use Quick Sessions for focused tasks, and carry shared context across long-running Workstreams. Plan with Brainstorm Sessions, then make and validate changes with Implement Sessions.\n\nApplication data is stored locally. Pi Workspace uses Pi's existing model-provider configuration; it does not provide a separate account or provider login.",
-      "executableName": "pi-workspace",
+      "description": "Railyard is a local desktop app for working with Pi across Git repositories and long-running goals.\n\nOrganize related repositories into Workspaces, use Quick Sessions for focused tasks, and carry shared context across long-running Workstreams. Plan with Brainstorm Sessions, then make and validate changes with Implement Sessions.\n\nApplication data is stored locally. Railyard uses Pi's existing model-provider configuration; it does not provide a separate account or provider login.",
+      "executableName": "railyard",
       "icon": "assets/icons",
-      "maintainer": "Pi Workspace contributors <7268075+OfficialOzzy@users.noreply.github.com>",
+      "maintainer": "Railyard contributors <7268075+OfficialOzzy@users.noreply.github.com>",
       "syncDesktopName": true,
       "synopsis": "Work with Pi across Git repositories and long-running goals"
     }
@@ -144,6 +144,8 @@
   },
   "dependencies": {
     "@earendil-works/pi-coding-agent": "^0.81.0",
+    "@fontsource/ibm-plex-mono": "^5.3.0",
+    "@fontsource/space-grotesk": "^5.3.0",
     "@headlessui/react": "^2.2.10",
     "@lexical/react": "0.48.0",
     "@streamdown/code": "^1.1.1",

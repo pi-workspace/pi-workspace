@@ -1,6 +1,6 @@
-# Contributing to Pi Workspace
+# Contributing to Railyard
 
-Thank you for helping improve Pi Workspace. This guide explains the contribution workflow and the checks expected before review.
+Thank you for helping improve Railyard. This guide explains the contribution workflow and the checks expected before review.
 
 Participation in this repository is governed by the [Code of Conduct](./CODE_OF_CONDUCT.md). Report vulnerabilities through the private process in [`SECURITY.md`](./SECURITY.md), not a public issue.
 
@@ -14,7 +14,7 @@ Participation in this repository is governed by the [Code of Conduct](./CODE_OF_
 
 ## Development setup
 
-Pi Workspace supports development with Bun 1.3.14 on Debian-based Linux and macOS. Release validation also uses GitHub-hosted macOS runners for the signed, notarized macOS beta.
+Railyard supports development with Bun 1.3.14 on Debian-based Linux and macOS. Release validation also uses GitHub-hosted macOS runners for the signed, notarized macOS beta.
 
 ```sh
 git clone https://github.com/pi-workspace/pi-workspace.git
@@ -31,7 +31,7 @@ bun run demo
 
 ## Architecture
 
-Pi Workspace is an Electron application with explicit privilege boundaries:
+Railyard is an Electron application with explicit privilege boundaries:
 
 - `src/main/` owns Electron lifecycle, local persistence, Pi Session runtimes, filesystem access, and IPC handlers.
 - `src/preload/` exposes the narrow, context-isolated `window.piWorkspace` bridge.
@@ -97,7 +97,7 @@ Review may request changes for correctness, security, accessibility, maintainabi
 
 ## Contribution licensing
 
-Pi Workspace does not currently require a Contributor License Agreement or Developer Certificate of Origin. Under section 5 of the Apache License, Version 2.0, an intentionally submitted contribution to the Apache-licensed portions of Pi Workspace is provided under Apache-2.0 unless it is conspicuously marked otherwise or covered by a separate agreement.
+Railyard does not currently require a Contributor License Agreement or Developer Certificate of Origin. Under section 5 of the Apache License, Version 2.0, an intentionally submitted contribution to the Apache-licensed portions of Railyard is provided under Apache-2.0 unless it is conspicuously marked otherwise or covered by a separate agreement.
 
 This does not relicense third-party material. Do not submit copied or adapted code, design assets, fonts, icons, screenshots, or other content unless you have the right to contribute it under terms compatible with this repository and disclose its source and license in the pull request.
 

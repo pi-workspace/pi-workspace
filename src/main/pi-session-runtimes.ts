@@ -1436,7 +1436,7 @@ export function createPiSessionRuntimeRegistry({
     dispose() {
       for (const sessionId of lifecycle.sessionIds()) {
         if (activeRun(getTimeline(sessionId))) {
-          handleRuntimeEvent(sessionId, { type: 'cancelled', explanation: 'Pi Workspace closed.' })
+          handleRuntimeEvent(sessionId, { type: 'cancelled', explanation: 'Railyard closed.' })
         }
       }
 

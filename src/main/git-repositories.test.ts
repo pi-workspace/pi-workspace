@@ -75,6 +75,7 @@ test('creates a deterministic ordinary worktree without changing dirty source fi
 
   assert.equal(created, proposal)
   assert.equal(proposal.worktreePath, join(parse(repositoryPath).dir, '.worktrees', '0123456789ab', 'repository-a'))
+  assert.equal(proposal.branch, 'railyard/0123456789ab/repository-a')
   assert.equal(await readFile(join(repositoryPath, 'tracked.txt'), 'utf8'), 'dirty source')
   assert.equal(await readFile(join(proposal.worktreePath, 'tracked.txt'), 'utf8'), 'committed')
   assert.equal(

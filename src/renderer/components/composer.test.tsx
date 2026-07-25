@@ -861,7 +861,7 @@ test('explains how to configure Pi when no Model is available while preserving t
   const editor = view.getByRole('textbox', { name: 'Message for First Session' })
   const send = view.getByRole('button', { name: 'Send message' }) as HTMLButtonElement
 
-  await view.findByText('No Model is available. Install Pi CLI, sign in to a provider, then restart Pi Workspace.')
+  await view.findByText('No Model is available. Install Pi CLI, sign in to a provider, then restart Railyard.')
   assert.equal(editor.textContent, 'Keep this draft')
   assert.equal(editor.getAttribute('contenteditable'), 'true')
   assert.equal(send.disabled, true)

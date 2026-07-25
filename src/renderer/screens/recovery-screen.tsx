@@ -43,7 +43,7 @@ export function RecoveryScreen({ startup, onReset }: RecoveryScreenProperties) {
         <AlertTriangle aria-hidden="true" className="size-8 text-activity-blocked" />
         <p className="mt-5 text-sm font-medium text-activity-blocked">Recovery required</p>
         <h1 id="recovery-title" className="mt-2 text-2xl font-semibold tracking-tight text-content-foreground">
-          Pi Workspace could not open its application state
+          Railyard could not open its application state
         </h1>
         <p className="mt-3 text-sm/6 text-content-muted-foreground">
           Sessions and Repository access remain unavailable so existing state is not guessed or overwritten.
@@ -73,12 +73,12 @@ export function RecoveryScreen({ startup, onReset }: RecoveryScreenProperties) {
           </Button>
           <Button color="red" onClick={() => setResetOpen(true)}>
             <RotateCcw aria-hidden="true" data-slot="icon" />
-            Reset Pi Workspace…
+            Reset Railyard…
           </Button>
         </div>
       </section>
       <Dialog open={resetOpen} onClose={setResetOpen}>
-        <DialogTitle>Reset Pi Workspace state?</DialogTitle>
+        <DialogTitle>Reset Railyard state?</DialogTitle>
         <DialogBody>
           <p>Reset creates a new empty application database. Git and Pi Session files remain untouched.</p>
           <label className="mt-5 block text-sm font-medium text-content-foreground">

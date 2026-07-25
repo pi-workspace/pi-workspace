@@ -30,7 +30,8 @@ export function WorkspaceOnboardingScreen({ onCreateWorkspace }: WorkspaceOnboar
   return (
     <main className="flex min-h-screen w-full items-center justify-center bg-content-background px-6 py-12">
       <section className="w-full max-w-md text-center">
-        <img alt="Pi Workspace" className="mx-auto size-20" src="./pi-workspace-mark.svg" />
+        <img alt="Railyard" className="mx-auto size-20 dark:hidden" src="./railyard-symbol-light.svg" />
+        <img alt="" className="mx-auto hidden size-20 dark:block" src="./railyard-symbol-dark.svg" />
         <h1 className="mt-6 text-3xl font-semibold tracking-tight text-content-foreground">
           Create your first Workspace
         </h1>
