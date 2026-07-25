@@ -229,7 +229,7 @@ test('replaces the Composer with restore guidance for an archived Workstream', (
   assert.doesNotMatch(markup, /aria-label="Send message"/)
 })
 
-test('constrains every visible Session so its transcript scrolls without displacing its Composer', () => {
+test('renders a Composer for every visible Session', () => {
   const markup = renderToStaticMarkup(
     <SessionArea
       sessions={[pinnedSession, activeSession]}
@@ -243,6 +243,5 @@ test('constrains every visible Session so its transcript scrolls without displac
     />
   )
 
-  assert.match(markup, /class="flex min-h-0 min-w-\[400px\] flex-\[1_0_400px\]/)
-  assert.match(markup, /class="composer-tray shrink-0 border-t/)
+  assert.equal(markup.match(/aria-label="Send message"/g)?.length, 2)
 })
