@@ -10,6 +10,6 @@ test('formats the latest bundled Release Note for a GitHub Release', () => {
   assert.match(markdown, /^## New$/m)
   assert.match(
     markdown,
-    /^- Choose from six visual themes and color modes in Settings, with your preferences saved across launches\./m
+    /^- Install Pi Workspace on Windows 11 x64 and work with Repositories whose paths include drive letters and spaces\./m
   )
 })
