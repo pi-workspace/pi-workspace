@@ -20,6 +20,18 @@ export function isSemanticVersion(version: string): boolean {
 
 export const bundledReleaseNotes: readonly ReleaseNote[] = [
   {
+    version: '1.0.0-beta.1',
+    releaseDate: '2026-07-25',
+    summary: 'This beta establishes the foundation for Railyard’s next stage of development.',
+    changes: {
+      new: [],
+      improved: [
+        'Pi Workspace is now Railyard, with a renamed app and packages, new native icons, Space Grotesk and IBM Plex Mono typography, and refreshed light and dark visuals; first launch copies existing Workspaces, Sessions, and appearance settings into the renamed app.',
+      ],
+      fixed: [],
+    },
+  },
+  {
     version: '0.6.0-beta.1',
     releaseDate: '2026-07-25',
     summary:
