@@ -176,9 +176,24 @@ jobs:
         env:
           DEBIAN_VERSION: ${{ matrix.debian }}
         run: |
+          image="debian:$DEBIAN_VERSION"
+
+          for attempt in 1 2 3; do
+            if docker pull "$image"; then
+              break
+            fi
+
+            if [[ "$attempt" = 3 ]]; then
+              echo "Unable to pull $image after $attempt attempts." >&2
+              exit 1
+            fi
+
+            sleep "$((attempt * 5))"
+          done
+
           docker run --rm \
             --volume "$PWD/release:/release:ro" \
-            "debian:$DEBIAN_VERSION" \
+            "$image" \
             bash -euxo pipefail -c '
               apt-get update
               cd /release
@@ -256,7 +271,7 @@ jobs:
       - name: Verify packaged application files
         shell: pwsh
         run: |
-          $packageContents = & bun x asar list release/win-unpacked/resources/app.asar
+          $packageContents = @(& bun x asar list release/win-unpacked/resources/app.asar) -replace '\\', '/'
           $expectedPaths = @(
             '/assets/pi-workspace-mark.png'
             '/dist/main/index.js'
