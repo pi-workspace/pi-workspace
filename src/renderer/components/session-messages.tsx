@@ -377,7 +377,7 @@ function SessionMessageRow({
             type="button"
             aria-label={`Fork from “${message.text.slice(0, 40) || 'this message'}”`}
             title="Fork from here"
-            className="absolute -bottom-7 right-0 z-10 rounded-sm p-1.5 text-content-muted-foreground opacity-0 transition-opacity motion-reduce:transition-none hover:bg-session-interaction hover:text-content-foreground focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring group-hover/message:opacity-100 group-focus-within/message:opacity-100"
+            className="absolute top-1/2 right-full z-10 mr-2 -translate-y-1/2 rounded-sm p-1.5 text-content-muted-foreground opacity-0 transition-opacity motion-reduce:transition-none hover:bg-session-interaction hover:text-content-foreground focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring group-hover/message:opacity-100 group-focus-within/message:opacity-100"
             onClick={() => onForkFromMessage(userPosition)}
           >
             <GitFork aria-hidden="true" className="size-3.5" />
