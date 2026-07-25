@@ -5,6 +5,12 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import { readPrivateTextFile, writePrivateTextFile } from '@/src/main/private-storage'
 
+async function assertPrivateMode(path: string, expectedMode: number): Promise<void> {
+  if (process.platform === 'win32') return
+
+  assert.equal((await stat(path)).mode & 0o777, expectedMode)
+}
+
 test('a private text file is readable and writable only by its owner', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'pi-workspace-private-storage-'))
   const file = join(directory, 'nested', 'settings.json')
@@ -12,7 +18,7 @@ test('a private text file is readable and writable only by its owner', async () 
   try {
     await writePrivateTextFile(file, '{}\n')
 
-    assert.equal((await stat(file)).mode & 0o777, 0o600)
+    await assertPrivateMode(file, 0o600)
   } finally {
     await rm(directory, { force: true, recursive: true })
   }
@@ -27,7 +33,7 @@ test('writing private data corrects an existing storage directory permission', a
     await chmod(storageDirectory, 0o755)
     await writePrivateTextFile(join(storageDirectory, 'settings.json'), '{}\n')
 
-    assert.equal((await stat(storageDirectory)).mode & 0o777, 0o700)
+    await assertPrivateMode(storageDirectory, 0o700)
   } finally {
     await rm(directory, { force: true, recursive: true })
   }
@@ -42,7 +48,7 @@ test('writing private data corrects an existing file permission', async () => {
     await chmod(file, 0o644)
     await writePrivateTextFile(file, '{"appearance":"dark"}\n')
 
-    assert.equal((await stat(file)).mode & 0o777, 0o600)
+    await assertPrivateMode(file, 0o600)
   } finally {
     await rm(directory, { force: true, recursive: true })
   }
@@ -57,7 +63,7 @@ test('reading private data corrects an existing file permission', async () => {
     await chmod(file, 0o644)
     await readPrivateTextFile(file)
 
-    assert.equal((await stat(file)).mode & 0o777, 0o600)
+    await assertPrivateMode(file, 0o600)
   } finally {
     await rm(directory, { force: true, recursive: true })
   }
@@ -74,7 +80,7 @@ test('reading private data corrects an existing storage directory permission', a
     await writeFile(file, '{"projects":[]}\n', 'utf8')
     await readPrivateTextFile(file)
 
-    assert.equal((await stat(storageDirectory)).mode & 0o777, 0o700)
+    await assertPrivateMode(storageDirectory, 0o700)
   } finally {
     await rm(directory, { force: true, recursive: true })
   }

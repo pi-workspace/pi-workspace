@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process'
 import { realpath } from 'node:fs/promises'
-import { dirname, isAbsolute, join, parse, resolve } from 'node:path'
+import { dirname, isAbsolute, join, parse, relative, resolve, sep } from 'node:path'
 import { promisify } from 'node:util'
 import { worktreeName } from './workstream-id'
 
@@ -160,8 +160,9 @@ export function repositoryRootsOverlap(leftDirectoryPath: string, rightDirectory
 }
 
 function isWithin(candidatePath: string, parentPath: string): boolean {
+  const relativePath = relative(parentPath, candidatePath)
+
   return (
-    candidatePath === parentPath ||
-    (dirname(candidatePath) !== candidatePath && candidatePath.startsWith(`${parentPath}/`))
+    relativePath === '' || (!relativePath.startsWith(`..${sep}`) && relativePath !== '..' && !isAbsolute(relativePath))
   )
 }

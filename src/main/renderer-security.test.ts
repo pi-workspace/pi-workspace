@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict'
+import { tmpdir } from 'node:os'
+import { join, parse } from 'node:path'
 import { test } from 'node:test'
 import {
   allowBrowserPermissionCheck,
@@ -136,9 +138,11 @@ test('denies browser permissions other than sanitized clipboard writes', () => {
 })
 
 test('application protocol requests resolve inside the renderer directory', () => {
+  const rendererDirectory = join(parse(tmpdir()).root, 'application', 'renderer')
+
   assert.equal(
-    resolveRendererAssetPath('pi-workspace://renderer/assets/index.js', '/application/renderer'),
-    '/application/renderer/assets/index.js'
+    resolveRendererAssetPath('pi-workspace://renderer/assets/index.js', rendererDirectory),
+    join(rendererDirectory, 'assets', 'index.js')
   )
 })
 

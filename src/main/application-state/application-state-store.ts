@@ -24,6 +24,8 @@ export async function loadSqlite(): Promise<SqliteModule> {
 
 const markerFileName = 'application-state.json'
 const databaseFileName = 'application-state.sqlite'
+const renameRetryDelayMs = 100
+const renameRetryCount = 5
 
 async function fileExists(path: string): Promise<boolean> {
   try {
@@ -31,6 +33,24 @@ async function fileExists(path: string): Promise<boolean> {
     return true
   } catch {
     return false
+  }
+}
+
+function isRetryableRenameError(error: unknown): boolean {
+  return (
+    typeof error === 'object' && error !== null && 'code' in error && (error.code === 'EBUSY' || error.code === 'EPERM')
+  )
+}
+
+async function renameWhenAvailable(sourcePath: string, destinationPath: string): Promise<void> {
+  for (let attempt = 1; attempt <= renameRetryCount; attempt += 1) {
+    try {
+      await rename(sourcePath, destinationPath)
+      return
+    } catch (error) {
+      if (!isRetryableRenameError(error) || attempt === renameRetryCount) throw error
+      await new Promise<void>((resolve) => setTimeout(resolve, renameRetryDelayMs))
+    }
   }
 }
 
@@ -285,8 +305,8 @@ export async function initializeApplicationStateStore(storageDirectory: string, 
     const retiredDatabasePath = `${databasePath}.${Date.now()}.recovery`
     const retiredMarkerPath = `${markerPath}.${Date.now()}.recovery`
 
-    if (await fileExists(databasePath)) await rename(databasePath, retiredDatabasePath)
-    if (await fileExists(markerPath)) await rename(markerPath, retiredMarkerPath)
+    if (await fileExists(databasePath)) await renameWhenAvailable(databasePath, retiredDatabasePath)
+    if (await fileExists(markerPath)) await renameWhenAvailable(markerPath, retiredMarkerPath)
 
     startup = await createFreshAuthority()
     return startup

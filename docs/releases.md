@@ -5,13 +5,13 @@ Pi Workspace beta releases are manually started from GitHub Actions. The workflo
 
 ## Release contract
 
-- The beta supports Debian 12 and Debian 13 on x86_64 (`amd64` in Debian package names), plus macOS 12 or later on
-  Apple silicon and Intel through one universal application.
-- Each release provides a Debian package, a universal macOS DMG, a SHA-256 checksum for each installable artifact, and
-  an SPDX JSON software bill of materials (SBOM) generated from each packaged application. AppImage, Windows, and
-  other CPU architectures are not supported.
-- The macOS DMG is Developer ID signed, notarized by Apple, and stapled before publication. It is not a Mac App Store
-  distribution and updates are manual.
+- The beta supports Debian 12 and Debian 13 on x86_64 (`amd64` in Debian package names), macOS 12 or later on Apple
+  silicon and Intel through one universal application, and Windows 11 on x64.
+- Each release provides a Debian package, a universal macOS DMG, a Windows x64 installer, a SHA-256 checksum for each
+  installable artifact, and an SPDX JSON software bill of materials (SBOM) generated from each packaged application.
+  AppImage, Windows 10, and other CPU architectures are not supported.
+- The macOS DMG is Developer ID signed, notarized by Apple, and stapled before publication. The Windows installer is
+  not code signed. Neither distribution uses an app store and updates are manual.
 - Beta versions use semantic prerelease versions such as `0.1.0-beta.1`.
 - The core version follows semantic versioning relative to the previous release: major for incompatible changes, minor
   for backward-compatible new functionality, and patch for backward-compatible fixes.
@@ -20,7 +20,7 @@ Pi Workspace beta releases are manually started from GitHub Actions. The workflo
 - `package.json` and the latest bundled Release Note in `src/release-notes.ts` are curated together before release.
   Automated validation requires their versions to match.
 - The manual workflow must run from the default branch. It creates the `v<package-version>` tag and matching GitHub
-  prerelease only after source checks, packaging, and Debian and macOS verification pass.
+  prerelease only after source checks, packaging, and Debian, macOS, and Windows verification pass.
 - A version can be released only once. The workflow stops if its tag already exists.
 - Debian packages and beta Git tags are not separately signed. Every installable artifact has a SHA-256 checksum and
   an SPDX JSON SBOM generated from the unpacked packaged application. The release workflow adds a keyless GitHub
@@ -69,10 +69,11 @@ Alternatively, with the GitHub CLI:
 gh workflow run release-beta.yml --ref main
 ```
 
-The workflow installs from `bun.lock`, validates the release contract, runs the quality gate, creates the Debian and
-macOS packages, checksums, and SBOMs from their unpacked applications, then verifies the Debian package on Debian 12
-and 13 and verifies the signed, notarized macOS DMG. It creates keyless build-provenance attestations for every
-release asset before creating the version tag and GitHub prerelease.
+The workflow installs from `bun.lock`, validates the release contract, runs the quality gate, creates the Debian,
+macOS, and Windows packages, checksums, and SBOMs from their unpacked applications, then verifies the Debian package
+on Debian 12 and 13, the signed and notarized macOS DMG, and Windows installer installation, launch, and removal. It
+creates keyless build-provenance attestations for every release asset before creating the version tag and GitHub
+prerelease.
 
 ## Verify release provenance
 
@@ -106,6 +107,10 @@ each supported platform:
 
 On macOS, launch the application from `/Applications` after dragging it from the mounted DMG. Confirm macOS shows the
 expected Pi Workspace icon and does not show an unidentified-developer warning.
+
+On Windows 11 x64, use a local Git Repository whose path has a drive letter and spaces. Confirm Git is available on
+`PATH`, Pi Workspace detects the Pi provider configuration created by `pi` and `/login`, Quick Sessions work from both
+the current checkout and a dedicated worktree, and Brainstorm and Implement Sessions can run a shell command.
 
 ## Revoke a compromised release
 
@@ -155,7 +160,8 @@ bun install --frozen-lockfile
 bun run release:validate
 bun run package:linux
 bun run package:mac
+bun run package:win
 ```
 
-macOS packaging requires macOS, a Developer ID certificate, and notarization credentials. Release artifacts are written
-to `release/`.
+macOS packaging requires macOS, a Developer ID certificate, and notarization credentials. Windows packaging requires
+Windows. Release artifacts are written to `release/`.

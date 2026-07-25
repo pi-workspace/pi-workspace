@@ -362,7 +362,7 @@ test('selects and reveals a newly created Session from the returned snapshot', a
 
   await waitFor(() => assert.ok(view.getByRole('heading', { name: 'New Session' })))
   await waitFor(() =>
-    assert.equal(browser.document.activeElement, view.getByRole('textbox', { name: 'Message for New Session' }))
+    assert.equal(browser.document.activeElement?.getAttribute('aria-label'), 'Message for New Session')
   )
 })
 

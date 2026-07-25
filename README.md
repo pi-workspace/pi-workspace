@@ -30,8 +30,9 @@ Pi Workspace currently supports:
 
 - macOS 12 or later on Apple silicon and Intel Macs
 - Debian 12 and Debian 13 on x86_64
+- Windows 11 on x64
 
-Windows, AppImage, other Linux distributions, and other CPU architectures are not currently supported.
+AppImage, Windows 10, other Linux distributions, and other CPU architectures are not currently supported.
 
 ### macOS
 
@@ -45,6 +46,26 @@ Windows, AppImage, other Linux distributions, and other CPU architectures are no
 3. Open the DMG and drag **Pi Workspace** into Applications.
 
 The macOS build is Developer ID signed and notarized. To update, replace the existing app in Applications with the newer version.
+
+### Windows
+
+1. Download the Windows x64 installer `.exe` and matching `.sha256` file.
+2. In PowerShell, verify the download:
+
+   ```powershell
+   $installer = Get-Item .\pi-workspace-*-win-x64-setup.exe
+   $expectedHash = (Get-Content "$($installer.BaseName).sha256" -Raw).Split()[0]
+   $actualHash = (Get-FileHash -Algorithm SHA256 $installer).Hash.ToLowerInvariant()
+
+   if ($actualHash -ne $expectedHash) {
+     throw 'The installer checksum does not match.'
+   }
+   ```
+
+3. Run the installer, then launch **Pi Workspace** from the Start menu.
+
+The Windows installer is not code signed, so Windows may require confirmation before opening it. To update, install the
+newer version. To uninstall, use **Settings** → **Apps** → **Installed apps**.
 
 ### Debian
 
@@ -146,21 +167,22 @@ Unknown scenario names use `startup`. Use a 1200 by 800 browser viewport as the 
 
 ### Development commands
 
-| Command                    | Description                                                    |
-| -------------------------- | -------------------------------------------------------------- |
-| `bun run build`            | Build the production Electron application into `dist/`.        |
-| `bun run check`            | Run the complete local and CI quality gate.                    |
-| `bun run demo`             | Open the isolated product screenshot demo.                     |
-| `bun run dev`              | Run the development application.                               |
-| `bun run start`            | Build and launch the production application.                   |
-| `bun run test`             | Run the test suite.                                            |
-| `bun run lint`             | Lint the source files.                                         |
-| `bun run format:check`     | Check formatting.                                              |
-| `bun run package:linux`    | Build a local Debian package for release troubleshooting.      |
-| `bun run package:mac`      | Build a local universal macOS DMG for release troubleshooting. |
-| `bun run release:validate` | Validate the beta version and latest bundled Release Note.     |
-| `bun run security:scan`    | Scan Git history and dependencies for known risks.             |
-| `bun run typecheck`        | Check TypeScript types.                                        |
+| Command                    | Description                                                      |
+| -------------------------- | ---------------------------------------------------------------- |
+| `bun run build`            | Build the production Electron application into `dist/`.          |
+| `bun run check`            | Run the complete local and CI quality gate.                      |
+| `bun run demo`             | Open the isolated product screenshot demo.                       |
+| `bun run dev`              | Run the development application.                                 |
+| `bun run start`            | Build and launch the production application.                     |
+| `bun run test`             | Run the test suite.                                              |
+| `bun run lint`             | Lint the source files.                                           |
+| `bun run format:check`     | Check formatting.                                                |
+| `bun run package:linux`    | Build a local Debian package for release troubleshooting.        |
+| `bun run package:mac`      | Build a local universal macOS DMG for release troubleshooting.   |
+| `bun run package:win`      | Build a local Windows x64 installer for release troubleshooting. |
+| `bun run release:validate` | Validate the beta version and latest bundled Release Note.       |
+| `bun run security:scan`    | Scan Git history and dependencies for known risks.               |
+| `bun run typecheck`        | Check TypeScript types.                                          |
 
 ## License
 
