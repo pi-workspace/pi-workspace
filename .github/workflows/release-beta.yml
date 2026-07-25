@@ -382,9 +382,13 @@ jobs:
             throw 'Windows installer checksum does not match.'
           }
 
-          & $installer[0].FullName /S
-          if ($LASTEXITCODE -ne 0) {
-            throw "Windows installer exited with $LASTEXITCODE."
+          $installerProcess = Start-Process `
+            -FilePath $installer[0].FullName `
+            -ArgumentList '/S' `
+            -Wait `
+            -PassThru
+          if ($installerProcess.ExitCode -ne 0) {
+            throw "Windows installer exited with $($installerProcess.ExitCode)."
           }
 
           $application = Get-ChildItem "$env:LOCALAPPDATA\Programs" -File -Filter 'Pi Workspace.exe' -Recurse |
@@ -407,8 +411,12 @@ jobs:
             throw 'Windows installer did not install an uninstaller.'
           }
 
-          & $uninstaller.FullName /S
-          if ($LASTEXITCODE -ne 0 -or (Test-Path $application.FullName)) {
+          $uninstallerProcess = Start-Process `
+            -FilePath $uninstaller.FullName `
+            -ArgumentList '/S' `
+            -Wait `
+            -PassThru
+          if ($uninstallerProcess.ExitCode -ne 0 -or (Test-Path $application.FullName)) {
             throw 'Windows uninstaller did not remove Pi Workspace.'
           }
 
