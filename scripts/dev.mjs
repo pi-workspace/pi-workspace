@@ -1,8 +1,23 @@
 import chokidar from 'chokidar'
 import { createRequire } from 'node:module'
+import { basename } from 'node:path'
 import { createServer } from 'vite'
 
 const rootDirectory = process.cwd()
+
+function resolveDevelopmentSpace() {
+  const result = Bun.spawnSync({
+    cmd: ['git', 'branch', '--show-current'],
+    cwd: rootDirectory,
+    stderr: 'pipe',
+    stdout: 'pipe',
+  })
+  const branch = new TextDecoder().decode(result.stdout).trim()
+
+  return branch || basename(rootDirectory)
+}
+
+const developmentSpace = resolveDevelopmentSpace()
 const require = createRequire(import.meta.url)
 const electronExecutable = require('electron')
 
@@ -56,7 +71,7 @@ function startElectron() {
   const nextElectronProcess = Bun.spawn({
     cmd: [electronExecutable, '.'],
     cwd: rootDirectory,
-    env: { ...process.env, VITE_DEV_SERVER_URL: rendererUrl },
+    env: { ...process.env, RAILYARD_DEV_SPACE: developmentSpace, VITE_DEV_SERVER_URL: rendererUrl },
     stdout: 'inherit',
     stderr: 'inherit',
   })
@@ -139,5 +154,6 @@ if (!rendererUrl) {
   throw new Error('Vite did not provide a local development URL.')
 }
 
+console.log(`Starting Railyard development space: ${developmentSpace}`)
 console.log(`Renderer HMR available at ${rendererUrl}`)
 void rebuildAndRestartMain()
