@@ -4,6 +4,8 @@ import type { ComposerBridge } from '@/src/composer'
 import type { OwnedSession, WorkstreamLifecycle } from '@/src/domain/workstream'
 import type { SessionConfigurationBridge } from '@/src/session-configuration'
 import type { SessionSkillsBridge } from '@/src/session-skills'
+import type { SessionActionCard } from '@/src/session-action-cards'
+import type { SessionTranscriptBridge } from '@/src/session-transcript'
 import { Composer } from '@/src/renderer/components/composer'
 import { QueuedFollowUpTray } from '@/src/renderer/components/queued-follow-up-tray'
 import { SessionMessages } from '@/src/renderer/components/session-messages'
@@ -33,6 +35,8 @@ type SessionContainerProperties = {
   sessionConfiguration?: SessionConfigurationBridge
   sessionSkills?: SessionSkillsBridge
   onTogglePin: () => void
+  acceptActionCard?: SessionTranscriptBridge['acceptActionCard']
+  onStartImplementSession?: (workstreamId: string) => Promise<void>
 }
 
 export function SessionContainer({
@@ -56,6 +60,8 @@ export function SessionContainer({
   sessionConfiguration,
   sessionSkills,
   onTogglePin,
+  acceptActionCard = async () => false,
+  onStartImplementSession = async () => {},
 }: SessionContainerProperties) {
   const headingId = useId()
   const transcriptState = useSessionTranscript(session.id)
@@ -136,6 +142,23 @@ export function SessionContainer({
         timelineAnnouncement={transcriptState.announcement}
         timelineError={transcriptState.error}
         onReloadTimeline={transcriptState.reload}
+        onActionCard={async (card: SessionActionCard, option) => {
+          if (card.kind === 'start-implement-session') {
+            await onStartImplementSession(session.workstreamId)
+            return acceptActionCard(session.id, card.id)
+          }
+
+          const result = await submitMessage({
+            sessionId: session.id,
+            delivery: 'action',
+            text:
+              option === 'ready'
+                ? 'Create a pull request for the completed work. Review the current changes, validation results, and branch status, then prepare a clear title and description for my approval.'
+                : 'Create a draft pull request for the completed work. Review the current changes, validation results, and branch status, then prepare a clear title and description for my approval.',
+          })
+
+          return result.status === 'accepted' && (await acceptActionCard(session.id, card.id))
+        }}
       />
       {!composerUnavailable && transcriptState.snapshot?.queuedFollowUps && (
         <QueuedFollowUpTray

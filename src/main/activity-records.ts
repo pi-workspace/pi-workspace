@@ -1,4 +1,5 @@
 import type { QueuedFollowUp, QueuedFollowUpRecord } from '@/src/queued-follow-up'
+import type { SessionActionCard, SessionActionCardStatus } from '@/src/session-action-cards'
 import {
   agentActivityKinds,
   type ActivityArtifact,
@@ -27,8 +28,16 @@ export type ActivityLayerRecord =
       execution: Omit<ToolExecution, 'input'>
     }>
   | Readonly<{ version: 1; type: 'activity-removed'; activityId: string }>
+  | Readonly<{ version: 1; type: 'action-card'; card: SessionActionCard }>
+  | Readonly<{
+      version: 1
+      type: 'action-card-status'
+      actionCardId: string
+      status: Exclude<SessionActionCardStatus, 'available'>
+    }>
   | Readonly<{ version: 1 } & QueuedFollowUpRecord>
   | Readonly<{ version: 1; type: 'steering-message'; text: string; acceptedAt: number }>
+  | Readonly<{ version: 1; type: 'action-message'; text: string; acceptedAt: number }>
   | Readonly<{
       version: 1
       type: 'diagnostic'
@@ -45,9 +54,15 @@ export function isActivityLayerRecord(value: unknown): value is ActivityLayerRec
   if (value.type === 'activity') return isAgentActivity(value.activity)
   if (value.type === 'operation') return isToolExecution(value.execution)
   if (value.type === 'activity-removed') return isNonEmptyString(value.activityId)
+  if (value.type === 'action-card') return isSessionActionCard(value.card)
+  if (value.type === 'action-card-status') {
+    return isNonEmptyString(value.actionCardId) && (value.status === 'accepted' || value.status === 'dismissed')
+  }
   if (value.type === 'queued-follow-up') return isQueuedFollowUp(value.followUp)
   if (value.type === 'queued-follow-up-removed') return isNonEmptyString(value.followUpId)
-  if (value.type === 'steering-message') return typeof value.text === 'string' && isTimestamp(value.acceptedAt)
+  if (value.type === 'steering-message' || value.type === 'action-message') {
+    return typeof value.text === 'string' && isTimestamp(value.acceptedAt)
+  }
   if (value.type === 'diagnostic') {
     return (
       isNonEmptyString(value.runId) &&
@@ -63,6 +78,20 @@ export function isActivityLayerRecord(value: unknown): value is ActivityLayerRec
   }
 
   return false
+}
+
+function isSessionActionCard(value: unknown): value is SessionActionCard {
+  if (!isRecord(value)) return false
+
+  return (
+    isNonEmptyString(value.id) &&
+    isNonEmptyString(value.sessionId) &&
+    (value.kind === 'start-implement-session' || value.kind === 'prepare-pull-request') &&
+    isNonEmptyString(value.title) &&
+    isNonEmptyString(value.description) &&
+    value.status === 'available' &&
+    isTimestamp(value.createdAt)
+  )
 }
 
 function isQueuedFollowUp(value: unknown): value is QueuedFollowUp {

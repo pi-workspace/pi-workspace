@@ -46,6 +46,56 @@ test('keeps duplicate messages ordered and updates one streaming identity', asyn
   assert.equal(lastEntry?.type === 'message' ? lastEntry.message.state : undefined, 'complete')
 })
 
+test('persists an accepted action card across a runtime restart', async () => {
+  let emit: (event: Parameters<Parameters<PiSessionRuntime['subscribe']>[0]>[0]) => void = () => {}
+  const records: import('@/src/main/activity-records').ActivityLayerRecord[] = []
+  const runtime: PiSessionRuntime = {
+    isStreaming: false,
+    async prompt() {},
+    subscribe(listener) {
+      emit = listener
+      return () => {}
+    },
+    loadHistory() {
+      return { conversations: [], activityRecords: records, finalState: 'completed' }
+    },
+    appendActivityRecord(record) {
+      records.push(record)
+    },
+    dispose() {},
+  }
+  const id = sessionId('action-card-session')
+  const registry = createPiSessionRuntimeRegistry({
+    findSession: () => ({ directoryPath: '/tmp', sessionPath: '/tmp/session.jsonl' }),
+    createSession: async () => runtime,
+  })
+
+  await registry.getTranscript(id)
+  emit({
+    type: 'action_card_created',
+    input: {
+      kind: 'start-implement-session',
+      title: 'Start implementation',
+      description: 'Create an Implement Session for this plan.',
+    },
+    createdAt: 1,
+  })
+
+  const created = (await registry.getTranscript(id)).actionCards?.[0]
+  assert.equal(created?.status, 'available')
+  assert.ok(created)
+  assert.equal(await registry.acceptActionCard(id, created.id), true)
+  assert.equal(await registry.acceptActionCard(id, created.id), false)
+  assert.equal((await registry.getTranscript(id)).actionCards?.[0]?.status, 'accepted')
+
+  const restartedRegistry = createPiSessionRuntimeRegistry({
+    findSession: () => ({ directoryPath: '/tmp', sessionPath: '/tmp/session.jsonl' }),
+    createSession: async () => runtime,
+  })
+
+  assert.equal((await restartedRegistry.getTranscript(id)).actionCards?.[0]?.status, 'accepted')
+})
+
 test('persists queued follow-ups until the user resumes the queue', async () => {
   let streaming = true
   let emit: (event: Parameters<Parameters<PiSessionRuntime['subscribe']>[0]>[0]) => void = () => {}

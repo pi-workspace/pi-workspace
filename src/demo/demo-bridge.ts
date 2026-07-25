@@ -203,6 +203,9 @@ export function createDemoBridge(scenarioName?: string): PiWorkspaceBridge {
       async loadActivityDetails(sessionId, activityId) {
         return scenario.activityDetailsBySessionId[sessionId]?.[activityId]
       },
+      async acceptActionCard() {
+        return false
+      },
       async openExternalLink() {},
       subscribe(listener) {
         transcriptListeners.add(listener)

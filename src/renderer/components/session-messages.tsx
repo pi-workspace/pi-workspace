@@ -2,6 +2,7 @@ import { LoaderCircle } from 'lucide-react'
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui-kit/button'
 import type { SessionId } from '@/src/domain/session'
+import type { SessionActionCard } from '@/src/session-action-cards'
 import { AgentActivityCard } from '@/src/renderer/components/agent-activity-card'
 import { SkillMentionText } from '@/src/renderer/components/skill-mention-text'
 import type { AgentActivity } from '@/src/session-timeline'
@@ -14,6 +15,7 @@ type SessionMessagesProperties = Readonly<{
   timelineAnnouncement?: string
   timelineError?: string
   onReloadTimeline?: () => void
+  onActionCard?: (card: SessionActionCard, option?: 'draft' | 'ready') => Promise<boolean>
 }>
 
 type TranscriptEntry =
@@ -32,6 +34,7 @@ export function SessionMessages({
   timelineAnnouncement,
   timelineError,
   onReloadTimeline,
+  onActionCard = async () => false,
 }: SessionMessagesProperties) {
   const isLoading = !canonicalTranscript
   const loadError = Boolean(timelineError)
@@ -113,6 +116,12 @@ export function SessionMessages({
                 />
               )
             )}
+          {!isLoading &&
+            canonicalTranscript?.actionCards
+              ?.filter((card) => card.status === 'available')
+              .map((card) => (
+                <SessionActionCardView key={card.id} card={card} onAction={(option) => onActionCard(card, option)} />
+              ))}
           {!isLoading && runFailureReason ? (
             <SessionRunFailure reason={runFailureReason} />
           ) : !isLoading && isWorking ? (
@@ -163,6 +172,69 @@ export function SessionMessages({
         {timelineAnnouncement}
       </p>
     </div>
+  )
+}
+
+function SessionActionCardView({
+  card,
+  onAction,
+}: Readonly<{ card: SessionActionCard; onAction: (option?: 'draft' | 'ready') => Promise<boolean> }>) {
+  const [state, setState] = useState<'idle' | 'working' | 'complete' | 'failed'>('idle')
+  const runAction = async (option?: 'draft' | 'ready') => {
+    setState('working')
+
+    try {
+      setState((await onAction(option)) ? 'complete' : 'failed')
+    } catch {
+      setState('failed')
+    }
+  }
+
+  return (
+    <aside
+      className="rounded-xl border border-activity-border bg-activity-background px-4 py-3"
+      aria-label="Suggested action"
+    >
+      <p className="text-xs/5 font-medium text-content-muted-foreground">Suggested by Pi</p>
+      <h2 className="mt-1 text-sm/5 font-medium text-content-foreground">{card.title}</h2>
+      <p className="mt-1 text-sm/5 text-content-muted-foreground">{card.description}</p>
+      {card.kind === 'start-implement-session' ? (
+        <>
+          <Button
+            className="mt-3"
+            disabled={state === 'working' || state === 'complete'}
+            onClick={() => void runAction()}
+          >
+            {state === 'working'
+              ? 'Starting…'
+              : state === 'complete'
+                ? 'Implement Session started'
+                : 'Start Implement Session'}
+          </Button>
+          {state === 'failed' ? (
+            <p className="mt-2 text-sm/5 text-activity-failed">Could not start this action.</p>
+          ) : null}
+        </>
+      ) : (
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Button disabled={state === 'working' || state === 'complete'} onClick={() => void runAction('draft')}>
+            {state === 'working'
+              ? 'Preparing pull request…'
+              : state === 'complete'
+                ? 'Pull request request sent'
+                : 'Prepare draft pull request'}
+          </Button>
+          <Button
+            outline
+            disabled={state === 'working' || state === 'complete'}
+            onClick={() => void runAction('ready')}
+          >
+            Prepare pull request
+          </Button>
+          {state === 'failed' ? <p className="text-sm/5 text-activity-failed">Could not start this request.</p> : null}
+        </div>
+      )}
+    </aside>
   )
 }
 

@@ -14,6 +14,7 @@ import {
   parseSessionRunStopRequest,
 } from '@/src/composer-ipc'
 import { sessionId } from '@/src/domain/session'
+import { parseSessionActionCardToolInput } from '@/src/session-action-cards'
 import { parseSessionSkillsRequest, sessionSkillsIpcChannels } from '@/src/session-skills-ipc'
 import type {
   SessionConfigurationEffort,
@@ -50,6 +51,7 @@ import {
 import { broadcastToTrustedRenderers, handleTrustedIpc } from '@/src/main/trusted-ipc'
 import { isAllowedExternalUrl } from '@/src/session-transcript'
 import {
+  parseActionCardAcceptanceRequest,
   parseSessionTranscriptRequest,
   parseTranscriptActivityDetailsRequest,
   sessionTranscriptIpcChannels,
@@ -155,6 +157,37 @@ export async function createPiSessionRuntime(
     },
   })
 
+  const suggestAction = defineTool({
+    name: 'suggest_action',
+    label: 'Suggest action',
+    description: 'Show the user an optional Pi Workspace action card for an allowlisted next step.',
+    promptGuidelines: [
+      'Use only when the suggested action follows clearly from the completed work.',
+      'Use start-implement-session only in a Brainstorm Session when planning is ready for implementation.',
+      'Use prepare-pull-request only after implementation is ready for the user to review and create a pull request.',
+    ],
+    parameters: Type.Object({
+      kind: Type.Union([Type.Literal('start-implement-session'), Type.Literal('prepare-pull-request')]),
+      title: Type.String({ minLength: 1 }),
+      description: Type.String({ minLength: 1 }),
+    }),
+    async execute(_toolCallId, input) {
+      const action = parseSessionActionCardToolInput(input)
+      if (!action) throw new TypeError('An allowlisted action card with a title and description is required.')
+      if (
+        action.kind === 'start-implement-session' &&
+        (options.kind !== 'managed' || options.policy.mode !== 'brainstorm')
+      ) {
+        throw new TypeError('Only a Brainstorm Session can suggest starting an Implement Session.')
+      }
+
+      runtimeListeners.forEach((listener) =>
+        listener({ type: 'action_card_created', input: action, createdAt: Date.now() })
+      )
+      return { content: [{ type: 'text' as const, text: 'Action card shown to the user.' }], details: {} }
+    },
+  })
+
   const managedTools =
     options.kind === 'managed'
       ? [
@@ -237,7 +270,7 @@ export async function createPiSessionRuntime(
           }),
         ]
       : []
-  const customTools = [startActivity, completeActivity, ...managedTools]
+  const customTools = [startActivity, completeActivity, suggestAction, ...managedTools]
   const managedServices =
     options.kind === 'managed'
       ? await createManagedSessionServices(
@@ -609,6 +642,14 @@ export function initializeComposer(authority: ApplicationAuthority): void {
 
   handleTrustedIpc(sessionTranscriptIpcChannels.openExternalLink, async (_event, value: unknown) => {
     if (isAllowedExternalUrl(value)) await shell.openExternal(value)
+  })
+
+  handleTrustedIpc(sessionTranscriptIpcChannels.acceptActionCard, (_event, value: unknown) => {
+    const request = parseActionCardAcceptanceRequest(value)
+
+    return request
+      ? registry.acceptActionCard(sessionId(request.sessionId), request.actionCardId)
+      : Promise.resolve(false)
   })
 
   handleTrustedIpc(sessionTranscriptIpcChannels.loadActivityDetails, (_event, value: unknown) => {
