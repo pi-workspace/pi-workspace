@@ -20,6 +20,22 @@ export function isSemanticVersion(version: string): boolean {
 
 export const bundledReleaseNotes: readonly ReleaseNote[] = [
   {
+    version: '0.6.0-beta.1',
+    releaseDate: '2026-07-25',
+    summary:
+      'This beta expands Pi Workspace to Windows and makes it easier to keep work moving across active Sessions.',
+    changes: {
+      new: [
+        'Install Pi Workspace on Windows 11 x64 and work with Repositories whose paths include drive letters and spaces.',
+        'Queue up to three follow-up messages while a Session is working, keep them across restarts, and resume them when ready.',
+      ],
+      improved: [
+        'Debian package details now better explain Pi Workspace and its Workspace, Session, and provider configuration.',
+      ],
+      fixed: [],
+    },
+  },
+  {
     version: '0.5.0-beta.1',
     releaseDate: '2026-07-24',
     summary: 'This beta adds appearance customization and brings Workspace and application controls together.',
