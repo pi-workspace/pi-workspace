@@ -73,6 +73,7 @@ export type ApplicationAuthority = Readonly<{
   createWorkstreamSession(workstreamId: string, options: CreateSessionOptions): Promise<WorkstreamCreationResult>
   setWorkstreamLifecycle(workstreamId: string, lifecycle: WorkstreamLifecycle): Promise<WorkstreamsSnapshot>
   renameWorkstreamSession(sessionId: SessionId, title: string): Promise<WorkstreamsSnapshot>
+  setSessionDescription(sessionId: SessionId, description: string): Promise<WorkstreamsSnapshot>
   resolveOwnedSession(sessionId: SessionId): Promise<OwnedSessionResolution | undefined>
   resolveWorkstreamWorkingLocation(workstreamId: string, repositoryId: string): Promise<string>
   getWorkstreamKnowledge(workstreamId: string): Promise<WorkstreamKnowledge>
@@ -156,6 +157,7 @@ export async function initializeApplicationAuthority(
     createWorkstreamSession,
     setWorkstreamLifecycle,
     renameWorkstreamSession,
+    setSessionDescription,
     resolveOwnedSession,
     resolveWorkstreamWorkingLocation,
     getCurrentWorkstreamRepositorySet,
@@ -181,6 +183,7 @@ export async function initializeApplicationAuthority(
     createWorkstreamSession,
     setWorkstreamLifecycle,
     renameWorkstreamSession,
+    setSessionDescription,
     resolveOwnedSession,
     resolveWorkstreamWorkingLocation,
     getWorkstreamKnowledge,

@@ -9,7 +9,7 @@ export type SessionRuntimeEntry = Readonly<{
 
 type SessionRuntimeLifecycleOptions = Readonly<{
   findSession: (sessionId: SessionId) => PiSessionLocation | undefined | Promise<PiSessionLocation | undefined>
-  createSession: (location: PiSessionLocation) => Promise<PiSessionRuntime>
+  createSession: (location: PiSessionLocation, sessionId: SessionId) => Promise<PiSessionRuntime>
   attach(
     sessionId: SessionId,
     runtimeDirectory: string,
@@ -70,7 +70,7 @@ export function createSessionRuntimeLifecycle({
         entries.delete(sessionId)
       }
 
-      const pendingEntry = createSession(location).then((runtime) =>
+      const pendingEntry = createSession(location, sessionId).then((runtime) =>
         attach(sessionId, location.directoryPath, runtime, location.runtimeKey)
       )
       entries.set(sessionId, pendingEntry)

@@ -56,6 +56,9 @@ An ordinary Git worktree owned by one Implement Session for one Repository. It i
 A persistent Pi interaction associated with one Workstream. Each Session has an immutable mode and Repository access: direct access to one selected Repository working location for Default or automatic access to every current Workspace Repository for Brainstorm and Implement. Implement changes use that Session's lazily created Implement Session Worktrees.
 _Avoid_: Chat, thread
 
+**Session Description**:
+One or two concise, agent-authored sentences that summarize a Session's current focus for navigation. Pi can revise it as the focus materially changes.
+
 **Changelog**:
 The complete chronological collection shown by the Changelog page.
 
