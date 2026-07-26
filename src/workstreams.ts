@@ -23,4 +23,5 @@ export interface WorkstreamsBridge {
   setLifecycle(workstreamId: string, lifecycle: WorkstreamLifecycle): Promise<WorkstreamsSnapshot>
   renameSession(sessionId: SessionId, title: string): Promise<WorkstreamsSnapshot>
   showWorkingLocation(workstreamId: string, repositoryId: string): Promise<void>
+  subscribe(listener: (snapshot: WorkstreamsSnapshot) => void): () => void
 }

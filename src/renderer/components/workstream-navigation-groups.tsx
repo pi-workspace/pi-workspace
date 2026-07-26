@@ -4,6 +4,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import {
   Archive,
   ArchiveRestore,
+  Bookmark,
   ChevronDown,
   ChevronRight,
   Ellipsis,
@@ -20,7 +21,6 @@ import { SidebarItem, SidebarLabel, SidebarSection } from '@/components/ui-kit/s
 import type { SessionId } from '@/src/domain/session'
 import type { Workstream, WorkstreamLifecycle } from '@/src/domain/workstream'
 import { getSessionUnavailability, sessionUnavailabilityContext } from '@/src/renderer/session-availability'
-import { SessionPinButton } from './session-pin-button'
 import { SessionTitleEditor } from './session-title-editor'
 
 export type SessionTitleEditing = Readonly<{
@@ -60,7 +60,7 @@ function SessionWorkingIcon({ icon, working }: Readonly<{ icon: ReactNode; worki
 
   return (
     <>
-      <span aria-hidden="true" className="relative grid size-4 shrink-0 place-items-center overflow-hidden">
+      <span aria-hidden="true" className="relative mt-0.5 grid size-4 shrink-0 place-items-center overflow-hidden">
         <AnimatePresence initial={false}>
           <motion.span
             key={working ? 'working' : 'mode'}
@@ -106,6 +106,21 @@ function WorkingSessionsIndicator({ count, visible }: Readonly<{ count: number; 
   )
 }
 
+type SessionPinMenuItemProperties = Readonly<{
+  pinned: boolean
+  disabled: boolean
+  onToggle(): void
+}>
+
+function SessionPinMenuItem({ pinned, disabled, onToggle }: SessionPinMenuItemProperties) {
+  return (
+    <DropdownItem disabled={disabled} onClick={onToggle}>
+      <Bookmark aria-hidden="true" className={clsx(pinned && 'fill-current')} data-slot="icon" />
+      <DropdownLabel>{pinned ? 'Unpin Session' : 'Pin Session'}</DropdownLabel>
+    </DropdownItem>
+  )
+}
+
 function sessionCurrentIndicatorClassName(index: number, sessionCount: number): string {
   const first = index === 0
   const last = index === sessionCount - 1
@@ -120,7 +135,6 @@ function sessionCurrentIndicatorClassName(index: number, sessionCount: number): 
 type SessionNavigationRowProperties = Readonly<{
   session: Workstream['sessions'][number]
   current: boolean
-  pinned: boolean
   titleEditing?: SessionTitleEditing
   currentIndicatorClassName: string
   icon: ReactNode
@@ -140,7 +154,6 @@ type SessionNavigationRowProperties = Readonly<{
 function SessionNavigationRow({
   session,
   current,
-  pinned,
   titleEditing,
   currentIndicatorClassName,
   icon,
@@ -176,8 +189,8 @@ function SessionNavigationRow({
           current={current}
           currentIndicatorClassName={currentIndicatorClassName}
           className={clsx(
-            '[&>button]:min-h-12 [&>button]:rounded-sm! [&>button]:data-disabled:cursor-not-allowed [&>button]:data-disabled:opacity-50 *:data-[slot=current-indicator]:-left-2.25',
-            hasWideEndAction ? '[&>button]:pr-24' : '[&>button]:pr-10'
+            '[&>button]:min-h-14 [&>button]:items-start [&>button]:rounded-sm! [&>button]:py-2.5 [&>button]:data-disabled:cursor-not-allowed [&>button]:data-disabled:opacity-50 *:data-[slot=current-indicator]:-left-2.25',
+            hasWideEndAction ? '[&>button]:pr-14' : '[&>button]:pr-10'
           )}
           disabled={inaccessible}
           onClick={(event) => {
@@ -191,7 +204,7 @@ function SessionNavigationRow({
         >
           <SessionWorkingIcon icon={icon} working={working} />
           <SidebarLabel
-            className={clsx('flex flex-col font-normal', current && 'font-medium')}
+            className={clsx('min-w-0 flex-1 flex flex-col font-normal', current && 'font-medium')}
             onDoubleClick={(event) => {
               event.preventDefault()
               event.stopPropagation()
@@ -199,8 +212,13 @@ function SessionNavigationRow({
             }}
           >
             <span className="truncate">{session.title}</span>
-            <span className="truncate text-xs/4 font-normal text-sidebar-muted-foreground">
-              {context ?? sessionContext(session)}
+            <span
+              className={clsx(
+                'text-xs/4 font-normal text-sidebar-muted-foreground',
+                session.description ? 'line-clamp-4 whitespace-normal' : 'truncate'
+              )}
+            >
+              {session.description ?? context ?? sessionContext(session)}
             </span>
           </SidebarLabel>
         </SidebarItem>
@@ -208,12 +226,6 @@ function SessionNavigationRow({
 
       <div className="absolute top-1/2 right-1 z-10 flex -translate-y-1/2 items-center gap-1">
         {statusIndicator}
-        <SessionPinButton
-          sessionName={session.title}
-          pinned={pinned}
-          disabled={inaccessible && !pinned}
-          onToggle={() => onToggleSessionPin(session.id)}
-        />
         {endAction}
       </div>
     </div>
@@ -284,7 +296,6 @@ function QuickSessionNavigationItem({
       <SessionNavigationRow
         session={session}
         current={current}
-        pinned={pinned}
         working={working}
         titleEditing={titleEditing}
         currentIndicatorClassName={currentIndicatorClassName}
@@ -303,14 +314,19 @@ function QuickSessionNavigationItem({
             <DropdownButton
               as="button"
               aria-label={`${session.title} in ${repositoryName} options`}
-              disabled={inaccessible}
+              disabled={inaccessible && !pinned}
               className="rounded-sm p-1.5 text-sidebar-muted-foreground hover:bg-sidebar-interaction hover:text-sidebar-foreground disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
             >
               <Ellipsis aria-hidden="true" className="size-4" />
             </DropdownButton>
             <DropdownMenu anchor="bottom end">
+              <SessionPinMenuItem
+                pinned={pinned}
+                disabled={inaccessible && !pinned}
+                onToggle={() => onToggleSessionPin(session.id)}
+              />
               <DropdownItem
-                disabled={lifecycleSaving}
+                disabled={inaccessible || lifecycleSaving}
                 onClick={() => {
                   const lifecycle = workstream.lifecycle === 'active' ? 'archived' : 'active'
                   setLifecycleSaving(true)
@@ -559,17 +575,37 @@ export function WorkstreamGroup({
             {workstream.sessions.map((session, sessionIndex) => {
               const ModeIcon =
                 session.mode === 'default' ? SquareTerminal : session.mode === 'brainstorm' ? Telescope : Hammer
+              const pinned = pinnedSessionIds.includes(session.id)
+              const inaccessible = Boolean(getSessionUnavailability(session))
 
               return (
                 <SessionNavigationRow
                   key={session.id}
                   session={session}
                   current={session.id === activeSessionId}
-                  pinned={pinnedSessionIds.includes(session.id)}
                   working={workingSessionIds.has(session.id)}
                   titleEditing={titleEditing}
                   currentIndicatorClassName={sessionCurrentIndicatorClassName(sessionIndex, workstream.sessions.length)}
                   icon={<ModeIcon aria-hidden="true" className="size-4 shrink-0 text-sidebar-muted-foreground" />}
+                  endAction={
+                    <Dropdown>
+                      <DropdownButton
+                        as="button"
+                        aria-label={`${session.title} options`}
+                        disabled={inaccessible && !pinned}
+                        className="rounded-sm p-1.5 text-sidebar-muted-foreground hover:bg-sidebar-interaction hover:text-sidebar-foreground disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+                      >
+                        <Ellipsis aria-hidden="true" className="size-4" />
+                      </DropdownButton>
+                      <DropdownMenu anchor="bottom end">
+                        <SessionPinMenuItem
+                          pinned={pinned}
+                          disabled={inaccessible && !pinned}
+                          onToggle={() => onToggleSessionPin(session.id)}
+                        />
+                      </DropdownMenu>
+                    </Dropdown>
+                  }
                   onStartTitleEditing={onStartTitleEditing}
                   onTitleChange={onTitleChange}
                   onSaveTitle={onSaveTitle}

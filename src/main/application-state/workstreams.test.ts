@@ -1364,6 +1364,18 @@ test('does not invalidate a managed runtime policy when only a Session title cha
   assert.equal(after?.runtimeKey, before?.runtimeKey)
 })
 
+test('does not invalidate a managed runtime policy when its Session description changes', async () => {
+  const { authority, workspace } = await createFixture()
+  const created = await authority.createWorkstream(workspace.id, { goal: 'Keep runtime policy focused' })
+  const before = await authority.resolveOwnedSession(created.sessionId)
+
+  await authority.setSessionDescription(created.sessionId, 'Keeping the Session summary current.')
+
+  const after = await authority.resolveOwnedSession(created.sessionId)
+
+  assert.equal(after?.runtimeKey, before?.runtimeKey)
+})
+
 test('keeps an active managed runtime policy while loading another Workspace', async () => {
   const { authority, storageDirectory, workspace } = await createFixture()
   const secondRepositoryPath = join(storageDirectory, 'second-repository')
@@ -1572,6 +1584,24 @@ test('renaming a Session cannot change its permanent owner or mode', async () =>
   assert.equal(after?.mode, before.mode)
 })
 
+test('persists an agent-authored Session description across restart', async () => {
+  const { authority, storageDirectory, workspace } = await createFixture()
+  const created = await authority.createQuickSession(workspace.id, { repositoryId: workspace.repositories[0]!.id })
+
+  const updated = await authority.setSessionDescription(
+    created.sessionId,
+    '  Investigating sidebar Session summaries.\nKeeping the experiment focused.  '
+  )
+  const restarted = await initializeApplicationAuthority(storageDirectory, { sqlite: bunSqlite })
+  const restored = await restarted.getWorkstreamSnapshot(workspace.id)
+
+  assert.equal(
+    updated.workstreams[0]?.sessions[0]?.description,
+    'Investigating sidebar Session summaries. Keeping the experiment focused.'
+  )
+  assert.equal(restored.workstreams[0]?.sessions[0]?.description, updated.workstreams[0]?.sessions[0]?.description)
+})
+
 test('allows concurrent Session Agent Runs in isolated Session worktrees', async () => {
   const { authority, workspace } = await createFixture()
   const repository = workspace.repositories[0]!
@@ -1646,6 +1676,21 @@ test('migrates prior application state to Session work locations', async () => {
   assert.equal(await restarted.acquireSessionRunLease(created.sessionId), true)
 
   await restarted.settleSessionRunLease(created.sessionId)
+})
+
+test('migrates version 5 application state to persisted Session descriptions', async () => {
+  const { authority, storageDirectory, workspace } = await createFixture()
+  const created = await authority.createQuickSession(workspace.id, { repositoryId: workspace.repositories[0]!.id })
+  const database = new Database(join(storageDirectory, 'application-state.sqlite'))
+  database.exec('ALTER TABLE sessions DROP COLUMN description')
+  database.prepare("UPDATE metadata SET value = '5' WHERE key = 'schema_version'").run()
+  database.close()
+
+  const restarted = await initializeApplicationAuthority(storageDirectory, { sqlite: bunSqlite })
+  const updated = await restarted.setSessionDescription(created.sessionId, 'Summarizing the migrated Session.')
+
+  assert.equal(restarted.startup.status, 'ready')
+  assert.equal(updated.workstreams[0]?.sessions[0]?.description, 'Summarizing the migrated Session.')
 })
 
 test('releases an interrupted ordinary Agent Run lease during startup', async () => {

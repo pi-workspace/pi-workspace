@@ -5,6 +5,7 @@ import { applicationStateIpcChannels } from '@/src/application-state-ipc'
 import type { ComposerBridge, SessionMessageSubmissionResult, SessionRunStopResult } from '@/src/composer'
 import type { PiWorkspaceBridge } from '@/src/pi-workspace'
 import { composerIpcChannels } from '@/src/composer-ipc'
+import type { WorkstreamsSnapshot } from '@/src/domain/workstream'
 import type { SessionSkillsBridge } from '@/src/session-skills'
 import { sessionSkillsIpcChannels } from '@/src/session-skills-ipc'
 import type {
@@ -128,6 +129,13 @@ const workstreamsBridge: WorkstreamsBridge = {
   },
   showWorkingLocation(workstreamId, repositoryId) {
     return ipcRenderer.invoke(workstreamsIpcChannels.showWorkingLocation, { workstreamId, repositoryId })
+  },
+  subscribe(listener) {
+    const handleChange = (_event: Electron.IpcRendererEvent, snapshot: WorkstreamsSnapshot) => listener(snapshot)
+
+    ipcRenderer.on(workstreamsIpcChannels.changed, handleChange)
+
+    return () => ipcRenderer.removeListener(workstreamsIpcChannels.changed, handleChange)
   },
 }
 

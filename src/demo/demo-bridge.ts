@@ -373,6 +373,9 @@ export function createDemoBridge(scenarioName?: string): PiWorkspaceBridge {
 
         return workstreamsSnapshot
       },
+      subscribe() {
+        return () => {}
+      },
     },
     workstreamKnowledge: {
       async get(workstreamId) {

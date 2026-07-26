@@ -72,11 +72,18 @@ function tableExists(database: SqliteDatabase, name: string): boolean {
   return Boolean(database.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(name))
 }
 
+function columnExists(database: SqliteDatabase, table: string, column: string): boolean {
+  return database
+    .prepare(`PRAGMA table_info(${table})`)
+    .all()
+    .some((row) => row.name === column)
+}
+
 function migrateApplicationState(database: SqliteDatabase): void {
   database.exec('PRAGMA foreign_keys = ON;')
   const schemaVersion = Number(database.prepare("SELECT value FROM metadata WHERE key = 'schema_version'").get()?.value)
 
-  if (schemaVersion !== 3 && schemaVersion !== 4) return
+  if (schemaVersion !== 3 && schemaVersion !== 4 && schemaVersion !== 5) return
 
   database.exec('BEGIN IMMEDIATE;')
 
@@ -99,6 +106,10 @@ function migrateApplicationState(database: SqliteDatabase): void {
       database.exec(
         `CREATE TABLE session_repository_locations (session_id TEXT NOT NULL REFERENCES sessions(id), repository_id TEXT NOT NULL REFERENCES repositories(id), kind TEXT NOT NULL, working_path TEXT NOT NULL, branch TEXT, base_commit TEXT, availability TEXT NOT NULL, PRIMARY KEY (session_id, repository_id));`
       )
+    }
+
+    if (!columnExists(database, 'sessions', 'description')) {
+      database.exec('ALTER TABLE sessions ADD COLUMN description TEXT;')
     }
 
     database.exec(`
@@ -141,7 +152,7 @@ function initializeSchema(database: SqliteDatabase, generationId: string): void 
     CREATE TABLE repositories (id TEXT PRIMARY KEY, directory_path TEXT NOT NULL UNIQUE, common_directory_path TEXT NOT NULL, availability TEXT NOT NULL DEFAULT 'available');
     CREATE TABLE workspace_repositories (id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL REFERENCES workspaces(id), repository_id TEXT NOT NULL REFERENCES repositories(id), role TEXT NOT NULL DEFAULT '', relationships TEXT NOT NULL DEFAULT '[]', validation_commands TEXT NOT NULL DEFAULT '[]', UNIQUE(workspace_id, repository_id));
     CREATE TABLE workstreams (id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL REFERENCES workspaces(id), goal TEXT, lifecycle TEXT NOT NULL, working_location TEXT NOT NULL, working_location_revision INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL);
-    CREATE TABLE sessions (id TEXT PRIMARY KEY, workstream_id TEXT NOT NULL REFERENCES workstreams(id), title TEXT NOT NULL, mode TEXT NOT NULL, availability TEXT NOT NULL, access_kind TEXT NOT NULL, repository_id TEXT REFERENCES repositories(id), pi_session_id TEXT NOT NULL UNIQUE, expected_jsonl_path TEXT NOT NULL UNIQUE, creation_status TEXT NOT NULL, created_at INTEGER NOT NULL);
+    CREATE TABLE sessions (id TEXT PRIMARY KEY, workstream_id TEXT NOT NULL REFERENCES workstreams(id), title TEXT NOT NULL, description TEXT, mode TEXT NOT NULL, availability TEXT NOT NULL, access_kind TEXT NOT NULL, repository_id TEXT REFERENCES repositories(id), pi_session_id TEXT NOT NULL UNIQUE, expected_jsonl_path TEXT NOT NULL UNIQUE, creation_status TEXT NOT NULL, created_at INTEGER NOT NULL);
     CREATE TABLE workstream_repository_locations (workstream_id TEXT NOT NULL REFERENCES workstreams(id), repository_id TEXT NOT NULL REFERENCES repositories(id), kind TEXT NOT NULL, working_path TEXT NOT NULL, branch TEXT, base_commit TEXT, availability TEXT NOT NULL, PRIMARY KEY (workstream_id, repository_id));
     CREATE TABLE session_run_leases (session_id TEXT PRIMARY KEY REFERENCES sessions(id), workstream_id TEXT NOT NULL REFERENCES workstreams(id), lease_id TEXT NOT NULL UNIQUE, purpose TEXT NOT NULL, acquired_at INTEGER NOT NULL);
     CREATE TABLE session_repository_locations (session_id TEXT NOT NULL REFERENCES sessions(id), repository_id TEXT NOT NULL REFERENCES repositories(id), kind TEXT NOT NULL, working_path TEXT NOT NULL, branch TEXT, base_commit TEXT, availability TEXT NOT NULL, PRIMARY KEY (session_id, repository_id));
@@ -177,6 +188,7 @@ function readMetadata(database: SqliteDatabase): ApplicationStateMetadata | unde
         'SELECT mode, availability, access_kind, repository_id, pi_session_id, expected_jsonl_path, creation_status, created_at FROM sessions LIMIT 1'
       )
       .get()
+    if (schemaVersionNumber >= 6) database.prepare('SELECT description FROM sessions LIMIT 1').get()
     database
       .prepare(
         'SELECT session_id, pi_session_id, directory_path, session_path FROM external_side_effect_intents LIMIT 1'
@@ -241,7 +253,7 @@ export async function initializeApplicationStateStore(storageDirectory: string, 
         marker &&
         metadata.integrity === 'ok' &&
         metadata.generationId === marker.generationId &&
-        (metadata.schemaVersion === 3 || metadata.schemaVersion === 4)
+        (metadata.schemaVersion === 3 || metadata.schemaVersion === 4 || metadata.schemaVersion === 5)
       ) {
         migrateApplicationState(database)
       }

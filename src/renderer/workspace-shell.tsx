@@ -109,6 +109,16 @@ export function WorkspaceShell({ initialWorkspacesSnapshot, initialSessionDispla
   }
 
   useEffect(() => {
+    return window.piWorkspace.workstreams.subscribe((snapshot) => {
+      const workspaceId = selectedWorkspaceIdRef.current
+
+      if (!workspaceId || !snapshot.workstreams.some((workstream) => workstream.workspaceId === workspaceId)) return
+
+      applyWorkstreamsSnapshot({ workspaceId, generation: workspaceSelectionGenerationRef.current }, snapshot)
+    })
+  }, [])
+
+  useEffect(() => {
     if (!selectedWorkspaceId) return
 
     selectedWorkspaceIdRef.current = selectedWorkspaceId

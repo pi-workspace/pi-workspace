@@ -217,9 +217,14 @@ const workstreamScenario: DemoScenario = {
       ...workstream,
       goal: workstreamGoal,
       sessions: workstream.sessions.map((session, index) => {
-        if (index !== 0 || session.mode === 'default') return session
+        const description =
+          index === 0
+            ? 'Mapping how offline edits, retries, and conflicts should behave before implementation.'
+            : 'Building durable offline saves, background retries, and visible recovery states.'
 
-        return { ...session, mode: 'brainstorm' as const }
+        if (index !== 0 || session.mode === 'default') return { ...session, description }
+
+        return { ...session, description, mode: 'brainstorm' as const }
       }),
     })),
   },
@@ -974,6 +979,7 @@ const quickSessionsScenario: DemoScenario = {
             id: frontendQuickSessionId,
             workstreamId: 'atlas-web-quick-session',
             title: 'Build the order tracking page',
+            description: 'Building a clear customer timeline for live order progress and delivery updates.',
             mode: 'default',
             availability: 'available',
             repositoryAccess: {
@@ -1004,6 +1010,7 @@ const quickSessionsScenario: DemoScenario = {
             id: apiQuickSessionId,
             workstreamId: 'atlas-api-quick-session',
             title: 'Add live order status events',
+            description: 'Adding the API events that keep customer order timelines up to date.',
             mode: 'default',
             availability: 'available',
             repositoryAccess: {

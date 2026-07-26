@@ -148,6 +148,7 @@ function createBridge(
       renameSession: async () => {
         throw new Error('Not implemented in this test.')
       },
+      subscribe: () => () => {},
       ...overrides,
     },
   } as unknown as PiWorkspaceBridge
@@ -361,6 +362,33 @@ test('selects and reveals a newly created Session from the returned snapshot', a
   await waitFor(() =>
     assert.equal(browser.document.activeElement?.getAttribute('aria-label'), 'Message for New Session')
   )
+})
+
+test('applies an agent-authored Session description published for the selected Workspace', async () => {
+  let publishSnapshot: (snapshot: WorkstreamsSnapshot) => void = () => {}
+  const describedWorkstream: Workstream = {
+    ...workspaceAWorkstream,
+    sessions: [
+      {
+        ...workspaceAWorkstream.sessions[0]!,
+        description: 'Tracing how Session metadata reaches the sidebar.',
+      },
+    ],
+  }
+  const view = renderApp(
+    createBridge({
+      subscribe(listener) {
+        publishSnapshot = listener
+
+        return () => {}
+      },
+    })
+  )
+  await view.findByText('Ship Workspace A')
+
+  act(() => publishSnapshot(snapshot([describedWorkstream], 2)))
+
+  assert.ok(view.getByText('Tracing how Session metadata reaches the sidebar.'))
 })
 
 test('ignores an older mutation response within the selected Workspace', async () => {
