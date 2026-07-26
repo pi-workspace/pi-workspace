@@ -1,4 +1,5 @@
 import type { ActivityLayerRecord } from '@/src/main/activity-records'
+import type { ActivityRepositoryLocation } from '@/src/main/activity-artifacts'
 import type { AgentActivity, AgentRun, SessionTimelineEntry, ToolExecution } from '@/src/session-timeline'
 import type { SessionContextUsage, SessionTranscriptMessage } from '@/src/session-transcript'
 import type { SessionActionCard } from '@/src/session-action-cards'
@@ -19,6 +20,7 @@ export type SessionRuntimeTimeline = {
   controlTransitions: Map<string, SessionRuntimeActivityControlTransition>
   persist?: (record: ActivityLayerRecord) => void
   loadRawOperation?: PiSessionRuntime['loadRawOperation']
+  getActivityRepositoryLocations?: () => readonly ActivityRepositoryLocation[]
 }
 
 export type SessionRuntimeActivity = {

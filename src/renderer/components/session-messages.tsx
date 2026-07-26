@@ -17,6 +17,7 @@ type SessionMessagesProperties = Readonly<{
   timelineError?: string
   onReloadTimeline?: () => void
   onActionCard?: (card: SessionActionCard, option?: 'draft' | 'ready') => Promise<boolean>
+  onOpenCurrentDiff?: (repositoryId: string | undefined, path: string) => void
 }>
 
 type TranscriptEntry =
@@ -38,6 +39,7 @@ export function SessionMessages({
   timelineError,
   onReloadTimeline,
   onActionCard = async () => false,
+  onOpenCurrentDiff = () => {},
 }: SessionMessagesProperties) {
   const isLoading = !canonicalTranscript
   const loadError = Boolean(timelineError)
@@ -124,6 +126,7 @@ export function SessionMessages({
                   key={entry.key}
                   activity={entry.activity}
                   loadDetails={() => window.piWorkspace.transcript.loadActivityDetails(sessionId, entry.activity.id)}
+                  onOpenCurrentDiff={onOpenCurrentDiff}
                 />
               )
             )}

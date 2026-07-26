@@ -82,6 +82,12 @@ export type PreparedSessionRepository = Readonly<{
   resourcePolicyRevision: number
 }>
 
+export type SessionChangeRepositoryLocation = Readonly<{
+  repositoryId: string
+  repositoryName: string
+  workingPath: string
+}>
+
 export function createWorkstreamSessionStore({
   openDatabase,
   inspectRepository,
@@ -1266,6 +1272,39 @@ export function createWorkstreamSessionStore({
     }
   }
 
+  async function resolveSessionChangeRepositories(
+    sessionId: SessionId
+  ): Promise<readonly SessionChangeRepositoryLocation[]> {
+    const database = openDatabase()
+
+    try {
+      const session = database.prepare('SELECT mode, creation_status FROM sessions WHERE id = ?').get(sessionId)
+
+      if (!session || session.creation_status !== 'finalized' || session.mode === 'brainstorm') return []
+      if (session.mode !== 'default' && session.mode !== 'implement') return []
+
+      const rows = database
+        .prepare(
+          `SELECT location.repository_id, repository.directory_path, location.working_path
+             FROM session_repository_locations location
+             JOIN repositories repository ON repository.id = location.repository_id
+            WHERE location.session_id = ?
+              AND location.availability = 'available'
+              AND (? = 'default' OR location.kind = 'worktree')
+            ORDER BY location.rowid`
+        )
+        .all(sessionId, session.mode)
+
+      return rows.map((row) => ({
+        repositoryId: String(row.repository_id),
+        repositoryName: repositoryName(String(row.directory_path)),
+        workingPath: String(row.working_path),
+      }))
+    } finally {
+      database.close()
+    }
+  }
+
   async function resolveWorkstreamWorkingLocation(workstreamId: string, repositoryId: string): Promise<string> {
     const database = openDatabase()
     let workspaceId: string
@@ -1311,6 +1350,7 @@ export function createWorkstreamSessionStore({
     renameWorkstreamSession,
     setSessionDescription,
     resolveOwnedSession,
+    resolveSessionChangeRepositories,
     resolveWorkstreamWorkingLocation,
     getCurrentWorkstreamRepositorySet,
   }

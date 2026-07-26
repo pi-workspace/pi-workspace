@@ -190,6 +190,49 @@ test('lazily creates a Repository worktree for an Implement Session', async () =
   assert.equal(await readFile(join(expectedPath, 'tracked.txt'), 'utf8'), 'committed')
 })
 
+test('exposes only prepared writable Repository locations for Session changes', async () => {
+  const { authority, workspace } = await createFixture()
+  const repository = workspace.repositories[0]!
+  await commitRepositoryFile(repository.directoryPath, 'tracked.txt', 'committed', 'Initial commit')
+  const created = await authority.createWorkstream(workspace.id, { goal: 'Review isolated changes' })
+
+  assert.deepEqual(await authority.resolveSessionChangeRepositories(created.sessionId), [])
+
+  const prepared = await authority.prepareSessionRepository(created.sessionId, repository.id)
+
+  assert.deepEqual(await authority.resolveSessionChangeRepositories(created.sessionId), [
+    {
+      repositoryId: repository.id,
+      repositoryName: repository.name,
+      workingPath: prepared.workingPath,
+    },
+  ])
+})
+
+test('exposes the direct working location for Quick Session changes', async () => {
+  const { authority, workspace } = await createFixture()
+  const repository = workspace.repositories[0]!
+  const quick = await authority.createQuickSession(workspace.id, { repositoryId: repository.id })
+
+  assert.deepEqual(await authority.resolveSessionChangeRepositories(quick.sessionId), [
+    {
+      repositoryId: repository.id,
+      repositoryName: repository.name,
+      workingPath: repository.directoryPath,
+    },
+  ])
+})
+
+test('excludes Brainstorm Sessions from Session changes', async () => {
+  const { authority, workspace } = await createFixture()
+  const created = await authority.createWorkstream(workspace.id, { goal: 'Inspect without changes' })
+  const brainstorm = await authority.createWorkstreamSession(created.snapshot.workstreams[0]!.id, {
+    mode: 'brainstorm',
+  })
+
+  assert.deepEqual(await authority.resolveSessionChangeRepositories(brainstorm.sessionId), [])
+})
+
 test('restores a removed Implement Session worktree from its persisted branch', async () => {
   const { authority, workspace } = await createFixture()
   const repository = workspace.repositories[0]!

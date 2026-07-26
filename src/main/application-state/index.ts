@@ -30,6 +30,7 @@ import {
   createWorkstreamSessionStore,
   type OwnedSessionResolution,
   type PreparedSessionRepository,
+  type SessionChangeRepositoryLocation,
   type WorkstreamCreationResult,
 } from './workstream-session-store'
 import { incrementRevision, initializeApplicationStateStore, loadSqlite } from './application-state-store'
@@ -48,6 +49,7 @@ export type ApplicationAuthorityOptions = Readonly<{
 export type {
   OwnedSessionResolution,
   PreparedSessionRepository,
+  SessionChangeRepositoryLocation,
   WorkstreamCreationResult,
 } from './workstream-session-store'
 
@@ -75,6 +77,7 @@ export type ApplicationAuthority = Readonly<{
   renameWorkstreamSession(sessionId: SessionId, title: string): Promise<WorkstreamsSnapshot>
   setSessionDescription(sessionId: SessionId, description: string): Promise<WorkstreamsSnapshot>
   resolveOwnedSession(sessionId: SessionId): Promise<OwnedSessionResolution | undefined>
+  resolveSessionChangeRepositories(sessionId: SessionId): Promise<readonly SessionChangeRepositoryLocation[]>
   resolveWorkstreamWorkingLocation(workstreamId: string, repositoryId: string): Promise<string>
   getWorkstreamKnowledge(workstreamId: string): Promise<WorkstreamKnowledge>
   applyUserWorkstreamKnowledgeCommand(
@@ -159,6 +162,7 @@ export async function initializeApplicationAuthority(
     renameWorkstreamSession,
     setSessionDescription,
     resolveOwnedSession,
+    resolveSessionChangeRepositories,
     resolveWorkstreamWorkingLocation,
     getCurrentWorkstreamRepositorySet,
   } = workstreamSessionStore
@@ -185,6 +189,7 @@ export async function initializeApplicationAuthority(
     renameWorkstreamSession,
     setSessionDescription,
     resolveOwnedSession,
+    resolveSessionChangeRepositories,
     resolveWorkstreamWorkingLocation,
     getWorkstreamKnowledge,
     applyUserWorkstreamKnowledgeCommand,

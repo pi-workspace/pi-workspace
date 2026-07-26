@@ -34,6 +34,7 @@ export type InspectedFileArtifact = Readonly<{
 export type FileChangeArtifact = Readonly<{
   type: 'file-change'
   path: string
+  repositoryId?: string
   additions?: number
   deletions?: number
 }>
@@ -108,6 +109,14 @@ export type SessionWorkingStateSnapshot = Readonly<{
   isWorking: boolean
 }>
 
+export type ActivityMutationPreview = Readonly<{
+  kind: 'diff' | 'code'
+  path: string
+  repositoryId?: string
+  content: string
+  truncated: boolean
+}>
+
 export type ActivityOperationDetail = Readonly<{
   toolCallId: string
   label: string
@@ -115,6 +124,7 @@ export type ActivityOperationDetail = Readonly<{
   inputPreview?: string
   input: string
   output?: string
+  preview?: ActivityMutationPreview
   truncated: boolean
 }>
 

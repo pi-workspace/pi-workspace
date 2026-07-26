@@ -18,6 +18,7 @@ import type { ActivityLayerRecord, AgentRunDiagnosticKind } from '@/src/main/act
 import {
   countArtifactFiles,
   deriveActivityArtifacts,
+  deriveMutationPreview,
   deriveOperationInputPreview,
   mergeActivityArtifacts,
 } from '@/src/main/activity-artifacts'
@@ -75,6 +76,7 @@ export interface PiSessionRuntime {
   loadHistory?(): PiSessionRuntimeHistory
   appendActivityRecord?(record: ActivityLayerRecord): void
   loadRawOperation?(toolCallId: string): Readonly<{ input: unknown; result?: unknown }> | undefined
+  getActivityRepositoryLocations?(): readonly Readonly<{ repositoryId: string; workingPath: string }>[]
   getSkills?(): readonly SessionSkill[]
   getSkillPrompt?(name: string): string | undefined
   getContextUsage?(): SessionContextUsage | undefined
@@ -884,7 +886,13 @@ export function createPiSessionRuntimeRegistry({
 
       const artifacts = mergeActivityArtifacts(
         owner.activity.artifacts,
-        deriveActivityArtifacts(operation.execution, event.result, timeline.runtimeDirectory ?? '', event.isError)
+        deriveActivityArtifacts(
+          operation.execution,
+          event.result,
+          timeline.runtimeDirectory ?? '',
+          event.isError,
+          timeline.getActivityRepositoryLocations?.()
+        )
       )
 
       replaceActivity(timeline, {
@@ -1034,6 +1042,7 @@ export function createPiSessionRuntimeRegistry({
     timeline.runtimeDirectory = runtimeDirectory
     timeline.persist = runtime.appendActivityRecord?.bind(runtime)
     timeline.loadRawOperation = runtime.loadRawOperation?.bind(runtime)
+    timeline.getActivityRepositoryLocations = runtime.getActivityRepositoryLocations?.bind(runtime)
     // The attaching runtime is authoritative for the Model's context window;
     // context_usage events keep it current from here.
     timeline.contextUsage = runtime.getContextUsage?.()
@@ -1569,6 +1578,12 @@ export function createPiSessionRuntimeRegistry({
           const input = safeDetailText(raw?.input ?? execution.input)
           const rawResult = raw?.result ?? result
           const output = rawResult === undefined ? undefined : safeDetailText(rawResult)
+          const preview = deriveMutationPreview(
+            { ...execution, input: raw?.input ?? execution.input },
+            rawResult,
+            timeline.runtimeDirectory ?? '',
+            timeline.getActivityRepositoryLocations?.()
+          )
 
           return {
             toolCallId: execution.toolCallId,
@@ -1577,7 +1592,8 @@ export function createPiSessionRuntimeRegistry({
             inputPreview: execution.inputPreview,
             input: input.text,
             output: output?.text,
-            truncated: input.truncated || (output?.truncated ?? false),
+            preview,
+            truncated: input.truncated || (output?.truncated ?? false) || (preview?.truncated ?? false),
           }
         }),
       }

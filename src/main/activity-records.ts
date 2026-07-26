@@ -180,6 +180,7 @@ function isActivityArtifact(value: unknown): value is ActivityArtifact {
   if (value.type === 'file-change') {
     return (
       isNonEmptyString(value.path) &&
+      (value.repositoryId === undefined || isNonEmptyString(value.repositoryId)) &&
       (value.additions === undefined || isCount(value.additions)) &&
       (value.deletions === undefined || isCount(value.deletions))
     )

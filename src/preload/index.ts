@@ -8,6 +8,8 @@ import { composerIpcChannels } from '@/src/composer-ipc'
 import type { WorkstreamsSnapshot } from '@/src/domain/workstream'
 import type { SessionSkillsBridge } from '@/src/session-skills'
 import { sessionSkillsIpcChannels } from '@/src/session-skills-ipc'
+import type { SessionChangesBridge, SessionChangesSnapshot, SessionFileDiff } from '@/src/session-changes'
+import { sessionChangesIpcChannels } from '@/src/session-changes-ipc'
 import type {
   SessionConfigurationBridge,
   SessionConfigurationCommandResult,
@@ -179,6 +181,20 @@ const sessionSkillsBridge: SessionSkillsBridge = {
   },
 }
 
+const sessionChangesBridge: SessionChangesBridge = {
+  getSnapshot(sessionId) {
+    return ipcRenderer.invoke(sessionChangesIpcChannels.getSnapshot, { sessionId }) as Promise<SessionChangesSnapshot>
+  },
+  loadFileDiff(sessionId, repositoryId, path, view) {
+    return ipcRenderer.invoke(sessionChangesIpcChannels.loadFileDiff, {
+      sessionId,
+      repositoryId,
+      path,
+      view,
+    }) as Promise<SessionFileDiff>
+  },
+}
+
 const sessionConfigurationBridge: SessionConfigurationBridge = {
   getSnapshot(sessionId) {
     return ipcRenderer.invoke(sessionConfigurationIpcChannels.getSnapshot, {
@@ -250,6 +266,7 @@ const piWorkspaceBridge: PiWorkspaceBridge = {
   applicationState: applicationStateBridge,
   composer: composerBridge,
   sessionSkills: sessionSkillsBridge,
+  sessionChanges: sessionChangesBridge,
   sessionConfiguration: sessionConfigurationBridge,
   transcript: sessionTranscriptBridge,
   settings: settingsBridge,

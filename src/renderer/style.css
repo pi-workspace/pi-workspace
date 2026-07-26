@@ -38,6 +38,10 @@
   --color-danger-on-background: var(--theme-danger-on-background);
   --color-dropdown-background: var(--theme-dropdown-background);
   --color-dropdown-focus-foreground: var(--theme-dropdown-focus-foreground);
+  --color-diff-addition-background: var(--theme-diff-addition-background);
+  --color-diff-addition-foreground: var(--theme-diff-addition-foreground);
+  --color-diff-deletion-background: var(--theme-diff-deletion-background);
+  --color-diff-deletion-foreground: var(--theme-diff-deletion-foreground);
   --color-overlay-background: var(--theme-overlay-background);
   --color-success-background: var(--theme-success-background);
   --color-success-foreground: var(--theme-success-foreground);
@@ -108,6 +112,10 @@
   --theme-composer-reference-border: var(--theme-content-border);
   --theme-composer-reference-foreground: var(--theme-content-foreground);
   --theme-dropdown-focus-foreground: var(--theme-accent-foreground);
+  --theme-diff-addition-background: color-mix(in oklab, var(--theme-success-foreground) 14%, transparent);
+  --theme-diff-addition-foreground: var(--theme-success-foreground);
+  --theme-diff-deletion-background: color-mix(in oklab, var(--theme-danger-foreground) 14%, transparent);
+  --theme-diff-deletion-foreground: var(--theme-danger-foreground);
   --theme-focus-ring: var(--theme-accent);
   --theme-form-error-foreground: var(--theme-danger-foreground);
   --theme-skill-reference-foreground: var(--theme-link-foreground);

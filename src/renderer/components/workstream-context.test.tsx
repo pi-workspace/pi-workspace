@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict'
 import { afterEach, test } from 'node:test'
-import { cleanup, render } from '@testing-library/react'
+import { cleanup, fireEvent, render, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { sessionId } from '@/src/domain/session'
-import type { Workstream } from '@/src/domain/workstream'
+import type { OwnedSession, Workstream } from '@/src/domain/workstream'
+import type { PiWorkspaceBridge } from '@/src/pi-workspace'
 import { createEmptyWorkstreamKnowledge, type WorkstreamKnowledge } from '@/src/domain/workstream-knowledge-transitions'
 import { browser } from '@/src/renderer/test-dom'
 import { WorkstreamContext, WorkstreamContextLayout } from './workstream-context'
@@ -214,6 +215,68 @@ test('does not show structured knowledge for a Quick Session Workstream', () => 
   }
 
   assert.equal(renderToStaticMarkup(<WorkstreamContext workstream={quickWorkstream} />), '')
+})
+
+test('shows Knowledge and Changes in a keyboard-resizable utility dock when space permits', async () => {
+  const originalRect = Object.getOwnPropertyDescriptor(browser.window.HTMLElement.prototype, 'getBoundingClientRect')
+  Object.defineProperty(browser.window.HTMLElement.prototype, 'getBoundingClientRect', {
+    configurable: true,
+    value: () => ({
+      width: 1_000,
+      height: 800,
+      x: 0,
+      y: 0,
+      top: 0,
+      left: 0,
+      right: 1_000,
+      bottom: 800,
+    }),
+  })
+  Object.defineProperty(browser.window, 'piWorkspace', {
+    configurable: true,
+    value: {
+      sessionChanges: {
+        async getSnapshot(requestedSessionId: ReturnType<typeof sessionId>) {
+          return { sessionId: requestedSessionId, repositories: [] }
+        },
+        async loadFileDiff() {
+          return { status: 'unavailable', message: 'Unavailable.' }
+        },
+      },
+      transcript: { subscribe: () => () => {} },
+    } as unknown as PiWorkspaceBridge,
+  })
+
+  try {
+    const activeSession: OwnedSession = {
+      id: sessionId('session-a'),
+      workstreamId: workstream.id,
+      title: 'Implement changes',
+      mode: 'implement',
+      availability: 'available',
+      repositoryAccess: { kind: 'managed' },
+    }
+    const view = render(
+      <WorkstreamContextLayout workstream={workstream} activeSession={activeSession}>
+        <div>Active Session</div>
+      </WorkstreamContextLayout>,
+      { container: browser.document.body as unknown as HTMLElement }
+    )
+
+    const separator = await waitFor(() => view.getByRole('separator', { name: 'Resize utility panel' }))
+    assert.ok(view.getAllByRole('tab', { name: 'Knowledge' }).length >= 1)
+    assert.ok(view.getAllByRole('tab', { name: 'Changes' }).length >= 1)
+    assert.equal(separator.getAttribute('aria-valuenow'), '420')
+
+    fireEvent.keyDown(separator, { key: 'ArrowLeft' })
+    assert.equal(separator.getAttribute('aria-valuenow'), '440')
+  } finally {
+    if (originalRect) {
+      Object.defineProperty(browser.window.HTMLElement.prototype, 'getBoundingClientRect', originalRect)
+    } else {
+      Reflect.deleteProperty(browser.window.HTMLElement.prototype, 'getBoundingClientRect')
+    }
+  }
 })
 
 test('provides responsive access to the selected Workstream knowledge', async () => {

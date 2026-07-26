@@ -168,6 +168,63 @@ export function createDemoBridge(scenarioName?: string): PiWorkspaceBridge {
         ]
       },
     },
+    sessionChanges: {
+      async getSnapshot(sessionId) {
+        const session = workstreamsSnapshot.workstreams
+          .flatMap((workstream) => workstream.sessions)
+          .find((candidate) => candidate.id === sessionId)
+
+        return {
+          sessionId,
+          repositories:
+            session?.mode === 'implement'
+              ? [
+                  {
+                    repositoryId: 'Atlas Notes',
+                    repositoryName: 'Atlas Notes',
+                    branch: {
+                      head: 'railyard/offline-editing',
+                      upstream: 'origin/main',
+                      ahead: 2,
+                      behind: 0,
+                      detached: false,
+                      unborn: false,
+                    },
+                    files: [
+                      {
+                        path: 'src/notes/note-store.ts',
+                        status: 'modified' as const,
+                        staged: true,
+                        unstaged: true,
+                        additions: 8,
+                        deletions: 2,
+                      },
+                      {
+                        path: 'src/notes/sync-queue.ts',
+                        status: 'added' as const,
+                        staged: false,
+                        unstaged: true,
+                        additions: 42,
+                        deletions: 0,
+                      },
+                    ],
+                  },
+                ]
+              : [],
+        }
+      },
+      async loadFileDiff(_sessionId, _repositoryId, path, view) {
+        if (path !== 'src/notes/note-store.ts' && path !== 'src/notes/sync-queue.ts') {
+          return { status: 'unavailable', message: 'The changed file is no longer available.' }
+        }
+
+        return {
+          status: 'available',
+          content: `diff --git a/${path} b/${path}\n--- a/${path}\n+++ b/${path}\n@@ -1,2 +1,3 @@\n-export const sync = saveRemote\n+export const sync = queueLocalSave\n+export const state = '${view}'`,
+          truncated: false,
+        }
+      },
+    },
     sessionConfiguration: {
       async getSnapshot(sessionId) {
         return {

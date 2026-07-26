@@ -489,6 +489,15 @@ export async function createPiSessionRuntime(
     },
     getSkills: getAvailableSkills,
     getSkillPrompt,
+    getActivityRepositoryLocations() {
+      const repositories = managedPolicyGuard?.currentPolicy().repositories ?? []
+
+      return repositories.flatMap((repository) =>
+        repository.availability === 'available'
+          ? [{ repositoryId: repository.id, workingPath: repository.workingPath }]
+          : []
+      )
+    },
     loadRawOperation(toolCallId) {
       let input: unknown
       let result: unknown

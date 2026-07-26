@@ -37,6 +37,7 @@ type SessionContainerProperties = {
   onTogglePin: () => void
   acceptActionCard?: SessionTranscriptBridge['acceptActionCard']
   onStartImplementSession?: (workstreamId: string) => Promise<void>
+  onOpenCurrentDiff?: (repositoryId: string | undefined, path: string) => void
 }
 
 export function SessionContainer({
@@ -62,6 +63,7 @@ export function SessionContainer({
   onTogglePin,
   acceptActionCard = async () => false,
   onStartImplementSession = async () => {},
+  onOpenCurrentDiff = () => {},
 }: SessionContainerProperties) {
   const headingId = useId()
   const transcriptState = useSessionTranscript(session.id)
@@ -143,6 +145,7 @@ export function SessionContainer({
         timelineAnnouncement={transcriptState.announcement}
         timelineError={transcriptState.error}
         onReloadTimeline={transcriptState.reload}
+        onOpenCurrentDiff={onOpenCurrentDiff}
         onActionCard={async (card: SessionActionCard, option) => {
           if (card.kind === 'start-implement-session') {
             await onStartImplementSession(session.workstreamId)
