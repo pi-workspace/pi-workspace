@@ -172,8 +172,8 @@ export function SessionContainer({
         />
       )}
       {composerUnavailable ? (
-        <div className="composer-tray shrink-0 border-t border-content-border p-3">
-          <div className="flex min-h-13 items-center justify-center gap-2 rounded-xl border border-dashed border-composer-border bg-composer-background px-4 text-center text-sm/5 text-composer-muted-foreground">
+        <div className="composer-tray relative z-10 shrink-0 px-4 pt-3 pb-4">
+          <div className="composer-surface flex min-h-13 items-center justify-center gap-2 rounded-xl border border-dashed border-composer-border bg-composer-background px-4 text-center text-sm/5 text-composer-muted-foreground">
             {unavailability ? (
               <>
                 <TriangleAlert aria-hidden="true" className="size-4 shrink-0" />
