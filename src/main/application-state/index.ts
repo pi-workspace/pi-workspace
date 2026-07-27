@@ -32,6 +32,7 @@ import {
   createWorkstreamSessionStore,
   type OwnedSessionResolution,
   type PreparedSessionRepository,
+  type SessionChangeRepositoryLocation,
   type SessionForkResult,
   type WorkstreamCreationResult,
 } from './workstream-session-store'
@@ -51,6 +52,7 @@ export type ApplicationAuthorityOptions = Readonly<{
 export type {
   OwnedSessionResolution,
   PreparedSessionRepository,
+  SessionChangeRepositoryLocation,
   SessionForkResult,
   WorkstreamCreationResult,
 } from './workstream-session-store'
@@ -79,7 +81,9 @@ export type ApplicationAuthority = Readonly<{
   forkSession(sessionId: SessionId, options: ForkSessionOptions): Promise<SessionForkResult>
   setWorkstreamLifecycle(workstreamId: string, lifecycle: WorkstreamLifecycle): Promise<WorkstreamsSnapshot>
   renameWorkstreamSession(sessionId: SessionId, title: string): Promise<WorkstreamsSnapshot>
+  setSessionDescription(sessionId: SessionId, description: string): Promise<WorkstreamsSnapshot>
   resolveOwnedSession(sessionId: SessionId): Promise<OwnedSessionResolution | undefined>
+  resolveSessionChangeRepositories(sessionId: SessionId): Promise<readonly SessionChangeRepositoryLocation[]>
   resolveWorkstreamWorkingLocation(workstreamId: string, repositoryId: string): Promise<string>
   getWorkstreamKnowledge(workstreamId: string): Promise<WorkstreamKnowledge>
   applyUserWorkstreamKnowledgeCommand(
@@ -94,6 +98,8 @@ export type ApplicationAuthority = Readonly<{
   subscribeWorkstreamKnowledge(listener: (state: WorkstreamKnowledge) => void): () => void
   acquireSessionRunLease(sessionId: SessionId): Promise<boolean>
   settleSessionRunLease(sessionId: SessionId): Promise<boolean>
+  acquireSessionCompactionLease(sessionId: SessionId): Promise<boolean>
+  settleSessionCompactionLease(sessionId: SessionId): Promise<boolean>
   getCurrentWorkstreamRepositorySet(workstreamId: string): Promise<readonly string[]>
 }>
 
@@ -131,7 +137,8 @@ export async function initializeApplicationAuthority(
   } = workspaceRepositoryStore
   const { reconcilePendingSessionFiles, refreshOwnedSessionAvailability, reconcileCommittedSession } =
     sessionFileReconciliation
-  const { acquireSessionRunLease, settleSessionRunLease } = runLeaseStore
+  const { acquireSessionRunLease, settleSessionRunLease, acquireSessionCompactionLease, settleSessionCompactionLease } =
+    runLeaseStore
   const {
     getWorkstreamKnowledge,
     applyUserWorkstreamKnowledgeCommand,
@@ -161,7 +168,9 @@ export async function initializeApplicationAuthority(
     forkSession,
     setWorkstreamLifecycle,
     renameWorkstreamSession,
+    setSessionDescription,
     resolveOwnedSession,
+    resolveSessionChangeRepositories,
     resolveWorkstreamWorkingLocation,
     getCurrentWorkstreamRepositorySet,
   } = workstreamSessionStore
@@ -188,7 +197,9 @@ export async function initializeApplicationAuthority(
     forkSession,
     setWorkstreamLifecycle,
     renameWorkstreamSession,
+    setSessionDescription,
     resolveOwnedSession,
+    resolveSessionChangeRepositories,
     resolveWorkstreamWorkingLocation,
     getWorkstreamKnowledge,
     applyUserWorkstreamKnowledgeCommand,
@@ -196,6 +207,8 @@ export async function initializeApplicationAuthority(
     subscribeWorkstreamKnowledge,
     acquireSessionRunLease,
     settleSessionRunLease,
+    acquireSessionCompactionLease,
+    settleSessionCompactionLease,
     getCurrentWorkstreamRepositorySet,
   }
 }

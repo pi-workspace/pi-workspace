@@ -11,6 +11,8 @@ import type {
 } from '@/src/domain/workstream'
 import type { SessionConfigurationBridge } from '@/src/session-configuration'
 import type { SessionSkillsBridge } from '@/src/session-skills'
+import type { SessionActionCard } from '@/src/session-action-cards'
+import type { SessionTranscriptBridge } from '@/src/session-transcript'
 import { Composer } from '@/src/renderer/components/composer'
 import { QueuedFollowUpTray } from '@/src/renderer/components/queued-follow-up-tray'
 import { SessionForkDialog } from '@/src/renderer/components/session-fork-dialog'
@@ -44,6 +46,9 @@ type SessionContainerProperties = {
   getForkPoints?: () => Promise<readonly SessionForkPoint[]>
   forkSession?: (options: ForkSessionOptions) => Promise<void>
   onTogglePin: () => void
+  acceptActionCard?: SessionTranscriptBridge['acceptActionCard']
+  onStartImplementSession?: (workstreamId: string) => Promise<void>
+  onOpenCurrentDiff?: (repositoryId: string | undefined, path: string) => void
 }
 
 export function SessionContainer({
@@ -70,6 +75,9 @@ export function SessionContainer({
   getForkPoints,
   forkSession,
   onTogglePin,
+  acceptActionCard = async () => false,
+  onStartImplementSession = async () => {},
+  onOpenCurrentDiff = () => {},
 }: SessionContainerProperties) {
   const headingId = useId()
   const [forkPosition, setForkPosition] = useState<number | 'latest'>()
@@ -165,6 +173,7 @@ export function SessionContainer({
       <SessionMessages
         sessionId={session.id}
         isWorking={isWorking}
+        isCompacting={transcriptState.snapshot?.isCompacting ?? false}
         transcript={transcriptState.snapshot}
         timelineAnnouncement={transcriptState.announcement}
         timelineError={transcriptState.error}
@@ -174,6 +183,24 @@ export function SessionContainer({
             ? (position) => setForkPosition(position)
             : undefined
         }
+        onOpenCurrentDiff={onOpenCurrentDiff}
+        onActionCard={async (card: SessionActionCard, option) => {
+          if (card.kind === 'start-implement-session') {
+            await onStartImplementSession(session.workstreamId)
+            return acceptActionCard(session.id, card.id)
+          }
+
+          const result = await submitMessage({
+            sessionId: session.id,
+            delivery: 'action',
+            text:
+              option === 'ready'
+                ? 'Create a pull request for the completed work. Review the current changes, validation results, and branch status, then prepare a clear title and description for my approval.'
+                : 'Create a draft pull request for the completed work. Review the current changes, validation results, and branch status, then prepare a clear title and description for my approval.',
+          })
+
+          return result.status === 'accepted' && (await acceptActionCard(session.id, card.id))
+        }}
       />
       {!composerUnavailable && transcriptState.snapshot?.queuedFollowUps && (
         <QueuedFollowUpTray
@@ -197,8 +224,8 @@ export function SessionContainer({
         />
       )}
       {composerUnavailable ? (
-        <div className="composer-tray shrink-0 border-t border-content-border p-3">
-          <div className="flex min-h-13 items-center justify-center gap-2 rounded-xl border border-dashed border-composer-border bg-composer-background px-4 text-center text-sm/5 text-composer-muted-foreground">
+        <div className="composer-tray relative z-10 shrink-0 px-4 pt-3 pb-4">
+          <div className="composer-surface flex min-h-13 items-center justify-center gap-2 rounded-xl border border-dashed border-composer-border bg-composer-background px-4 text-center text-sm/5 text-composer-muted-foreground">
             {unavailability ? (
               <>
                 <TriangleAlert aria-hidden="true" className="size-4 shrink-0" />
@@ -222,6 +249,7 @@ export function SessionContainer({
           draft={draft}
           focusRequest={composerFocusRequest}
           isWorking={isWorking}
+          isCompacting={transcriptState.snapshot?.isCompacting ?? false}
           contextUsage={transcriptState.snapshot?.contextUsage}
           onActivate={onActivate}
           onDraftChange={onDraftChange}

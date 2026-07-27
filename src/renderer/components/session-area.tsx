@@ -10,6 +10,7 @@ import type {
 } from '@/src/domain/workstream'
 import type { SessionConfigurationBridge } from '@/src/session-configuration'
 import type { SessionSkillsBridge } from '@/src/session-skills'
+import type { SessionTranscriptBridge } from '@/src/session-transcript'
 import { SessionContainer } from '@/src/renderer/components/session-container'
 
 type SessionAreaProperties = {
@@ -44,6 +45,9 @@ type SessionAreaProperties = {
   getSessionForkPoints?: (sessionId: SessionId) => Promise<readonly SessionForkPoint[]>
   forkSession?: (sessionId: SessionId, options: ForkSessionOptions) => Promise<void>
   onToggleSessionPin: (sessionId: SessionId) => void
+  acceptActionCard?: SessionTranscriptBridge['acceptActionCard']
+  onStartImplementSession?: (workstreamId: string) => Promise<void>
+  onOpenCurrentDiff?: (sessionId: SessionId, repositoryId: string | undefined, path: string) => void
 }
 
 export function SessionArea({
@@ -72,6 +76,9 @@ export function SessionArea({
   getSessionForkPoints,
   forkSession,
   onToggleSessionPin,
+  acceptActionCard = async () => false,
+  onStartImplementSession = async () => {},
+  onOpenCurrentDiff = () => {},
 }: SessionAreaProperties) {
   const sessionPaneRefs = useRef(new Map<SessionId, HTMLDivElement>())
 
@@ -130,6 +137,9 @@ export function SessionArea({
             getForkPoints={getSessionForkPoints ? () => getSessionForkPoints(session.id) : undefined}
             forkSession={forkSession ? (options) => forkSession(session.id, options) : undefined}
             onTogglePin={() => onToggleSessionPin(session.id)}
+            acceptActionCard={acceptActionCard}
+            onStartImplementSession={onStartImplementSession}
+            onOpenCurrentDiff={(repositoryId, path) => onOpenCurrentDiff(session.id, repositoryId, path)}
           />
         </div>
       ))}

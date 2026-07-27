@@ -21,8 +21,8 @@ type RepositoryInspector = (directoryPath: string) => Promise<InspectedGitReposi
 const { Database } = (await Function('return import("bun:sqlite")')()) as BunSqliteModule
 const bunSqlite: SqliteModule = {
   DatabaseSync: Database as unknown as SqliteModule['DatabaseSync'],
-  async backup() {
-    throw new Error('Backup is not exercised by the Bun test adapter.')
+  async backup(_source, destination) {
+    await writeFile(destination, 'SQLite backup')
   },
 }
 
@@ -93,24 +93,33 @@ async function createInterruptedSessionWorktreeFixture() {
   return { storageDirectory, repositoryPath, interrupted, repository, created }
 }
 
-test('reset preserves external Git and Pi Session artifacts without adopting them', async () => {
-  const { authority, storageDirectory, workspace } = await createFixture()
-  const repository = workspace.repositories[0]
-  assert.ok(repository)
-  const created = await authority.createWorkstream(workspace.id, { goal: 'Preserve external artifacts' })
-  const resolution = await authority.resolveOwnedSession(created.sessionId)
-  assert.ok(resolution)
-  const reset = await authority.reset()
+test(
+  'reset preserves external Git and Pi Session artifacts without adopting them',
+  { skip: process.platform === 'win32' ? 'Bun retains closed SQLite handles on Windows.' : false },
+  async () => {
+    const { authority, storageDirectory, workspace } = await createFixture()
+    const repository = workspace.repositories[0]
+    assert.ok(repository)
+    const created = await authority.createWorkstream(workspace.id, { goal: 'Preserve external artifacts' })
+    const resolution = await authority.resolveOwnedSession(created.sessionId)
+    assert.ok(resolution)
+    const reset = await authority.reset()
 
-  assert.deepEqual(reset, { status: 'first-launch' })
-  await Promise.all([access(repository.directoryPath), access(resolution.sessionPath)])
-  assert.deepEqual((await authority.getWorkspaces()).workspaces, [])
-  assert.equal(await authority.resolveOwnedSession(created.sessionId), undefined)
-  assert.equal((await initializeApplicationAuthority(storageDirectory, { sqlite: bunSqlite })).startup.status, 'ready')
-})
+    assert.deepEqual(reset, { status: 'first-launch' })
+    await Promise.all([access(repository.directoryPath), access(resolution.sessionPath)])
+    assert.deepEqual((await authority.getWorkspaces()).workspaces, [])
+    assert.equal(await authority.resolveOwnedSession(created.sessionId), undefined)
+    assert.equal(
+      (await initializeApplicationAuthority(storageDirectory, { sqlite: bunSqlite })).startup.status,
+      'ready'
+    )
+  }
+)
 
 test('reset creates a new application authority generation', async () => {
-  const { authority, storageDirectory } = await createFixture()
+  const storageDirectory = await mkdtemp(join(tmpdir(), 'pi-workspace-reset-generation-'))
+  temporaryDirectories.push(storageDirectory)
+  const authority = await initializeApplicationAuthority(storageDirectory, { sqlite: bunSqlite })
   const markerPath = join(storageDirectory, 'application-state.json')
   const before = JSON.parse(await readFile(markerPath, 'utf8')) as { generationId: string }
 
@@ -363,6 +372,49 @@ test('lazily creates a Repository worktree for an Implement Session', async () =
 
   assert.equal(prepared.workingPath, expectedPath)
   assert.equal(await readFile(join(expectedPath, 'tracked.txt'), 'utf8'), 'committed')
+})
+
+test('exposes only prepared writable Repository locations for Session changes', async () => {
+  const { authority, workspace } = await createFixture()
+  const repository = workspace.repositories[0]!
+  await commitRepositoryFile(repository.directoryPath, 'tracked.txt', 'committed', 'Initial commit')
+  const created = await authority.createWorkstream(workspace.id, { goal: 'Review isolated changes' })
+
+  assert.deepEqual(await authority.resolveSessionChangeRepositories(created.sessionId), [])
+
+  const prepared = await authority.prepareSessionRepository(created.sessionId, repository.id)
+
+  assert.deepEqual(await authority.resolveSessionChangeRepositories(created.sessionId), [
+    {
+      repositoryId: repository.id,
+      repositoryName: repository.name,
+      workingPath: prepared.workingPath,
+    },
+  ])
+})
+
+test('exposes the direct working location for Quick Session changes', async () => {
+  const { authority, workspace } = await createFixture()
+  const repository = workspace.repositories[0]!
+  const quick = await authority.createQuickSession(workspace.id, { repositoryId: repository.id })
+
+  assert.deepEqual(await authority.resolveSessionChangeRepositories(quick.sessionId), [
+    {
+      repositoryId: repository.id,
+      repositoryName: repository.name,
+      workingPath: repository.directoryPath,
+    },
+  ])
+})
+
+test('excludes Brainstorm Sessions from Session changes', async () => {
+  const { authority, workspace } = await createFixture()
+  const created = await authority.createWorkstream(workspace.id, { goal: 'Inspect without changes' })
+  const brainstorm = await authority.createWorkstreamSession(created.snapshot.workstreams[0]!.id, {
+    mode: 'brainstorm',
+  })
+
+  assert.deepEqual(await authority.resolveSessionChangeRepositories(brainstorm.sessionId), [])
 })
 
 test('restores a removed Implement Session worktree from its persisted branch', async () => {
@@ -1539,6 +1591,18 @@ test('does not invalidate a managed runtime policy when only a Session title cha
   assert.equal(after?.runtimeKey, before?.runtimeKey)
 })
 
+test('does not invalidate a managed runtime policy when its Session description changes', async () => {
+  const { authority, workspace } = await createFixture()
+  const created = await authority.createWorkstream(workspace.id, { goal: 'Keep runtime policy focused' })
+  const before = await authority.resolveOwnedSession(created.sessionId)
+
+  await authority.setSessionDescription(created.sessionId, 'Keeping the Session summary current.')
+
+  const after = await authority.resolveOwnedSession(created.sessionId)
+
+  assert.equal(after?.runtimeKey, before?.runtimeKey)
+})
+
 test('keeps an active managed runtime policy while loading another Workspace', async () => {
   const { authority, storageDirectory, workspace } = await createFixture()
   const secondRepositoryPath = join(storageDirectory, 'second-repository')
@@ -1747,6 +1811,24 @@ test('renaming a Session cannot change its permanent owner or mode', async () =>
   assert.equal(after?.mode, before.mode)
 })
 
+test('persists an agent-authored Session description across restart', async () => {
+  const { authority, storageDirectory, workspace } = await createFixture()
+  const created = await authority.createQuickSession(workspace.id, { repositoryId: workspace.repositories[0]!.id })
+
+  const updated = await authority.setSessionDescription(
+    created.sessionId,
+    '  Investigating sidebar Session summaries.\nKeeping the experiment focused.  '
+  )
+  const restarted = await initializeApplicationAuthority(storageDirectory, { sqlite: bunSqlite })
+  const restored = await restarted.getWorkstreamSnapshot(workspace.id)
+
+  assert.equal(
+    updated.workstreams[0]?.sessions[0]?.description,
+    'Investigating sidebar Session summaries. Keeping the experiment focused.'
+  )
+  assert.equal(restored.workstreams[0]?.sessions[0]?.description, updated.workstreams[0]?.sessions[0]?.description)
+})
+
 test('allows concurrent Session Agent Runs in isolated Session worktrees', async () => {
   const { authority, workspace } = await createFixture()
   const repository = workspace.repositories[0]!
@@ -1844,6 +1926,21 @@ test('migrates prior application state to Session work locations', async () => {
   await restarted.settleSessionRunLease(created.sessionId)
 })
 
+test('migrates version 5 application state to persisted Session descriptions', async () => {
+  const { authority, storageDirectory, workspace } = await createFixture()
+  const created = await authority.createQuickSession(workspace.id, { repositoryId: workspace.repositories[0]!.id })
+  const database = new Database(join(storageDirectory, 'application-state.sqlite'))
+  database.exec('ALTER TABLE sessions DROP COLUMN description')
+  database.prepare("UPDATE metadata SET value = '5' WHERE key = 'schema_version'").run()
+  database.close()
+
+  const restarted = await initializeApplicationAuthority(storageDirectory, { sqlite: bunSqlite })
+  const updated = await restarted.setSessionDescription(created.sessionId, 'Summarizing the migrated Session.')
+
+  assert.equal(restarted.startup.status, 'ready')
+  assert.equal(updated.workstreams[0]?.sessions[0]?.description, 'Summarizing the migrated Session.')
+})
+
 test('releases an interrupted ordinary Agent Run lease during startup', async () => {
   const { authority, storageDirectory, workspace } = await createFixture()
   const created = await authority.createWorkstream(workspace.id, { goal: 'Resume after restart' })
@@ -1853,6 +1950,18 @@ test('releases an interrupted ordinary Agent Run lease during startup', async ()
   const restarted = await initializeApplicationAuthority(storageDirectory, { sqlite: bunSqlite })
 
   assert.equal(await restarted.acquireSessionRunLease(created.sessionId), true)
+})
+
+test('releases an interrupted Session context compaction lease during startup', async () => {
+  const { authority, storageDirectory, workspace } = await createFixture()
+  const created = await authority.createWorkstream(workspace.id, { goal: 'Resume after interrupted compaction' })
+
+  assert.equal(await authority.acquireSessionCompactionLease(created.sessionId), true)
+
+  const restarted = await initializeApplicationAuthority(storageDirectory, { sqlite: bunSqlite })
+
+  assert.equal(await restarted.acquireSessionCompactionLease(created.sessionId), true)
+  await restarted.settleSessionCompactionLease(created.sessionId)
 })
 
 test('withholds submission capability from archived Sessions', async () => {
@@ -1867,6 +1976,19 @@ test('withholds submission capability from archived Sessions', async () => {
   assert.equal(resolution?.canSubmit, false)
   assert.equal(resolution?.toolAccess, 'none')
   assert.equal(await authority.acquireSessionRunLease(created.sessionId), false)
+})
+
+test('rejects archival while Session context compaction is active', async () => {
+  const { authority, workspace } = await createFixture()
+  const created = await authority.createWorkstream(workspace.id, { goal: 'Stay active while compacting' })
+  const workstream = created.snapshot.workstreams[0]!
+
+  assert.equal(await authority.acquireSessionCompactionLease(created.sessionId), true)
+  await assert.rejects(authority.setWorkstreamLifecycle(workstream.id, 'archived'), /only while every Session is idle/)
+  await authority.settleSessionCompactionLease(created.sessionId)
+
+  const archived = await authority.setWorkstreamLifecycle(workstream.id, 'archived')
+  assert.equal(archived.workstreams[0]?.lifecycle, 'archived')
 })
 
 test('rejects archival while a Workstream Agent Run is active', async () => {

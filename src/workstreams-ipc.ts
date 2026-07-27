@@ -18,6 +18,7 @@ export const workstreamsIpcChannels = {
   setLifecycle: 'workstreams:set-lifecycle',
   renameSession: 'workstreams:rename-session',
   showWorkingLocation: 'workstreams:show-working-location',
+  changed: 'workstreams:changed',
 } as const
 
 export function parsePreviewWorktreeLocationsRequest(

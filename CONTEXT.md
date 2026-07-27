@@ -59,6 +59,9 @@ _Avoid_: Chat, thread
 **Session Fork**:
 A new Session whose history is copied through the response before one selected user message from a source Session. The selected message becomes an editable draft, the source remains unchanged, and Repository state is not rewound. A goal-based Session Fork remains in its Workstream and mode. A Quick Session Fork owns a new goal-less Workstream and preserves the source working-location policy without sharing a dedicated worktree.
 
+**Session Description**:
+One or two concise, agent-authored sentences that summarize a Session's current focus for navigation. Pi can revise it as the focus materially changes.
+
 **Changelog**:
 The complete chronological collection shown by the Changelog page.
 

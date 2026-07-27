@@ -108,27 +108,29 @@ function migrateApplicationState(database: SqliteDatabase): void {
       )
     }
 
-    if (schemaVersion <= 4) {
-      database.exec(`
-        INSERT INTO session_repository_locations
-          (session_id, repository_id, kind, working_path, branch, base_commit, availability)
-        SELECT session.id, location.repository_id, location.kind, location.working_path,
-               location.branch, location.base_commit, location.availability
-          FROM sessions session
-          JOIN workstream_repository_locations location ON location.workstream_id = session.workstream_id
-         WHERE (
-                 session.access_kind = 'managed' AND session.id = (
-                   SELECT first_session.id
-                     FROM sessions first_session
-                    WHERE first_session.workstream_id = session.workstream_id
-                    ORDER BY first_session.created_at, first_session.rowid
-                    LIMIT 1
-                 )
-               )
-            OR session.repository_id = location.repository_id
-        ON CONFLICT (session_id, repository_id) DO NOTHING;
-      `)
+    if (!columnExists(database, 'sessions', 'description')) {
+      database.exec('ALTER TABLE sessions ADD COLUMN description TEXT;')
     }
+
+    database.exec(`
+      INSERT INTO session_repository_locations
+        (session_id, repository_id, kind, working_path, branch, base_commit, availability)
+      SELECT session.id, location.repository_id, location.kind, location.working_path,
+             location.branch, location.base_commit, location.availability
+        FROM sessions session
+        JOIN workstream_repository_locations location ON location.workstream_id = session.workstream_id
+       WHERE (
+               session.access_kind = 'managed' AND session.id = (
+                 SELECT first_session.id
+                   FROM sessions first_session
+                  WHERE first_session.workstream_id = session.workstream_id
+                  ORDER BY first_session.created_at, first_session.rowid
+                  LIMIT 1
+               )
+             )
+          OR session.repository_id = location.repository_id
+      ON CONFLICT (session_id, repository_id) DO NOTHING;
+    `)
 
     if (!columnExists(database, 'sessions', 'parent_session_id')) {
       database.exec('ALTER TABLE sessions ADD COLUMN parent_session_id TEXT REFERENCES sessions(id);')
@@ -158,7 +160,7 @@ function initializeSchema(database: SqliteDatabase, generationId: string): void 
     CREATE TABLE repositories (id TEXT PRIMARY KEY, directory_path TEXT NOT NULL UNIQUE, common_directory_path TEXT NOT NULL, availability TEXT NOT NULL DEFAULT 'available');
     CREATE TABLE workspace_repositories (id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL REFERENCES workspaces(id), repository_id TEXT NOT NULL REFERENCES repositories(id), role TEXT NOT NULL DEFAULT '', relationships TEXT NOT NULL DEFAULT '[]', validation_commands TEXT NOT NULL DEFAULT '[]', UNIQUE(workspace_id, repository_id));
     CREATE TABLE workstreams (id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL REFERENCES workspaces(id), goal TEXT, lifecycle TEXT NOT NULL, working_location TEXT NOT NULL, working_location_revision INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL);
-    CREATE TABLE sessions (id TEXT PRIMARY KEY, workstream_id TEXT NOT NULL REFERENCES workstreams(id), title TEXT NOT NULL, mode TEXT NOT NULL, availability TEXT NOT NULL, access_kind TEXT NOT NULL, repository_id TEXT REFERENCES repositories(id), pi_session_id TEXT NOT NULL UNIQUE, expected_jsonl_path TEXT NOT NULL UNIQUE, creation_status TEXT NOT NULL, created_at INTEGER NOT NULL, parent_session_id TEXT REFERENCES sessions(id), forked_from_entry_id TEXT);
+    CREATE TABLE sessions (id TEXT PRIMARY KEY, workstream_id TEXT NOT NULL REFERENCES workstreams(id), title TEXT NOT NULL, description TEXT, mode TEXT NOT NULL, availability TEXT NOT NULL, access_kind TEXT NOT NULL, repository_id TEXT REFERENCES repositories(id), pi_session_id TEXT NOT NULL UNIQUE, expected_jsonl_path TEXT NOT NULL UNIQUE, creation_status TEXT NOT NULL, created_at INTEGER NOT NULL, parent_session_id TEXT REFERENCES sessions(id), forked_from_entry_id TEXT);
     CREATE TABLE workstream_repository_locations (workstream_id TEXT NOT NULL REFERENCES workstreams(id), repository_id TEXT NOT NULL REFERENCES repositories(id), kind TEXT NOT NULL, working_path TEXT NOT NULL, branch TEXT, base_commit TEXT, availability TEXT NOT NULL, PRIMARY KEY (workstream_id, repository_id));
     CREATE TABLE session_run_leases (session_id TEXT PRIMARY KEY REFERENCES sessions(id), workstream_id TEXT NOT NULL REFERENCES workstreams(id), lease_id TEXT NOT NULL UNIQUE, purpose TEXT NOT NULL, acquired_at INTEGER NOT NULL);
     CREATE TABLE session_repository_locations (session_id TEXT NOT NULL REFERENCES sessions(id), repository_id TEXT NOT NULL REFERENCES repositories(id), kind TEXT NOT NULL, working_path TEXT NOT NULL, branch TEXT, base_commit TEXT, availability TEXT NOT NULL, PRIMARY KEY (session_id, repository_id));
@@ -196,6 +198,7 @@ function readMetadata(database: SqliteDatabase): ApplicationStateMetadata | unde
           : 'SELECT mode, availability, access_kind, repository_id, pi_session_id, expected_jsonl_path, creation_status, created_at FROM sessions LIMIT 1'
       )
       .get()
+    if (schemaVersionNumber >= 6) database.prepare('SELECT description FROM sessions LIMIT 1').get()
     database
       .prepare(
         'SELECT session_id, pi_session_id, directory_path, session_path FROM external_side_effect_intents LIMIT 1'
@@ -278,11 +281,17 @@ export async function initializeApplicationStateStore(storageDirectory: string, 
     try {
       database.exec('BEGIN IMMEDIATE;')
       const leases = database
-        .prepare("SELECT lease_id FROM session_run_leases WHERE purpose IN ('agent-run', 'session-fork')")
+        .prepare(
+          "SELECT lease_id FROM session_run_leases WHERE purpose IN ('agent-run', 'context-compaction', 'session-fork')"
+        )
         .all()
 
       if (leases.length > 0) {
-        database.prepare("DELETE FROM session_run_leases WHERE purpose IN ('agent-run', 'session-fork')").run()
+        database
+          .prepare(
+            "DELETE FROM session_run_leases WHERE purpose IN ('agent-run', 'context-compaction', 'session-fork')"
+          )
+          .run()
         incrementRevision(database)
       }
 
@@ -293,7 +302,7 @@ export async function initializeApplicationStateStore(storageDirectory: string, 
       } catch {
         // Startup reconciliation failed before a transaction was active.
       }
-      startup = { status: 'recovery-only', diagnostic: 'Interrupted Agent Run recovery failed.' }
+      startup = { status: 'recovery-only', diagnostic: 'Interrupted Session activity recovery failed.' }
     } finally {
       database.close()
     }

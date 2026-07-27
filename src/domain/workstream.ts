@@ -21,6 +21,7 @@ type OwnedSessionProperties = Readonly<{
   id: SessionId
   workstreamId: string
   title: string
+  description?: string
   availability: SessionAvailability
 }>
 

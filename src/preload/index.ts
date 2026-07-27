@@ -5,8 +5,11 @@ import { applicationStateIpcChannels } from '@/src/application-state-ipc'
 import type { ComposerBridge, SessionMessageSubmissionResult, SessionRunStopResult } from '@/src/composer'
 import type { PiWorkspaceBridge } from '@/src/pi-workspace'
 import { composerIpcChannels } from '@/src/composer-ipc'
+import type { WorkstreamsSnapshot } from '@/src/domain/workstream'
 import type { SessionSkillsBridge } from '@/src/session-skills'
 import { sessionSkillsIpcChannels } from '@/src/session-skills-ipc'
+import type { SessionChangesBridge, SessionChangesSnapshot, SessionFileDiff } from '@/src/session-changes'
+import { sessionChangesIpcChannels } from '@/src/session-changes-ipc'
 import type {
   SessionConfigurationBridge,
   SessionConfigurationCommandResult,
@@ -138,6 +141,13 @@ const workstreamsBridge: WorkstreamsBridge = {
   showWorkingLocation(workstreamId, repositoryId) {
     return ipcRenderer.invoke(workstreamsIpcChannels.showWorkingLocation, { workstreamId, repositoryId })
   },
+  subscribe(listener) {
+    const handleChange = (_event: Electron.IpcRendererEvent, snapshot: WorkstreamsSnapshot) => listener(snapshot)
+
+    ipcRenderer.on(workstreamsIpcChannels.changed, handleChange)
+
+    return () => ipcRenderer.removeListener(workstreamsIpcChannels.changed, handleChange)
+  },
 }
 
 const workstreamKnowledgeBridge: WorkstreamKnowledgeBridge = {
@@ -157,8 +167,23 @@ const workstreamKnowledgeBridge: WorkstreamKnowledgeBridge = {
 }
 
 const composerBridge: ComposerBridge = {
+  compact(sessionId) {
+    return ipcRenderer.invoke(composerIpcChannels.compact, { sessionId })
+  },
   submit(submission) {
     return ipcRenderer.invoke(composerIpcChannels.submit, submission) as Promise<SessionMessageSubmissionResult>
+  },
+  getCodeReviewDraft(sessionId) {
+    return ipcRenderer.invoke(composerIpcChannels.getCodeReviewDraft, { sessionId })
+  },
+  saveCodeReviewComment(command) {
+    return ipcRenderer.invoke(composerIpcChannels.saveCodeReviewComment, command)
+  },
+  removeCodeReviewComment(sessionId, commentId) {
+    return ipcRenderer.invoke(composerIpcChannels.removeCodeReviewComment, { sessionId, commentId })
+  },
+  finishCodeReview(sessionId) {
+    return ipcRenderer.invoke(composerIpcChannels.finishCodeReview, { sessionId })
   },
   stop(sessionId) {
     return ipcRenderer.invoke(composerIpcChannels.stop, { sessionId }) as Promise<SessionRunStopResult>
@@ -174,6 +199,28 @@ const composerBridge: ComposerBridge = {
 const sessionSkillsBridge: SessionSkillsBridge = {
   getAvailable(sessionId) {
     return ipcRenderer.invoke(sessionSkillsIpcChannels.getAvailable, { sessionId })
+  },
+}
+
+const sessionChangesBridge: SessionChangesBridge = {
+  getSnapshot(sessionId) {
+    return ipcRenderer.invoke(sessionChangesIpcChannels.getSnapshot, { sessionId }) as Promise<SessionChangesSnapshot>
+  },
+  loadFileDiff(sessionId, repositoryId, path, view) {
+    return ipcRenderer.invoke(sessionChangesIpcChannels.loadFileDiff, {
+      sessionId,
+      repositoryId,
+      path,
+      view,
+    }) as Promise<SessionFileDiff>
+  },
+  setFileStaged(sessionId, repositoryId, path, staged) {
+    return ipcRenderer.invoke(sessionChangesIpcChannels.setFileStaged, {
+      sessionId,
+      repositoryId,
+      path,
+      staged,
+    }) as Promise<SessionChangesSnapshot>
   },
 }
 
@@ -227,6 +274,12 @@ const sessionTranscriptBridge: SessionTranscriptBridge = {
       AgentActivityDetails | undefined
     >
   },
+  acceptActionCard(sessionId, actionCardId) {
+    return ipcRenderer.invoke(sessionTranscriptIpcChannels.acceptActionCard, {
+      sessionId,
+      actionCardId,
+    }) as Promise<boolean>
+  },
   openExternalLink(url) {
     return ipcRenderer.invoke(sessionTranscriptIpcChannels.openExternalLink, url) as Promise<void>
   },
@@ -242,6 +295,7 @@ const piWorkspaceBridge: PiWorkspaceBridge = {
   applicationState: applicationStateBridge,
   composer: composerBridge,
   sessionSkills: sessionSkillsBridge,
+  sessionChanges: sessionChangesBridge,
   sessionConfiguration: sessionConfigurationBridge,
   transcript: sessionTranscriptBridge,
   settings: settingsBridge,

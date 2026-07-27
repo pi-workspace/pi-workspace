@@ -1,5 +1,11 @@
 import type { QueuedFollowUp, QueuedFollowUpRecord } from '@/src/queued-follow-up'
 import {
+  maximumSessionCodeReviewLength,
+  parseSessionCodeReview,
+  type SessionCodeReviewRecord,
+} from '@/src/session-code-review'
+import type { SessionActionCard, SessionActionCardStatus } from '@/src/session-action-cards'
+import {
   agentActivityKinds,
   type ActivityArtifact,
   type AgentActivity,
@@ -27,8 +33,17 @@ export type ActivityLayerRecord =
       execution: Omit<ToolExecution, 'input'>
     }>
   | Readonly<{ version: 1; type: 'activity-removed'; activityId: string }>
+  | Readonly<{ version: 1; type: 'action-card'; card: SessionActionCard }>
+  | Readonly<{
+      version: 1
+      type: 'action-card-status'
+      actionCardId: string
+      status: Exclude<SessionActionCardStatus, 'available'>
+    }>
   | Readonly<{ version: 1 } & QueuedFollowUpRecord>
+  | Readonly<{ version: 1 } & SessionCodeReviewRecord>
   | Readonly<{ version: 1; type: 'steering-message'; text: string; acceptedAt: number }>
+  | Readonly<{ version: 1; type: 'action-message'; text: string; acceptedAt: number }>
   | Readonly<{
       version: 1
       type: 'diagnostic'
@@ -45,9 +60,30 @@ export function isActivityLayerRecord(value: unknown): value is ActivityLayerRec
   if (value.type === 'activity') return isAgentActivity(value.activity)
   if (value.type === 'operation') return isToolExecution(value.execution)
   if (value.type === 'activity-removed') return isNonEmptyString(value.activityId)
+  if (value.type === 'action-card') return isSessionActionCard(value.card)
+  if (value.type === 'action-card-status') {
+    return isNonEmptyString(value.actionCardId) && (value.status === 'accepted' || value.status === 'dismissed')
+  }
   if (value.type === 'queued-follow-up') return isQueuedFollowUp(value.followUp)
   if (value.type === 'queued-follow-up-removed') return isNonEmptyString(value.followUpId)
-  if (value.type === 'steering-message') return typeof value.text === 'string' && isTimestamp(value.acceptedAt)
+  if (value.type === 'code-review-comment') {
+    return Boolean(parseSessionCodeReview({ kind: 'review', comments: [value.comment] }))
+  }
+  if (value.type === 'code-review-comment-removed') return isNonEmptyString(value.commentId)
+  if (value.type === 'code-review-comments-cleared') {
+    return Array.isArray(value.commentIds) && value.commentIds.every(isNonEmptyString)
+  }
+  if (value.type === 'code-review-message') {
+    return (
+      Boolean(parseSessionCodeReview(value.review)) &&
+      typeof value.text === 'string' &&
+      value.text.length <= maximumSessionCodeReviewLength &&
+      isTimestamp(value.acceptedAt)
+    )
+  }
+  if (value.type === 'steering-message' || value.type === 'action-message') {
+    return typeof value.text === 'string' && isTimestamp(value.acceptedAt)
+  }
   if (value.type === 'diagnostic') {
     return (
       isNonEmptyString(value.runId) &&
@@ -65,6 +101,20 @@ export function isActivityLayerRecord(value: unknown): value is ActivityLayerRec
   return false
 }
 
+function isSessionActionCard(value: unknown): value is SessionActionCard {
+  if (!isRecord(value)) return false
+
+  return (
+    isNonEmptyString(value.id) &&
+    isNonEmptyString(value.sessionId) &&
+    (value.kind === 'start-implement-session' || value.kind === 'prepare-pull-request') &&
+    isNonEmptyString(value.title) &&
+    isNonEmptyString(value.description) &&
+    value.status === 'available' &&
+    isTimestamp(value.createdAt)
+  )
+}
+
 function isQueuedFollowUp(value: unknown): value is QueuedFollowUp {
   if (!isRecord(value)) return false
 
@@ -72,6 +122,7 @@ function isQueuedFollowUp(value: unknown): value is QueuedFollowUp {
     isNonEmptyString(value.id) &&
     typeof value.text === 'string' &&
     (value.skills === undefined || (Array.isArray(value.skills) && value.skills.every(isSessionSkillMention))) &&
+    (value.codeReview === undefined || Boolean(parseSessionCodeReview(value.codeReview))) &&
     isTimestamp(value.createdAt)
   )
 }
@@ -151,6 +202,7 @@ function isActivityArtifact(value: unknown): value is ActivityArtifact {
   if (value.type === 'file-change') {
     return (
       isNonEmptyString(value.path) &&
+      (value.repositoryId === undefined || isNonEmptyString(value.repositoryId)) &&
       (value.additions === undefined || isCount(value.additions)) &&
       (value.deletions === undefined || isCount(value.deletions))
     )

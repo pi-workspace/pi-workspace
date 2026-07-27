@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { sessionId } from '@/src/domain/session'
+import { formatSessionCodeReviewText, type SessionCodeReview } from '@/src/session-code-review'
 import { createPiSessionRuntimeRegistry, type PiSessionRuntime } from './pi-session-runtimes'
 
 test('keeps duplicate messages ordered and updates one streaming identity', async () => {
@@ -44,6 +45,292 @@ test('keeps duplicate messages ordered and updates one streaming identity', asyn
   const lastEntry = snapshot.entries.at(-1)
   assert.equal(lastEntry?.type, 'message')
   assert.equal(lastEntry?.type === 'message' ? lastEntry.message.state : undefined, 'complete')
+})
+
+test('persists an accepted action card across a runtime restart', async () => {
+  let emit: (event: Parameters<Parameters<PiSessionRuntime['subscribe']>[0]>[0]) => void = () => {}
+  const records: import('@/src/main/activity-records').ActivityLayerRecord[] = []
+  const runtime: PiSessionRuntime = {
+    isStreaming: false,
+    async prompt() {},
+    subscribe(listener) {
+      emit = listener
+      return () => {}
+    },
+    loadHistory() {
+      return { conversations: [], activityRecords: records, finalState: 'completed' }
+    },
+    appendActivityRecord(record) {
+      records.push(record)
+    },
+    dispose() {},
+  }
+  const id = sessionId('action-card-session')
+  const registry = createPiSessionRuntimeRegistry({
+    findSession: () => ({ directoryPath: '/tmp', sessionPath: '/tmp/session.jsonl' }),
+    createSession: async () => runtime,
+  })
+
+  await registry.getTranscript(id)
+  emit({
+    type: 'action_card_created',
+    input: {
+      kind: 'start-implement-session',
+      title: 'Start implementation',
+      description: 'Create an Implement Session for this plan.',
+    },
+    createdAt: 1,
+  })
+
+  const created = (await registry.getTranscript(id)).actionCards?.[0]
+  assert.equal(created?.status, 'available')
+  assert.ok(created)
+  assert.equal(await registry.acceptActionCard(id, created.id), true)
+  assert.equal(await registry.acceptActionCard(id, created.id), false)
+  assert.equal((await registry.getTranscript(id)).actionCards?.[0]?.status, 'accepted')
+
+  const restartedRegistry = createPiSessionRuntimeRegistry({
+    findSession: () => ({ directoryPath: '/tmp', sessionPath: '/tmp/session.jsonl' }),
+    createSession: async () => runtime,
+  })
+
+  assert.equal((await restartedRegistry.getTranscript(id)).actionCards?.[0]?.status, 'accepted')
+})
+
+test('persists an unfinished code-review comment across a runtime restart', async () => {
+  const records: import('@/src/main/activity-records').ActivityLayerRecord[] = []
+  const runtime: PiSessionRuntime = {
+    isStreaming: false,
+    async prompt() {},
+    subscribe() {
+      return () => {}
+    },
+    loadHistory() {
+      return { conversations: [], activityRecords: records, finalState: 'completed' }
+    },
+    appendActivityRecord(record) {
+      records.push(record)
+    },
+    dispose() {},
+  }
+  const id = sessionId('review-draft-session')
+  const options = {
+    findSession: () => ({ directoryPath: '/tmp', sessionPath: '/tmp/session.jsonl' }),
+    createSession: async () => runtime,
+    createId: () => 'comment-1',
+    now: () => 10,
+  }
+  const registry = createPiSessionRuntimeRegistry(options)
+  const reference = {
+    repositoryId: 'repository-1',
+    repositoryName: 'Pi Workspace',
+    path: 'src/example.ts',
+    oldStart: 2,
+    oldLines: 1,
+    newStart: 2,
+    newLines: 2,
+    patch: '@@ -2 +2,2 @@\n-old\n+new',
+  }
+
+  await registry.saveCodeReviewComment({ sessionId: id, text: 'Preserve this.', reference })
+
+  const restartedRegistry = createPiSessionRuntimeRegistry(options)
+  assert.deepEqual((await restartedRegistry.getCodeReviewDraft(id)).comments, [
+    { id: 'comment-1', text: 'Preserve this.', reference, createdAt: 10 },
+  ])
+})
+
+test('does not restore comments already accepted into a queued code review', async () => {
+  const comment = {
+    id: 'comment-1',
+    text: 'Preserve this.',
+    createdAt: 10,
+    reference: {
+      repositoryId: 'repository-1',
+      repositoryName: 'Pi Workspace',
+      path: 'src/example.ts',
+      oldStart: 2,
+      oldLines: 1,
+      newStart: 2,
+      newLines: 2,
+      patch: '@@ -2 +2,2 @@\n-old\n+new',
+    },
+  }
+  const codeReview = { kind: 'review' as const, comments: [comment] }
+  const runtime: PiSessionRuntime = {
+    isStreaming: false,
+    async prompt() {},
+    subscribe() {
+      return () => {}
+    },
+    loadHistory() {
+      return {
+        conversations: [],
+        activityRecords: [
+          { version: 1 as const, type: 'code-review-comment' as const, comment },
+          {
+            version: 1 as const,
+            type: 'queued-follow-up' as const,
+            followUp: {
+              id: 'follow-up-1',
+              text: formatSessionCodeReviewText(codeReview),
+              codeReview,
+              createdAt: 11,
+            },
+          },
+        ],
+        finalState: 'completed' as const,
+      }
+    },
+    dispose() {},
+  }
+  const registry = createPiSessionRuntimeRegistry({
+    findSession: () => ({ directoryPath: '/tmp', sessionPath: '/tmp/session.jsonl' }),
+    createSession: async () => runtime,
+  })
+
+  assert.deepEqual((await registry.getCodeReviewDraft(sessionId('queued-review-session'))).comments, [])
+})
+
+test('finishes pending comments as one structured code-review message', async () => {
+  const records: import('@/src/main/activity-records').ActivityLayerRecord[] = []
+  const prompts: string[] = []
+  const runtime: PiSessionRuntime = {
+    isStreaming: false,
+    async prompt(text, options) {
+      prompts.push(text)
+      options.preflightResult(true)
+    },
+    subscribe() {
+      return () => {}
+    },
+    loadHistory() {
+      return { conversations: [], activityRecords: records, finalState: 'completed' }
+    },
+    appendActivityRecord(record) {
+      records.push(record)
+    },
+    dispose() {},
+  }
+  const id = sessionId('finished-review-session')
+  const registry = createPiSessionRuntimeRegistry({
+    findSession: () => ({ directoryPath: '/tmp', sessionPath: '/tmp/session.jsonl' }),
+    createSession: async () => runtime,
+    createId: () => 'comment-1',
+    now: () => 10,
+  })
+  const reference = {
+    repositoryId: 'repository-1',
+    repositoryName: 'Pi Workspace',
+    path: 'src/example.ts',
+    oldStart: 2,
+    oldLines: 1,
+    newStart: 2,
+    newLines: 2,
+    patch: '@@ -2 +2,2 @@\n-old\n+new',
+  }
+
+  await registry.saveCodeReviewComment({ sessionId: id, text: 'Preserve this.', reference })
+  assert.deepEqual(await registry.finishCodeReview(id), { status: 'accepted', delivery: 'prompt' })
+
+  const snapshot = await registry.getTranscript(id)
+  const message = snapshot.entries.find((entry) => entry.type === 'message')
+  assert.equal(message?.type === 'message' ? message.message.codeReview?.kind : undefined, 'review')
+  assert.deepEqual((await registry.getCodeReviewDraft(id)).comments, [])
+  assert.match(prompts[0] ?? '', /Code review with 1 comment across 1 file/)
+})
+
+test('clears an accepted review from memory when its clear record cannot be persisted', async () => {
+  const runtime: PiSessionRuntime = {
+    isStreaming: false,
+    async prompt(_text, options) {
+      options.preflightResult(true)
+    },
+    subscribe() {
+      return () => {}
+    },
+    appendActivityRecord(record) {
+      if (record.type === 'code-review-comments-cleared') throw new Error('Disk unavailable')
+    },
+    dispose() {},
+  }
+  const id = sessionId('review-clear-failure-session')
+  const registry = createPiSessionRuntimeRegistry({
+    findSession: () => ({ directoryPath: '/tmp', sessionPath: '/tmp/session.jsonl' }),
+    createSession: async () => runtime,
+  })
+
+  await registry.saveCodeReviewComment({
+    sessionId: id,
+    text: 'Preserve this.',
+    reference: {
+      repositoryId: 'repository-1',
+      repositoryName: 'Pi Workspace',
+      path: 'src/example.ts',
+      oldStart: 2,
+      oldLines: 1,
+      newStart: 2,
+      newLines: 2,
+      patch: '@@ -2 +2,2 @@\n-old\n+new',
+    },
+  })
+
+  assert.deepEqual(await registry.finishCodeReview(id), { status: 'accepted', delivery: 'prompt' })
+  assert.deepEqual((await registry.getCodeReviewDraft(id)).comments, [])
+})
+
+test('restores structured code-review metadata with its persisted user message', async () => {
+  const codeReview = {
+    kind: 'follow-up' as const,
+    comments: [
+      {
+        id: 'comment-1',
+        text: 'Preserve this.',
+        createdAt: 1,
+        reference: {
+          repositoryId: 'repository-1',
+          repositoryName: 'Pi Workspace',
+          path: 'src/example.ts',
+          oldStart: 2,
+          oldLines: 1,
+          newStart: 2,
+          newLines: 2,
+          patch: '@@ -2 +2,2 @@\n-old\n+new',
+        },
+      },
+    ],
+  }
+  const text =
+    'Follow-up about a referenced code change.\n\n' +
+    '## Pi Workspace · src/example.ts · +2–3\n\n' +
+    '~~~~diff\n@@ -2 +2,2 @@\n-old\n+new\n~~~~\n\nPreserve this.'
+  const runtime: PiSessionRuntime = {
+    isStreaming: false,
+    async prompt() {},
+    subscribe() {
+      return () => {}
+    },
+    loadHistory() {
+      return {
+        conversations: [
+          { type: 'conversation' as const, id: 'message-1', role: 'user' as const, text, timestamp: 100 },
+        ],
+        activityRecords: [
+          { version: 1 as const, type: 'code-review-message' as const, review: codeReview, text, acceptedAt: 100 },
+        ],
+        finalState: 'completed' as const,
+      }
+    },
+    dispose() {},
+  }
+  const id = sessionId('restored-review-session')
+  const registry = createPiSessionRuntimeRegistry({
+    findSession: () => ({ directoryPath: '/tmp', sessionPath: '/tmp/session.jsonl' }),
+    createSession: async () => runtime,
+  })
+
+  const message = (await registry.getTranscript(id)).entries.find((entry) => entry.type === 'message')
+  assert.deepEqual(message?.type === 'message' ? message.message.codeReview : undefined, codeReview)
 })
 
 test('persists queued follow-ups until the user resumes the queue', async () => {
@@ -587,6 +874,63 @@ test('invokes multiple available Skills where they were mentioned', async () => 
   ])
 })
 
+test('expands Skills from review comments without interpreting immutable patch text', async () => {
+  let promptedText = ''
+  const runtime: PiSessionRuntime = {
+    isStreaming: false,
+    async prompt(text, options) {
+      promptedText = text
+      options.preflightResult(true)
+    },
+    getSkills() {
+      return [{ name: 'tdd', description: 'Develop test first.' }]
+    },
+    getSkillPrompt(name) {
+      return `<${name}>`
+    },
+    subscribe() {
+      return () => {}
+    },
+    dispose() {},
+  }
+  const registry = createPiSessionRuntimeRegistry({
+    findSession: () => ({ directoryPath: '/tmp', sessionPath: '/tmp/session.jsonl' }),
+    createSession: async () => runtime,
+  })
+  const id = sessionId('review-skill-session')
+  const codeReview: SessionCodeReview = {
+    kind: 'follow-up',
+    comments: [
+      {
+        id: 'comment-1',
+        text: '/skill:tdd Check this documentation change.',
+        createdAt: 1,
+        reference: {
+          repositoryId: 'repository-1',
+          repositoryName: 'Pi Workspace',
+          path: 'docs.md',
+          oldStart: 1,
+          oldLines: 1,
+          newStart: 1,
+          newLines: 1,
+          patch: '@@ -1 +1 @@\n-old\n+Run /skill:missing before merging.',
+        },
+      },
+    ],
+  }
+
+  const result = await registry.submit({
+    sessionId: id,
+    text: formatSessionCodeReviewText(codeReview),
+    delivery: 'follow-up',
+    codeReview,
+  })
+
+  assert.deepEqual(result, { status: 'accepted', delivery: 'prompt' })
+  assert.match(promptedText, /\+Run \/skill:missing before merging\./)
+  assert.match(promptedText, /<tdd> Check this documentation change\./)
+})
+
 test('rejects a selected Skill that is unavailable to the Session runtime', async () => {
   let prompted = false
   const runtime: PiSessionRuntime = {
@@ -714,4 +1058,177 @@ test('publishes a failed transcript run without a parallel failure stream', asyn
 
   assert.equal(snapshot.runFailureReason, 'failed')
   assert.equal(snapshot.isWorking, false)
+})
+
+test('queues an Agent Run until Session context compaction completes', async () => {
+  let finishCompaction: () => void = () => {}
+  const compacted = new Promise<void>((resolve) => {
+    finishCompaction = resolve
+  })
+  let prompted = false
+  const runtime: PiSessionRuntime = {
+    isStreaming: false,
+    async prompt(_text, options) {
+      prompted = true
+      options.preflightResult(true)
+    },
+    compact() {
+      return compacted
+    },
+    subscribe() {
+      return () => {}
+    },
+    dispose() {},
+  }
+  const registry = createPiSessionRuntimeRegistry({
+    findSession: () => ({ directoryPath: '/tmp', sessionPath: '/tmp/session.jsonl' }),
+    createSession: async () => runtime,
+  })
+  const id = sessionId('compacting-session')
+
+  const compaction = registry.compact(id)
+  await Promise.resolve()
+  await Promise.resolve()
+
+  assert.equal((await registry.getTranscript(id)).isCompacting, true)
+  const submission = registry.submit({ sessionId: id, text: 'start work', delivery: 'steer' })
+
+  assert.equal(prompted, false)
+
+  finishCompaction()
+  assert.deepEqual(await compaction, { status: 'compacted' })
+  assert.deepEqual(await submission, { status: 'accepted', delivery: 'prompt' })
+  assert.equal((await registry.getTranscript(id)).isCompacting, false)
+})
+
+test('holds a Session context compaction lease until compaction completes', async () => {
+  let finishCompaction: () => void = () => {}
+  const compacted = new Promise<void>((resolve) => {
+    finishCompaction = resolve
+  })
+  let leaseHeld = false
+  const runtime: PiSessionRuntime = {
+    isStreaming: false,
+    async prompt() {},
+    compact() {
+      return compacted
+    },
+    subscribe() {
+      return () => {}
+    },
+    dispose() {},
+  }
+  const registry = createPiSessionRuntimeRegistry({
+    findSession: () => ({ directoryPath: '/tmp', sessionPath: '/tmp/session.jsonl' }),
+    createSession: async () => runtime,
+    acquireCompactionLease: () => {
+      leaseHeld = true
+      return true
+    },
+    releaseCompactionLease: () => {
+      leaseHeld = false
+    },
+  })
+  const id = sessionId('compaction-lease-session')
+
+  const compaction = registry.compact(id)
+  await new Promise<void>((resolve) => setTimeout(resolve, 0))
+
+  assert.equal(leaseHeld, true)
+
+  finishCompaction()
+
+  assert.deepEqual(await compaction, { status: 'compacted' })
+  assert.equal(leaseHeld, false)
+})
+
+test('queues a Model change until Session context compaction completes', async () => {
+  let finishCompaction: () => void = () => {}
+  const compacted = new Promise<void>((resolve) => {
+    finishCompaction = resolve
+  })
+  let model = { provider: 'provider', id: 'initial' }
+  const runtime: PiSessionRuntime = {
+    isStreaming: false,
+    async prompt() {},
+    compact() {
+      return compacted
+    },
+    async getConfiguration() {
+      return {
+        models: [],
+        model,
+        effort: 'off',
+        supportedEfforts: ['off'],
+      }
+    },
+    async setConfigurationModel(nextModel) {
+      model = nextModel
+    },
+    subscribe() {
+      return () => {}
+    },
+    dispose() {},
+  }
+  const registry = createPiSessionRuntimeRegistry({
+    findSession: () => ({ directoryPath: '/tmp', sessionPath: '/tmp/session.jsonl' }),
+    createSession: async () => runtime,
+  })
+  const id = sessionId('compaction-configuration-session')
+
+  const compaction = registry.compact(id)
+  await Promise.resolve()
+  await Promise.resolve()
+
+  const configuration = registry.setConfigurationModel(id, { provider: 'provider', id: 'selected' })
+  await new Promise<void>((resolve) => setTimeout(resolve, 0))
+
+  assert.deepEqual(model, { provider: 'provider', id: 'initial' })
+
+  finishCompaction()
+
+  assert.deepEqual(await compaction, { status: 'compacted' })
+  assert.equal((await configuration).status, 'applied')
+  assert.deepEqual(model, { provider: 'provider', id: 'selected' })
+})
+
+test('does not compact while a submission is acquiring its Session run lease', async () => {
+  let authorizeSubmission: () => void = () => {}
+  const submissionAuthorized = new Promise<void>((resolve) => {
+    authorizeSubmission = resolve
+  })
+  let prompted = false
+  const runtime: PiSessionRuntime = {
+    isStreaming: false,
+    async prompt(_text, options) {
+      prompted = true
+      options.preflightResult(true)
+    },
+    async compact() {},
+    subscribe() {
+      return () => {}
+    },
+    dispose() {},
+  }
+  const registry = createPiSessionRuntimeRegistry({
+    findSession: () => ({ directoryPath: '/tmp', sessionPath: '/tmp/session.jsonl' }),
+    canSubmit: async () => {
+      await submissionAuthorized
+      return true
+    },
+    createSession: async () => runtime,
+  })
+  const id = sessionId('submission-lease-session')
+
+  const submission = registry.submit({ sessionId: id, text: 'start work', delivery: 'steer' })
+  const compaction = registry.compact(id)
+
+  authorizeSubmission()
+
+  assert.deepEqual(await submission, { status: 'accepted', delivery: 'prompt' })
+  assert.equal(prompted, true)
+  assert.deepEqual(await compaction, {
+    status: 'rejected',
+    message: 'Wait for the Agent Run to finish before compacting.',
+  })
 })

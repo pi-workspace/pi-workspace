@@ -78,6 +78,55 @@ test('a command artifact is omitted from the outcome summary', () => {
   assert.equal(view.queryByText('bun test: failed'), null)
 })
 
+test('loads an operation-time preview only when a changed file is expanded', async () => {
+  const user = userEvent.setup({ document: browser.document as unknown as Document })
+  let loadCount = 0
+  let opened: readonly [string | undefined, string] | undefined
+  const view = render(
+    <AgentActivityCard
+      activity={{
+        ...activity,
+        artifacts: [{ type: 'file-change', path: 'src/session.ts', repositoryId: 'repository-a' }],
+      }}
+      loadDetails={async () => {
+        loadCount += 1
+        return {
+          activityId: activity.id,
+          operations: [
+            {
+              toolCallId: 'edit-1',
+              label: 'edit',
+              status: 'completed',
+              input: '{}',
+              truncated: false,
+              preview: {
+                kind: 'diff',
+                path: 'src/session.ts',
+                repositoryId: 'repository-a',
+                content: '@@ -1 +1 @@\n-old\n+new',
+                truncated: false,
+              },
+            },
+          ],
+        }
+      }}
+      onOpenCurrentDiff={(repositoryId, path) => {
+        opened = [repositoryId, path]
+      }}
+    />,
+    { container: browser.document.body as unknown as HTMLElement }
+  )
+
+  await user.click(view.getByText('Validate the result'))
+  assert.equal(loadCount, 0)
+  await user.click(view.getByRole('button', { name: 'src/session.ts' }))
+
+  assert.equal(loadCount, 1)
+  assert.ok(view.getByRole('region', { name: 'Operation-time preview for src/session.ts' }))
+  await user.click(view.getByRole('button', { name: 'Open current diff' }))
+  assert.deepEqual(opened, ['repository-a', 'src/session.ts'])
+})
+
 test('operations remain unloaded until their disclosure is opened', async () => {
   const user = userEvent.setup({ document: browser.document as unknown as Document })
   let loadCount = 0

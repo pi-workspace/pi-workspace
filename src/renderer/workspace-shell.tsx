@@ -13,6 +13,7 @@ import type {
 import { bundledReleaseNotes } from '@/src/release-notes'
 import { SessionArea } from '@/src/renderer/components/session-area'
 import { WorkstreamContextLayout, WorkstreamSelectionScreen } from '@/src/renderer/components/workstream-context'
+import type { SessionChangesSelection } from '@/src/renderer/components/session-changes'
 import { WorkspaceNavigation } from '@/src/renderer/components/workspace-navigation'
 import { WorkstreamNavigation } from '@/src/renderer/components/workstream-navigation'
 import { initialMainContentState, updateMainContent } from '@/src/renderer/main-content'
@@ -73,7 +74,7 @@ export function WorkspaceShell({ initialWorkspacesSnapshot, initialSessionDispla
   const initialSessionDisplayRef = useRef(initialSessionDisplay)
   const [mainContent, dispatchMainContent] = useReducer(updateMainContent, initialMainContentState)
   const changelogButtonRef = useRef<HTMLElement>(null)
-  const [drafts, setDrafts] = useState<ReadonlyMap<SessionId, string>>(() => new Map(initialSessionDisplay?.drafts))
+  const draftsRef = useRef(new Map(initialSessionDisplay?.drafts))
   const sessionTitleSavePending = useRef(false)
   const composerFocusRequestNumber = useRef(0)
   const [workstreamCreationRequest, setWorkstreamCreationRequest] = useState<number>()
@@ -85,6 +86,10 @@ export function WorkspaceShell({ initialWorkspacesSnapshot, initialSessionDispla
     Readonly<{ sessionId: SessionId; request: number }> | undefined
   >()
   const [sessionTitleEditing, setSessionTitleEditing] = useState<SessionTitleEditing>()
+  const changesRequestNumber = useRef(0)
+  const [changesSelection, setChangesSelection] = useState<
+    (SessionChangesSelection & Readonly<{ sessionId: SessionId }>) | undefined
+  >()
 
   const selectedWorkspaceAuthorityToken = (): SelectedWorkspaceAuthorityToken => {
     const workspaceId = selectedWorkspaceIdRef.current
@@ -108,6 +113,16 @@ export function WorkspaceShell({ initialWorkspacesSnapshot, initialSessionDispla
     setWorkstreamsSnapshot(snapshot)
     return true
   }
+
+  useEffect(() => {
+    return window.piWorkspace.workstreams.subscribe((snapshot) => {
+      const workspaceId = selectedWorkspaceIdRef.current
+
+      if (!workspaceId || !snapshot.workstreams.some((workstream) => workstream.workspaceId === workspaceId)) return
+
+      applyWorkstreamsSnapshot({ workspaceId, generation: workspaceSelectionGenerationRef.current }, snapshot)
+    })
+  }, [])
 
   useEffect(() => {
     if (!selectedWorkspaceId) return
@@ -181,6 +196,7 @@ export function WorkspaceShell({ initialWorkspacesSnapshot, initialSessionDispla
   )
   const recentSessions = sessions.slice(-5).reverse()
   const visibleSessionIds = getVisibleSessionIds(sessionPinning, workstreamSelection.sessionId)
+  const activeSession = sessions.find((session) => session.id === workstreamSelection.sessionId)
   const visibleSessions = visibleSessionIds.flatMap((ownedSessionId) => {
     const ownedSession = sessions.find((candidate) => candidate.id === ownedSessionId)
     return ownedSession ? [ownedSession] : []
@@ -223,6 +239,12 @@ export function WorkspaceShell({ initialWorkspacesSnapshot, initialSessionDispla
     })
   }
 
+  const openCurrentDiff = (sessionId: SessionId, repositoryId: string | undefined, path: string) => {
+    activateSession(sessionId)
+    changesRequestNumber.current += 1
+    setChangesSelection({ sessionId, repositoryId, path, request: changesRequestNumber.current })
+  }
+
   const toggleSessionPin = (sessionId: SessionId) => {
     dispatchSessionPinning({ type: 'toggle-pin', sessionId })
   }
@@ -236,14 +258,10 @@ export function WorkspaceShell({ initialWorkspacesSnapshot, initialSessionDispla
     requestAnimationFrame(() => changelogButtonRef.current?.focus())
   }
 
-  const updateDraft = (sessionId: SessionId, draft: string) => {
-    setDrafts((currentDrafts) => {
-      const nextDrafts = new Map(currentDrafts)
-      nextDrafts.set(sessionId, draft)
-
-      return nextDrafts
-    })
-  }
+  const updateDraft = useCallback((sessionId: SessionId, draft: string) => {
+    if (draft) draftsRef.current.set(sessionId, draft)
+    else draftsRef.current.delete(sessionId)
+  }, [])
 
   const submitMessage = (submission: SessionMessageSubmission) => window.piWorkspace.composer.submit(submission)
   const stopRun = (sessionId: SessionId) => window.piWorkspace.composer.stop(sessionId)
@@ -346,11 +364,7 @@ export function WorkspaceShell({ initialWorkspacesSnapshot, initialSessionDispla
 
     if (!applyWorkstreamsSnapshot(authorityToken, outcome.snapshot)) return
 
-    setDrafts((currentDrafts) => {
-      const nextDrafts = new Map(currentDrafts)
-      nextDrafts.set(outcome.sessionId, outcome.draft)
-      return nextDrafts
-    })
+    draftsRef.current.set(outcome.sessionId, outcome.draft)
     revealCreatedSession(outcome.snapshot, outcome.sessionId)
   }
 
@@ -401,7 +415,7 @@ export function WorkspaceShell({ initialWorkspacesSnapshot, initialSessionDispla
     setWorkstreamsSnapshot(undefined)
     dispatchSessionPinning({ type: 'reset' })
     dispatchWorkstreamSelection({ type: 'start-workspace-load' })
-    setDrafts(new Map())
+    draftsRef.current = new Map()
     setSessionTitleEditing(undefined)
     setSelectedWorkspaceId(workspaceId)
   }
@@ -453,6 +467,8 @@ export function WorkspaceShell({ initialWorkspacesSnapshot, initialSessionDispla
     >
       <WorkstreamContextLayout
         workstream={selectedWorkstream}
+        activeSession={activeSession}
+        changesSelection={changesSelection?.sessionId === activeSession?.id ? changesSelection : undefined}
         stateResource={workstreamKnowledgeResource}
         onShowWorkingLocation={(workstreamId, repositoryId) =>
           window.piWorkspace.workstreams.showWorkingLocation(workstreamId, repositoryId)
@@ -473,7 +489,7 @@ export function WorkspaceShell({ initialWorkspacesSnapshot, initialSessionDispla
             activeSessionId={workstreamSelection.sessionId}
             revealRequest={sessionRevealRequest}
             composerFocusRequest={composerFocusRequest}
-            drafts={drafts}
+            drafts={draftsRef.current}
             titleEditing={sessionTitleEditing}
             onSessionRevealed={handleSessionRevealed}
             onStartTitleEditing={(sessionId) => startTitleEditing(sessionId, 'header')}
@@ -494,6 +510,9 @@ export function WorkspaceShell({ initialWorkspacesSnapshot, initialSessionDispla
             getSessionForkPoints={(sessionId) => window.piWorkspace.workstreams.getSessionForkPoints(sessionId)}
             forkSession={forkSession}
             onToggleSessionPin={toggleSessionPin}
+            acceptActionCard={window.piWorkspace.transcript.acceptActionCard}
+            onStartImplementSession={(workstreamId) => createSession(workstreamId, { mode: 'implement' })}
+            onOpenCurrentDiff={openCurrentDiff}
           />
         ) : selectedWorkstream?.goal ? (
           <WorkstreamSelectionScreen workstream={selectedWorkstream} />

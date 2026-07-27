@@ -1,14 +1,18 @@
 import type { ActivityLayerRecord } from '@/src/main/activity-records'
+import type { ActivityRepositoryLocation } from '@/src/main/activity-artifacts'
 import type { AgentActivity, AgentRun, SessionTimelineEntry, ToolExecution } from '@/src/session-timeline'
 import type { SessionContextUsage, SessionTranscriptMessage } from '@/src/session-transcript'
+import type { SessionActionCard } from '@/src/session-action-cards'
 import type { PiSessionRuntime, PiSessionRuntimeHistory } from './pi-session-runtimes'
 
 export type SessionRuntimeTimeline = {
   revision: number
   runtimeDirectory?: string
   contextUsage?: SessionContextUsage
+  isCompacting: boolean
   runs: AgentRun[]
   entries: SessionTimelineEntry[]
+  actionCards: SessionActionCard[]
   messages: Map<string, SessionTranscriptMessage>
   currentActivityId?: string
   activities: Map<string, SessionRuntimeActivity>
@@ -16,6 +20,7 @@ export type SessionRuntimeTimeline = {
   controlTransitions: Map<string, SessionRuntimeActivityControlTransition>
   persist?: (record: ActivityLayerRecord) => void
   loadRawOperation?: PiSessionRuntime['loadRawOperation']
+  getActivityRepositoryLocations?: () => readonly ActivityRepositoryLocation[]
 }
 
 export type SessionRuntimeActivity = {
@@ -69,21 +74,41 @@ export function hydrateTimeline(timeline: SessionRuntimeTimeline, history: PiSes
   const runs = new Map<string, AgentRun>()
   const activities = new Map<string, AgentActivity>()
   const operations = new Map<string, Omit<ToolExecution, 'input'>>()
+  const actionCards = new Map<string, SessionActionCard>()
+  const actionCardStatuses = new Map<string, SessionActionCard['status']>()
 
   for (const record of history.activityRecords) {
     if (record.type === 'run') runs.set(record.run.id, record.run)
     if (record.type === 'activity') activities.set(record.activity.id, record.activity)
     if (record.type === 'operation') operations.set(record.execution.toolCallId, record.execution)
     if (record.type === 'activity-removed') activities.delete(record.activityId)
+    if (record.type === 'action-card') actionCards.set(record.card.id, record.card)
+    if (record.type === 'action-card-status') actionCardStatuses.set(record.actionCardId, record.status)
   }
 
   timeline.runs = [...runs.values()].sort((left, right) => left.startedAt - right.startedAt)
+  timeline.actionCards = [...actionCards.values()].map((card) => {
+    const status = actionCardStatuses.get(card.id)
 
+    return status ? { ...card, status } : card
+  })
+
+  const hiddenMessageIds = new Set<string>()
   const steeringMessageIds = new Set<string>()
+  const codeReviewsByMessageId = new Map<
+    string,
+    Extract<ActivityLayerRecord, { type: 'code-review-message' }>['review']
+  >()
   const unmatchedConversations = [...history.conversations]
 
   for (const record of history.activityRecords) {
-    if (record.type !== 'steering-message') continue
+    if (
+      record.type !== 'steering-message' &&
+      record.type !== 'action-message' &&
+      record.type !== 'code-review-message'
+    ) {
+      continue
+    }
 
     let index = -1
     let nearestTimestampDifference = Number.POSITIVE_INFINITY
@@ -101,27 +126,40 @@ export function hydrateTimeline(timeline: SessionRuntimeTimeline, history: PiSes
     if (index < 0) continue
 
     const [conversation] = unmatchedConversations.splice(index, 1)
-    if (conversation) steeringMessageIds.add(conversation.id)
+    if (!conversation) continue
+
+    if (record.type === 'action-message') {
+      hiddenMessageIds.add(conversation.id)
+    } else if (record.type === 'steering-message') {
+      steeringMessageIds.add(conversation.id)
+    } else {
+      codeReviewsByMessageId.set(conversation.id, record.review)
+    }
   }
 
   for (const conversation of history.conversations) {
+    if (hiddenMessageIds.has(conversation.id)) continue
+
     timeline.messages.set(conversation.id, {
       id: conversation.id,
       role: conversation.role,
       text: conversation.text,
       skills: conversation.skills,
+      codeReview: codeReviewsByMessageId.get(conversation.id),
       delivery: steeringMessageIds.has(conversation.id) ? 'steer' : undefined,
       state: 'complete',
       revision: 0,
     })
   }
 
-  const conversations = history.conversations.map((conversation) => {
-    const ownerIndex = timeline.runs.findLastIndex((run) => run.startedAt <= conversation.timestamp + 1_000)
-    const owner = ownerIndex >= 0 ? timeline.runs[ownerIndex] : undefined
+  const conversations = history.conversations
+    .filter((conversation) => !hiddenMessageIds.has(conversation.id))
+    .map((conversation) => {
+      const ownerIndex = timeline.runs.findLastIndex((run) => run.startedAt <= conversation.timestamp + 1_000)
+      const owner = ownerIndex >= 0 ? timeline.runs[ownerIndex] : undefined
 
-    return owner ? { ...conversation, runId: owner.id } : conversation
-  })
+      return owner ? { ...conversation, runId: owner.id } : conversation
+    })
 
   timeline.runs = timeline.runs.map((run) => {
     const initiatingMessage = conversations.find(
@@ -144,10 +182,10 @@ export function hydrateTimeline(timeline: SessionRuntimeTimeline, history: PiSes
     timeline.operations.set(execution.toolCallId, { execution: { ...execution, input: undefined } })
   }
 
-  timeline.entries = [...conversations, ...activities.values()].sort(
+  timeline.entries = [...conversations, ...activities.values(), ...(history.compactions ?? [])].sort(
     (left, right) =>
-      (left.type === 'conversation' ? left.timestamp : left.startedAt) -
-      (right.type === 'conversation' ? right.timestamp : right.startedAt)
+      (left.type === 'conversation' || left.type === 'context-compaction' ? left.timestamp : left.startedAt) -
+      (right.type === 'conversation' || right.type === 'context-compaction' ? right.timestamp : right.startedAt)
   )
   timeline.revision = history.activityRecords.length
 

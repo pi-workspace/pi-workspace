@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { access, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { access, mkdtemp, open, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { CURRENT_SESSION_VERSION, SessionManager } from '@earendil-works/pi-coding-agent'
 import { ensurePrivateDirectory, ensurePrivateFile } from '@/src/main/private-storage'
@@ -65,10 +65,19 @@ export async function createPiSessionFileStore(storageDirectory: string): Promis
   async function resolve(creationIntent: PiSessionCreationIntent): Promise<OwnedPiSessionLocation | undefined> {
     try {
       await ensurePrivateFile(creationIntent.sessionPath)
-      const content = await readFile(creationIntent.sessionPath, 'utf8')
-      const lines = content.split('\n').filter((line) => line.trim().length > 0)
-      const entries = lines.map((line) => JSON.parse(line) as unknown)
-      const header = entries[0]
+      const file = await open(creationIntent.sessionPath, 'r')
+      let header: unknown
+
+      try {
+        for await (const line of file.readLines()) {
+          if (!line.trim()) continue
+
+          header = JSON.parse(line) as unknown
+          break
+        }
+      } finally {
+        await file.close()
+      }
 
       if (
         typeof header !== 'object' ||

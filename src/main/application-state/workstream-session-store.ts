@@ -26,6 +26,7 @@ import {
   type WorktreeProposal,
 } from '@/src/main/git-repositories'
 import { restorePiUserMessageDraft } from '@/src/main/pi-session-message-mapping'
+import { normalizeSessionDescription } from '@/src/session-description'
 import { normalizeSessionTitle } from '@/src/session-title'
 import type { OwnedPiSessionLocation, PiSessionCreationIntent, PiSessionFileStore } from '@/src/main/pi-session-files'
 import type { SqliteDatabase } from './sqlite'
@@ -87,6 +88,12 @@ export type PreparedSessionRepository = Readonly<{
   resourcePolicyRevision: number
 }>
 
+export type SessionChangeRepositoryLocation = Readonly<{
+  repositoryId: string
+  repositoryName: string
+  workingPath: string
+}>
+
 export function createWorkstreamSessionStore({
   openDatabase,
   inspectRepository,
@@ -111,8 +118,8 @@ export function createWorkstreamSessionStore({
 
       const rows = database
         .prepare(
-          `SELECT w.id AS workstream_id, w.goal, w.lifecycle, w.working_location, s.id AS session_id, s.title, s.mode,
-                s.availability, s.access_kind, s.repository_id,
+          `SELECT w.id AS workstream_id, w.goal, w.lifecycle, w.working_location, s.id AS session_id, s.title,
+                s.description, s.mode, s.availability, s.access_kind, s.repository_id,
                 r.directory_path AS repository_directory_path, r.availability AS repository_availability
            FROM workstreams w
            LEFT JOIN sessions s ON s.workstream_id = w.id
@@ -152,6 +159,7 @@ export function createWorkstreamSessionStore({
             id: row.session_id as SessionId,
             workstreamId,
             title: String(row.title),
+            ...(typeof row.description === 'string' ? { description: row.description } : {}),
             availability: parseSessionAvailability(row.availability),
           }
 
@@ -1212,6 +1220,41 @@ export function createWorkstreamSessionStore({
     return getWorkstreamSnapshot(workspaceId)
   }
 
+  async function setSessionDescription(sessionId: SessionId, description: string): Promise<WorkstreamsSnapshot> {
+    const normalizedDescription = normalizeSessionDescription(description)
+
+    if (!normalizedDescription) throw new TypeError('A Session description is required.')
+
+    const database = openDatabase()
+    let workspaceId: string
+
+    try {
+      database.exec('BEGIN IMMEDIATE;')
+      const session = database
+        .prepare(
+          `SELECT w.workspace_id
+           FROM sessions s
+           JOIN workstreams w ON w.id = s.workstream_id
+          WHERE s.id = ?`
+        )
+        .get(sessionId)
+
+      if (!session) throw new TypeError('The Session no longer exists.')
+
+      workspaceId = String(session.workspace_id)
+      database.prepare('UPDATE sessions SET description = ? WHERE id = ?').run(normalizedDescription, sessionId)
+      incrementRevision(database)
+      database.exec('COMMIT;')
+    } catch (error) {
+      database.exec('ROLLBACK;')
+      throw error
+    } finally {
+      database.close()
+    }
+
+    return getWorkstreamSnapshot(workspaceId)
+  }
+
   async function resolveOwnedSession(sessionId: SessionId): Promise<OwnedSessionResolution | undefined> {
     const database = openDatabase()
 
@@ -1436,6 +1479,39 @@ export function createWorkstreamSessionStore({
     }
   }
 
+  async function resolveSessionChangeRepositories(
+    sessionId: SessionId
+  ): Promise<readonly SessionChangeRepositoryLocation[]> {
+    const database = openDatabase()
+
+    try {
+      const session = database.prepare('SELECT mode, creation_status FROM sessions WHERE id = ?').get(sessionId)
+
+      if (!session || session.creation_status !== 'finalized' || session.mode === 'brainstorm') return []
+      if (session.mode !== 'default' && session.mode !== 'implement') return []
+
+      const rows = database
+        .prepare(
+          `SELECT location.repository_id, repository.directory_path, location.working_path
+             FROM session_repository_locations location
+             JOIN repositories repository ON repository.id = location.repository_id
+            WHERE location.session_id = ?
+              AND location.availability = 'available'
+              AND (? = 'default' OR location.kind = 'worktree')
+            ORDER BY location.rowid`
+        )
+        .all(sessionId, session.mode)
+
+      return rows.map((row) => ({
+        repositoryId: String(row.repository_id),
+        repositoryName: repositoryName(String(row.directory_path)),
+        workingPath: String(row.working_path),
+      }))
+    } finally {
+      database.close()
+    }
+  }
+
   async function resolveWorkstreamWorkingLocation(workstreamId: string, repositoryId: string): Promise<string> {
     const database = openDatabase()
     let workspaceId: string
@@ -1481,7 +1557,9 @@ export function createWorkstreamSessionStore({
     forkSession,
     setWorkstreamLifecycle,
     renameWorkstreamSession,
+    setSessionDescription,
     resolveOwnedSession,
+    resolveSessionChangeRepositories,
     resolveWorkstreamWorkingLocation,
     getCurrentWorkstreamRepositorySet,
   }

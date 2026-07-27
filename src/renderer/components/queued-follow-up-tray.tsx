@@ -21,18 +21,28 @@ type QueuedFollowUpTrayProperties = Readonly<{
 }>
 
 function QueuedFollowUpContent({ followUp, next }: Readonly<{ followUp: QueuedFollowUp; next: boolean }>) {
-  const projected = projectSessionSkillSelections(followUp.text)
-  const skills =
-    followUp.skills ??
-    projected.selections.map(({ name, offset }) => ({
-      offset,
-      skill: { name, availability: 'unavailable' as const },
-    }))
+  const reviewComment = followUp.codeReview?.comments[0]
+  const source = reviewComment?.text ?? followUp.text
+  const projected = projectSessionSkillSelections(source)
+  const skills = reviewComment
+    ? projected.selections.map(({ name, offset }) => ({
+        offset,
+        skill: followUp.skills?.find((mention) => mention.skill.name === name)?.skill ?? {
+          name,
+          availability: 'unavailable' as const,
+        },
+      }))
+    : (followUp.skills ??
+      projected.selections.map(({ name, offset }) => ({
+        offset,
+        skill: { name, availability: 'unavailable' as const },
+      })))
 
   return (
     <>
       <span className="block text-xs/4 font-medium text-content-muted-foreground">
         {next ? 'Next follow-up' : 'Follow-up'}
+        {reviewComment ? ` · ${reviewComment.reference.path}` : ''}
       </span>
       <span className="mt-0.5 line-clamp-2 block whitespace-pre-wrap break-words">
         <SkillMentionText text={projected.text} skills={skills} />

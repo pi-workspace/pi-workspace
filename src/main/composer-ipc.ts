@@ -9,11 +9,15 @@ import type {
 } from '@/src/domain/workstream-knowledge-transitions'
 import {
   composerIpcChannels,
+  parseCodeReviewCommentCommand,
+  parseCodeReviewCommentRemovalRequest,
   parseQueuedFollowUpRemovalRequest,
+  parseSessionCompactRequest,
   parseSessionMessageSubmission,
   parseSessionRunStopRequest,
 } from '@/src/composer-ipc'
 import { sessionId } from '@/src/domain/session'
+import { parseSessionActionCardToolInput } from '@/src/session-action-cards'
 import { parseSessionSkillsRequest, sessionSkillsIpcChannels } from '@/src/session-skills-ipc'
 import type {
   SessionConfigurationEffort,
@@ -39,6 +43,7 @@ import {
   type PiSessionRuntimeEvent,
   type PiSessionRuntimeRegistry,
 } from '@/src/main/pi-session-runtimes'
+import { canCompactSessionHistory } from '@/src/main/pi-session-compaction'
 import { classifyPersistedAgentState } from '@/src/main/pi-session-history'
 import { createManagedSessionServices } from '@/src/main/managed-session-resources'
 import { createManagedSessionRuntimePolicyGuard } from '@/src/main/managed-session-runtime-policy'
@@ -50,20 +55,26 @@ import {
 import { broadcastToTrustedRenderers, handleTrustedIpc } from '@/src/main/trusted-ipc'
 import { isAllowedExternalUrl } from '@/src/session-transcript'
 import {
+  parseActionCardAcceptanceRequest,
   parseSessionTranscriptRequest,
   parseTranscriptActivityDetailsRequest,
   sessionTranscriptIpcChannels,
 } from '@/src/session-transcript-ipc'
 import { agentActivityKinds, type ConversationEntry } from '@/src/session-timeline'
+import { workstreamsIpcChannels } from '@/src/workstreams-ipc'
 
 let composerRegistry: PiSessionRuntimeRegistry | undefined
 
 const minimumModelTurnNoProgressTimeoutMs = 30 * 60 * 1_000
 
 type PiSessionRuntimeOptions =
-  | Readonly<{ kind: 'default' }>
+  | Readonly<{
+      kind: 'default'
+      setSessionDescription: (description: string) => Promise<void>
+    }>
   | Readonly<{
       kind: 'managed'
+      setSessionDescription: (description: string) => Promise<void>
       policy: ManagedSessionRuntimePolicy
       resolvePolicy: () => Promise<ManagedSessionRuntimePolicy | undefined>
       getWorkstreamKnowledge: () => Promise<unknown>
@@ -78,7 +89,7 @@ type PiSessionRuntimeOptions =
 export async function createPiSessionRuntime(
   directoryPath: string,
   sessionManager: SessionManager,
-  options: PiSessionRuntimeOptions = { kind: 'default' }
+  options: PiSessionRuntimeOptions
 ): Promise<PiSessionRuntime> {
   const [{ createAgentSession, defineTool, stripFrontmatter }, { Type }] = await Promise.all([
     import('@earendil-works/pi-coding-agent'),
@@ -152,6 +163,58 @@ export async function createPiSessionRuntime(
       )
 
       return { content: [{ type: 'text' as const, text: 'Activity completed.' }], details: {} }
+    },
+  })
+
+  const setSessionDescription = defineTool({
+    name: 'set_session_description',
+    label: 'Set Session description',
+    description: 'Set the short description shown for this Session in Railyard navigation.',
+    promptSnippet: 'Summarize the current Session focus for Railyard navigation',
+    promptGuidelines: [
+      'Use set_session_description near the start of a Session and again when its focus materially changes. Write one or two concise sentences about the current goal, not a generic status update.',
+    ],
+    parameters: Type.Object({
+      description: Type.String({
+        minLength: 1,
+        description: 'One or two concise sentences describing the current Session focus',
+      }),
+    }),
+    async execute(_toolCallId, input) {
+      await options.setSessionDescription(input.description)
+
+      return { content: [{ type: 'text' as const, text: 'Session description updated.' }], details: {} }
+    },
+  })
+
+  const suggestAction = defineTool({
+    name: 'suggest_action',
+    label: 'Suggest action',
+    description: 'Show the user an optional Railyard action card for an allowlisted next step.',
+    promptGuidelines: [
+      'Use only when the suggested action follows clearly from the completed work.',
+      'Use start-implement-session only in a Brainstorm Session when planning is ready for implementation.',
+      'When implementation is ready for user review and a pull request can be created, call suggest_action with prepare-pull-request before completing your response.',
+    ],
+    parameters: Type.Object({
+      kind: Type.Union([Type.Literal('start-implement-session'), Type.Literal('prepare-pull-request')]),
+      title: Type.String({ minLength: 1 }),
+      description: Type.String({ minLength: 1 }),
+    }),
+    async execute(_toolCallId, input) {
+      const action = parseSessionActionCardToolInput(input)
+      if (!action) throw new TypeError('An allowlisted action card with a title and description is required.')
+      if (
+        action.kind === 'start-implement-session' &&
+        (options.kind !== 'managed' || options.policy.mode !== 'brainstorm')
+      ) {
+        throw new TypeError('Only a Brainstorm Session can suggest starting an Implement Session.')
+      }
+
+      runtimeListeners.forEach((listener) =>
+        listener({ type: 'action_card_created', input: action, createdAt: Date.now() })
+      )
+      return { content: [{ type: 'text' as const, text: 'Action card shown to the user.' }], details: {} }
     },
   })
 
@@ -237,7 +300,7 @@ export async function createPiSessionRuntime(
           }),
         ]
       : []
-  const customTools = [startActivity, completeActivity, ...managedTools]
+  const customTools = [startActivity, completeActivity, setSessionDescription, suggestAction, ...managedTools]
   const managedServices =
     options.kind === 'managed'
       ? await createManagedSessionServices(
@@ -279,6 +342,19 @@ export async function createPiSessionRuntime(
     })
   }
 
+  const getContextUsage = () => {
+    const usage = session.getContextUsage()
+    if (!usage) return undefined
+
+    return {
+      ...usage,
+      canCompact: canCompactSessionHistory(
+        session.sessionManager.getBranch(),
+        session.settingsManager.getCompactionSettings()
+      ),
+    }
+  }
+
   return {
     get isStreaming() {
       return session.isStreaming
@@ -289,8 +365,12 @@ export async function createPiSessionRuntime(
     rename(title) {
       session.sessionManager.appendSessionInfo(title)
     },
-    getContextUsage() {
-      return session.getContextUsage()
+    getContextUsage,
+    compact() {
+      return session.compact().then(() => undefined)
+    },
+    canCompact() {
+      return getContextUsage()?.canCompact === true
     },
     subscribe(listener) {
       runtimeListeners.add(listener)
@@ -338,7 +418,7 @@ export async function createPiSessionRuntime(
         if (normalized) listener(normalized)
 
         if (event.type === 'message_end' || event.type === 'compaction_end') {
-          listener({ type: 'context_usage', usage: session.getContextUsage() })
+          listener({ type: 'context_usage', usage: getContextUsage() })
         }
       })
 
@@ -378,6 +458,19 @@ export async function createPiSessionRuntime(
         ]
       })
 
+      const compactions = entries.flatMap((entry) =>
+        entry.type === 'compaction'
+          ? [
+              {
+                type: 'context-compaction' as const,
+                id: entry.id,
+                summary: entry.summary,
+                timestamp: Number.isFinite(Date.parse(entry.timestamp)) ? Date.parse(entry.timestamp) : Date.now(),
+              },
+            ]
+          : []
+      )
+
       const activityRecords = entries.flatMap((entry): ActivityLayerRecord[] => {
         return entry.type === 'custom' &&
           entry.customType === activityLayerCustomEntryType &&
@@ -391,13 +484,22 @@ export async function createPiSessionRuntime(
         .at(-1)
       const finalState = classifyPersistedAgentState(lastAssistant)
 
-      return { conversations, activityRecords, finalState }
+      return { conversations, compactions, activityRecords, finalState }
     },
     appendActivityRecord(record) {
       session.sessionManager.appendCustomEntry(activityLayerCustomEntryType, record)
     },
     getSkills: getAvailableSkills,
     getSkillPrompt,
+    getActivityRepositoryLocations() {
+      const repositories = managedPolicyGuard?.currentPolicy().repositories ?? []
+
+      return repositories.flatMap((repository) =>
+        repository.availability === 'available'
+          ? [{ repositoryId: repository.id, workingPath: repository.workingPath }]
+          : []
+      )
+    },
     loadRawOperation(toolCallId) {
       let input: unknown
       let result: unknown
@@ -449,7 +551,7 @@ export async function createPiSessionRuntime(
 
       await session.setModel(model)
       session.settingsManager.setDefaultModelAndProvider(model.provider, model.id)
-      runtimeListeners.forEach((listener) => listener({ type: 'context_usage', usage: session.getContextUsage() }))
+      runtimeListeners.forEach((listener) => listener({ type: 'context_usage', usage: getContextUsage() }))
     },
     async setConfigurationEffort(effort: SessionConfigurationEffort) {
       if (!session.supportsThinking() && effort === 'off') return
@@ -515,6 +617,14 @@ function normalizePiSessionEvent(
     return { type: 'model_turn_started', noProgressTimeoutMs: modelTurnNoProgressTimeoutMs }
   }
   if (
+    event.type === 'compaction_end' &&
+    typeof event.result === 'object' &&
+    event.result !== null &&
+    typeof (event.result as { summary?: unknown }).summary === 'string'
+  ) {
+    return { type: 'compaction_completed', summary: (event.result as { summary: string }).summary }
+  }
+  if (
     event.type === 'message_start' ||
     event.type === 'message_update' ||
     event.type === 'auto_retry_start' ||
@@ -544,15 +654,26 @@ export function initializeComposer(authority: ApplicationAuthority): void {
     releaseRunLease: async (id) => {
       await authority.settleSessionRunLease(id)
     },
+    acquireCompactionLease: (id) => authority.acquireSessionCompactionLease(id),
+    releaseCompactionLease: async (id) => {
+      await authority.settleSessionCompactionLease(id)
+    },
     reconcileAfterRun: (id) => authority.settleSessionRunLease(id),
-    createSession: async ({ directoryPath, sessionPath, managedPolicy }) => {
+    createSession: async ({ directoryPath, sessionPath, managedPolicy }, ownedSessionId) => {
       const { SessionManager } = await import('@earendil-works/pi-coding-agent')
       const sessionManager = SessionManager.open(sessionPath, undefined, directoryPath)
+      const setSessionDescription = async (description: string) => {
+        const snapshot = await authority.setSessionDescription(ownedSessionId, description)
+        broadcastToTrustedRenderers(workstreamsIpcChannels.changed, snapshot)
+      }
 
-      if (!managedPolicy) return createPiSessionRuntime(directoryPath, sessionManager)
+      if (!managedPolicy) {
+        return createPiSessionRuntime(directoryPath, sessionManager, { kind: 'default', setSessionDescription })
+      }
 
       return createPiSessionRuntime(directoryPath, sessionManager, {
         kind: 'managed',
+        setSessionDescription,
         policy: managedPolicy,
         resolvePolicy: async () => (await authority.resolveOwnedSession(managedPolicy.sessionId))?.managedPolicy,
         getWorkstreamKnowledge: () => authority.getWorkstreamKnowledge(managedPolicy.workstreamId),
@@ -565,12 +686,47 @@ export function initializeComposer(authority: ApplicationAuthority): void {
   })
   composerRegistry = registry
 
+  handleTrustedIpc(composerIpcChannels.compact, (_event, value: unknown) => {
+    const request = parseSessionCompactRequest(value)
+    return request
+      ? registry.compact(request.sessionId)
+      : Promise.resolve({ status: 'rejected' as const, message: 'Invalid Session.' })
+  })
+
   handleTrustedIpc(composerIpcChannels.submit, (_event, value: unknown): Promise<SessionMessageSubmissionResult> => {
     const submission = parseSessionMessageSubmission(value)
 
     return submission
       ? registry.submit(submission)
       : Promise.resolve({ status: 'rejected', reason: 'invalid-submission' })
+  })
+
+  handleTrustedIpc(composerIpcChannels.getCodeReviewDraft, (_event, value: unknown) => {
+    const request = parseSessionRunStopRequest(value)
+
+    return request ? registry.getCodeReviewDraft(request.sessionId) : Promise.reject(new Error('Invalid Session.'))
+  })
+
+  handleTrustedIpc(composerIpcChannels.saveCodeReviewComment, (_event, value: unknown) => {
+    const command = parseCodeReviewCommentCommand(value)
+
+    return command ? registry.saveCodeReviewComment(command) : Promise.reject(new Error('Invalid review comment.'))
+  })
+
+  handleTrustedIpc(composerIpcChannels.removeCodeReviewComment, (_event, value: unknown) => {
+    const request = parseCodeReviewCommentRemovalRequest(value)
+
+    return request
+      ? registry.removeCodeReviewComment(request.sessionId, request.commentId)
+      : Promise.reject(new Error('Invalid review comment.'))
+  })
+
+  handleTrustedIpc(composerIpcChannels.finishCodeReview, (_event, value: unknown) => {
+    const request = parseSessionRunStopRequest(value)
+
+    return request
+      ? registry.finishCodeReview(request.sessionId)
+      : Promise.resolve({ status: 'rejected' as const, reason: 'invalid-submission' as const })
   })
 
   handleTrustedIpc(composerIpcChannels.stop, (_event, value: unknown): Promise<SessionRunStopResult> => {
@@ -609,6 +765,14 @@ export function initializeComposer(authority: ApplicationAuthority): void {
 
   handleTrustedIpc(sessionTranscriptIpcChannels.openExternalLink, async (_event, value: unknown) => {
     if (isAllowedExternalUrl(value)) await shell.openExternal(value)
+  })
+
+  handleTrustedIpc(sessionTranscriptIpcChannels.acceptActionCard, (_event, value: unknown) => {
+    const request = parseActionCardAcceptanceRequest(value)
+
+    return request
+      ? registry.acceptActionCard(sessionId(request.sessionId), request.actionCardId)
+      : Promise.resolve(false)
   })
 
   handleTrustedIpc(sessionTranscriptIpcChannels.loadActivityDetails, (_event, value: unknown) => {
