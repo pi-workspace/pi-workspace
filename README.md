@@ -109,11 +109,11 @@ Then:
 
 ## Session modes
 
-| Mode           | Best for                                  | Repository access                                                                                                      |
-| -------------- | ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| **Default**    | A focused Quick Session in one Repository | Works directly in the selected Repository's current checkout or a dedicated worktree.                                  |
-| **Brainstorm** | Investigation, questions, and planning    | Can inspect every Repository in the Workspace. Read-only behavior is instructed, not sandboxed.                        |
-| **Implement**  | Making and validating Repository changes  | Can inspect every Repository and lazily creates a separate Session worktree for each Repository it prepares to change. |
+| Mode           | Best for                                  | Repository access                                                                                                         |
+| -------------- | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| **Default**    | A focused Quick Session in one Repository | Works directly in the selected Repository's current checkout or a dedicated worktree.                                     |
+| **Brainstorm** | Investigation, questions, and planning    | Can inspect every Repository in the Workspace. Read-only behavior is instructed, not sandboxed.                           |
+| **Implement**  | Making and validating Repository changes  | Uses each Repository's current checkout by default; you can explicitly create a separate Session worktree per Repository. |
 
 A Workspace is a routing boundary, not an operating-system sandbox. Pi, installed extensions, and commands run with your normal user permissions.
 
