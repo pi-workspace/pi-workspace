@@ -67,7 +67,7 @@ export function SessionWorkingLocationControls({
   if (repositories.length === 0 && !error) return null
 
   return (
-    <div className="px-1.5 pt-1.5" aria-label="Session working context">
+    <div className="pointer-events-auto px-1.5 pt-1.5" aria-label="Session working context">
       {selectedRepository && (
         <div className="flex min-w-0 items-center justify-between gap-3 text-xs/5 text-composer-muted-foreground">
           {repositories.length === 1 ? (
