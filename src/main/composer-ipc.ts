@@ -136,8 +136,6 @@ export async function createPiSessionRuntime(
       expectedOutcome: Type.Optional(Type.String({ minLength: 1 })),
     }),
     async execute(toolCallId) {
-      if (options.kind === 'managed') await validateManagedPolicy()
-
       runtimeListeners.forEach((listener) =>
         listener({ type: 'activity_control_accepted', toolCallId, toolName: 'start_activity' })
       )
@@ -156,8 +154,6 @@ export async function createPiSessionRuntime(
       summary: Type.String({ minLength: 1, description: 'A concise summary of the achieved or observed outcome' }),
     }),
     async execute(toolCallId) {
-      if (options.kind === 'managed') await validateManagedPolicy()
-
       runtimeListeners.forEach((listener) =>
         listener({ type: 'activity_control_accepted', toolCallId, toolName: 'complete_activity' })
       )
