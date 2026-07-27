@@ -1,3 +1,4 @@
+import type { ApplicationUpdateSnapshot } from '@/src/application-update'
 import type { WorkspaceRepositorySnapshot } from '@/src/application-state'
 import type { PiWorkspaceBridge } from '@/src/pi-workspace'
 import { createSettingsSnapshot, defaultSettings, type SettingsSnapshot } from '@/src/settings'
@@ -65,6 +66,11 @@ export function createDemoBridge(scenarioName?: string): PiWorkspaceBridge {
   const scenario = structuredClone(getDemoScenario(scenarioName))
   const colorSchemeMediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
   let settingsSnapshot: SettingsSnapshot = createSettingsSnapshot(defaultSettings, colorSchemeMediaQuery.matches)
+  const applicationUpdateSnapshot: ApplicationUpdateSnapshot = {
+    currentVersion: '2.0.0-beta.1',
+    updateMethod: 'unavailable',
+    status: 'unavailable',
+  }
   let createdSessionNumber = 0
   let workstreamsSnapshot: WorkstreamsSnapshot = scenario.workstreams
   const transcriptsBySessionId: Record<string, SessionTranscriptSnapshot> = { ...scenario.transcriptsBySessionId }
@@ -144,6 +150,26 @@ export function createDemoBridge(scenarioName?: string): PiWorkspaceBridge {
   }
 
   return {
+    applicationUpdate: {
+      async getSnapshot() {
+        return applicationUpdateSnapshot
+      },
+      async check() {
+        return applicationUpdateSnapshot
+      },
+      async download() {
+        return applicationUpdateSnapshot
+      },
+      async restartToUpdate() {
+        return 'not-ready'
+      },
+      async openRelease() {
+        return false
+      },
+      subscribe() {
+        return () => {}
+      },
+    },
     applicationState: {
       async getStartup() {
         return { status: 'ready' }

@@ -4,7 +4,7 @@ This inventory records the declared licenses of the production dependency tree i
 
 It was regenerated with `license-checker` against a frozen production installation. Package licenses can change when dependencies are updated, so regenerate and review this inventory as part of dependency and release maintenance.
 
-**Packages audited:** 428
+**Packages audited:** 441
 
 ## Summary
 
@@ -13,13 +13,14 @@ It was regenerated with `license-checker` against a frozen production installati
 | (MPL-2.0 OR Apache-2.0) |        1 |
 | 0BSD                    |        1 |
 | Apache-2.0              |       61 |
-| BlueOak-1.0.0           |        5 |
+| BlueOak-1.0.0           |        6 |
 | BSD-2-Clause            |        1 |
 | BSD-3-Clause            |       19 |
-| ISC                     |       42 |
-| MIT                     |      294 |
+| ISC                     |       43 |
+| MIT                     |      304 |
 | MIT*                    |        1 |
 | OFL-1.1                 |        2 |
+| Python-2.0              |        1 |
 | Unlicense               |        1 |
 
 All declared production dependency licenses in this inventory are permissive and compatible with distribution in the Apache-2.0-licensed Railyard application. `license-checker` marks `khroma@2.1.0` as `MIT*`; its bundled license text was reviewed and is MIT. Dependencies remain subject to their own license texts and attribution requirements.
@@ -188,14 +189,16 @@ All declared production dependency licenses in this inventory are permissive and
 | `@ungap/structured-clone@1.3.3`                           | ISC                     |
 | `@upsetjs/venn.js@2.0.0`                                  | MIT                     |
 | `agent-base@7.1.4`                                        | MIT                     |
+| `argparse@2.0.1`                                          | Python-2.0              |
 | `aria-hidden@1.2.6`                                       | MIT                     |
 | `bail@2.0.2`                                              | MIT                     |
 | `balanced-match@4.0.4`                                    | MIT                     |
 | `base64-js@1.5.1`                                         | MIT                     |
 | `bignumber.js@9.3.1`                                      | MIT                     |
 | `bowser@2.14.1`                                           | MIT                     |
-| `brace-expansion@5.0.7`                                   | MIT                     |
+| `brace-expansion@5.0.8`                                   | MIT                     |
 | `buffer-equal-constant-time@1.0.1`                        | BSD-3-Clause            |
+| `builder-util-runtime@9.7.0`                              | MIT                     |
 | `ccount@2.0.1`                                            | MIT                     |
 | `chalk@5.6.2`                                             | MIT                     |
 | `character-entities-html4@2.1.0`                          | MIT                     |
@@ -258,6 +261,7 @@ All declared production dependency licenses in this inventory are permissive and
 | `diff@8.0.4`                                              | BSD-3-Clause            |
 | `dompurify@3.4.12`                                        | (MPL-2.0 OR Apache-2.0) |
 | `ecdsa-sig-formatter@1.0.11`                              | Apache-2.0              |
+| `electron-updater@6.8.9`                                  | MIT                     |
 | `entities@6.0.1`                                          | BSD-2-Clause            |
 | `es-toolkit@1.49.0`                                       | MIT                     |
 | `escape-string-regexp@5.0.0`                              | MIT                     |
@@ -266,6 +270,7 @@ All declared production dependency licenses in this inventory are permissive and
 | `fetch-blob@3.2.0`                                        | MIT                     |
 | `formdata-polyfill@4.0.10`                                | MIT                     |
 | `framer-motion@12.42.2`                                   | MIT                     |
+| `fs-extra@10.1.0`                                         | MIT                     |
 | `gaxios@7.2.0`                                            | Apache-2.0              |
 | `gcp-metadata@8.1.2`                                      | Apache-2.0              |
 | `get-east-asian-width@1.6.0`                              | MIT                     |
@@ -302,17 +307,22 @@ All declared production dependency licenses in this inventory are permissive and
 | `isexe@2.0.0`                                             | ISC                     |
 | `isomorphic.js@0.2.5`                                     | MIT                     |
 | `jiti@2.7.0`                                              | MIT                     |
+| `js-yaml@4.3.0`                                           | MIT                     |
 | `json-bigint@1.0.0`                                       | MIT                     |
 | `json-schema-to-ts@3.1.1`                                 | MIT                     |
+| `jsonfile@6.2.1`                                          | MIT                     |
 | `jwa@2.0.1`                                               | MIT                     |
 | `jws@4.0.1`                                               | MIT                     |
 | `katex@0.16.47`                                           | MIT                     |
 | `khroma@2.1.0`                                            | MIT*                    |
 | `layout-base@1.0.2`                                       | MIT                     |
 | `layout-base@2.0.1`                                       | MIT                     |
+| `lazy-val@1.0.5`                                          | MIT                     |
 | `lexical@0.48.0`                                          | MIT                     |
 | `lib0@0.2.117`                                            | MIT                     |
 | `lodash-es@4.18.1`                                        | MIT                     |
+| `lodash.escaperegexp@4.1.2`                               | MIT                     |
+| `lodash.isequal@4.5.0`                                    | MIT                     |
 | `long@5.3.2`                                              | Apache-2.0              |
 | `longest-streak@3.1.0`                                    | MIT                     |
 | `lru-cache@11.5.2`                                        | BlueOak-1.0.0           |
@@ -411,7 +421,9 @@ All declared production dependency licenses in this inventory are permissive and
 | `rw@1.3.3`                                                | BSD-3-Clause            |
 | `safe-buffer@5.2.1`                                       | MIT                     |
 | `safer-buffer@2.1.2`                                      | MIT                     |
+| `sax@1.6.0`                                               | BlueOak-1.0.0           |
 | `scheduler@0.27.0`                                        | MIT                     |
+| `semver@7.7.4`                                            | ISC                     |
 | `semver@7.8.0`                                            | ISC                     |
 | `shebang-command@2.0.0`                                   | MIT                     |
 | `shebang-regex@3.0.0`                                     | MIT                     |
@@ -426,6 +438,7 @@ All declared production dependency licenses in this inventory are permissive and
 | `tabbable@6.5.0`                                          | MIT                     |
 | `tailwind-merge@3.6.0`                                    | MIT                     |
 | `tailwindcss@4.3.3`                                       | MIT                     |
+| `tiny-typed-emitter@2.1.0`                                | MIT                     |
 | `tinyexec@1.2.4`                                          | MIT                     |
 | `trim-lines@3.0.1`                                        | MIT                     |
 | `trough@2.2.0`                                            | MIT                     |
@@ -442,6 +455,7 @@ All declared production dependency licenses in this inventory are permissive and
 | `unist-util-stringify-position@4.0.0`                     | MIT                     |
 | `unist-util-visit-parents@6.0.2`                          | MIT                     |
 | `unist-util-visit@5.1.0`                                  | MIT                     |
+| `universalify@2.0.1`                                      | MIT                     |
 | `use-sync-external-store@1.6.0`                           | MIT                     |
 | `uuid@14.0.1`                                             | MIT                     |
 | `vfile-location@5.0.3`                                    | MIT                     |

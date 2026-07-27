@@ -1,3 +1,4 @@
+import type { ApplicationUpdateBridge } from '@/src/application-update'
 import type { ComposerBridge } from '@/src/composer'
 import type { ApplicationStateBridge } from '@/src/application-state-ipc'
 import type { SessionConfigurationBridge } from '@/src/session-configuration'
@@ -12,6 +13,7 @@ import type { WorkstreamKnowledgeBridge } from '@/src/workstream-knowledge-ipc'
 
 export type PiWorkspaceBridge = Readonly<{
   applicationState: ApplicationStateBridge
+  applicationUpdate: ApplicationUpdateBridge
   composer: ComposerBridge
   sessionSkills: SessionSkillsBridge
   sessionFiles: SessionFilesBridge

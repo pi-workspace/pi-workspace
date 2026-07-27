@@ -150,6 +150,7 @@
     "@lexical/react": "0.48.0",
     "@streamdown/code": "^1.1.1",
     "clsx": "^2.1.1",
+    "electron-updater": "^6.8.3",
     "lexical": "0.48.0",
     "lucide-react": "^1.25.0",
     "motion": "^12.42.2",

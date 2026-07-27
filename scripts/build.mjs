@@ -12,7 +12,7 @@ await mkdir(join(outputDirectory, 'renderer'), { recursive: true })
 const [mainBuildResult, preloadBuildResult] = await Promise.all([
   Bun.build({
     entrypoints: ['src/main/index.ts'],
-    external: ['electron', '@earendil-works/pi-coding-agent'],
+    external: ['electron', 'electron-updater', '@earendil-works/pi-coding-agent'],
     format: 'esm',
     outdir: join(outputDirectory, 'main'),
     target: 'node',

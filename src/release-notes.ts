@@ -151,7 +151,7 @@ export const bundledReleaseNotes: readonly ReleaseNote[] = [
   },
 ]
 
-function compareReleaseVersions(firstVersion: string, secondVersion: string): number {
+export function compareSemanticVersions(firstVersion: string, secondVersion: string): number {
   const parseVersion = (version: string) => {
     const versionWithoutBuild = version.split('+', 1)[0]!
     const prereleaseSeparator = versionWithoutBuild.indexOf('-')
@@ -265,7 +265,7 @@ export function validateReleaseNotes(
   if (
     releaseNotes.some(
       (releaseNote, index) =>
-        index > 0 && compareReleaseVersions(releaseNotes[index - 1]!.version, releaseNote.version) <= 0
+        index > 0 && compareSemanticVersions(releaseNotes[index - 1]!.version, releaseNote.version) <= 0
     )
   ) {
     issues.push('Release Notes must be ordered newest-first.')

@@ -1,4 +1,10 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import type {
+  ApplicationUpdateBridge,
+  ApplicationUpdateRestartOutcome,
+  ApplicationUpdateSnapshot,
+} from '@/src/application-update'
+import { applicationUpdateIpcChannels } from '@/src/application-update-ipc'
 import type { ApplicationStateBridge, CreateWorkspaceOutcome } from '@/src/application-state-ipc'
 import type { WorkspaceMembershipUpdate, WorkspacesSnapshot } from '@/src/application-state'
 import { applicationStateIpcChannels } from '@/src/application-state-ipc'
@@ -35,6 +41,33 @@ import type {
   SessionTranscriptSnapshot,
 } from '@/src/session-transcript'
 import { sessionTranscriptIpcChannels } from '@/src/session-transcript-ipc'
+
+const applicationUpdateBridge: ApplicationUpdateBridge = {
+  getSnapshot() {
+    return ipcRenderer.invoke(applicationUpdateIpcChannels.getSnapshot) as Promise<ApplicationUpdateSnapshot>
+  },
+  check() {
+    return ipcRenderer.invoke(applicationUpdateIpcChannels.command, 'check') as Promise<ApplicationUpdateSnapshot>
+  },
+  download() {
+    return ipcRenderer.invoke(applicationUpdateIpcChannels.command, 'download') as Promise<ApplicationUpdateSnapshot>
+  },
+  restartToUpdate() {
+    return ipcRenderer.invoke(
+      applicationUpdateIpcChannels.command,
+      'restart'
+    ) as Promise<ApplicationUpdateRestartOutcome>
+  },
+  openRelease() {
+    return ipcRenderer.invoke(applicationUpdateIpcChannels.command, 'open-release') as Promise<boolean>
+  },
+  subscribe(listener) {
+    const handleChange = (_event: Electron.IpcRendererEvent, snapshot: ApplicationUpdateSnapshot) => listener(snapshot)
+    ipcRenderer.on(applicationUpdateIpcChannels.changed, handleChange)
+
+    return () => ipcRenderer.removeListener(applicationUpdateIpcChannels.changed, handleChange)
+  },
+}
 
 const settingsBridge: SettingsBridge = {
   getSnapshot() {
@@ -323,6 +356,7 @@ const sessionTranscriptBridge: SessionTranscriptBridge = {
 
 const piWorkspaceBridge: PiWorkspaceBridge = {
   applicationState: applicationStateBridge,
+  applicationUpdate: applicationUpdateBridge,
   composer: composerBridge,
   sessionSkills: sessionSkillsBridge,
   sessionFiles: sessionFilesBridge,
