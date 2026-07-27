@@ -3,6 +3,15 @@ import { test } from 'node:test'
 import { act, fireEvent, waitFor } from '@testing-library/react'
 import { createDemoBridge } from '@/src/demo/demo-bridge'
 import { getDemoScenario, getDemoScenarioPresentation } from '@/src/demo/demo-scenarios'
+import { sessionId } from '@/src/domain/session'
+
+test('the demo bridge dismisses an available action card', async () => {
+  const bridge = createDemoBridge('workstream')
+  const implementationSessionId = sessionId('offline-implementation')
+
+  assert.equal(await bridge.transcript.dismissActionCard(implementationSessionId, 'prepare-offline-pull-request'), true)
+  assert.equal((await bridge.transcript.getSnapshot(implementationSessionId)).actionCards?.[0]?.status, 'dismissed')
+})
 
 test('the multi-Session demo includes empty, half-full, and full context windows', () => {
   const scenario = getDemoScenario('multi-session')

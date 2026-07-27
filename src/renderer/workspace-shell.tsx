@@ -506,6 +506,7 @@ export function WorkspaceShell({ initialWorkspacesSnapshot, initialSessionDispla
             forkSession={forkSession}
             onToggleSessionPin={toggleSessionPin}
             acceptActionCard={window.piWorkspace.transcript.acceptActionCard}
+            dismissActionCard={window.piWorkspace.transcript.dismissActionCard}
             onStartImplementSession={(workstreamId) => createSession(workstreamId, { mode: 'implement' })}
             onOpenCurrentDiff={openCurrentDiff}
           />

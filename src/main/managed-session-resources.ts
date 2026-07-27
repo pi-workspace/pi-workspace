@@ -9,19 +9,44 @@ import {
 } from '@earendil-works/pi-coding-agent'
 import type { ManagedSessionRuntimePolicy } from '@/src/domain/managed-session'
 
-export type ManagedSessionServices = Readonly<{
+type SessionServices = Readonly<{
   resourceLoader: ResourceLoader
   settingsManager: SettingsManager
 }>
 
-type ManagedSessionServicesOptions = Readonly<{ agentDir?: string }>
+type SessionServicesOptions = Readonly<{ agentDir?: string }>
+
+const finalValidationGuidance = [
+  'When a task changes a Repository, always perform a final validation pass before declaring the work complete.',
+  'After the final workable Repository change, run the relevant local CI/CD checks, including GitHub Actions checks that can run locally.',
+  'Do this once as a final self-check immediately before completion—and before pushing or creating a pull request—not after each turn or as a separate pull-request preparation step.',
+  'Resolve failures caused by the changes before completing, and clearly report any remaining validation blockers.',
+].join('\n')
+
+export async function createDefaultSessionServices(
+  cwd: string,
+  options: SessionServicesOptions = {}
+): Promise<SessionServices> {
+  const agentDir = options.agentDir ?? getAgentDir()
+  const settingsManager = SettingsManager.create(cwd, agentDir)
+  const resourceLoader = new DefaultResourceLoader({
+    cwd,
+    agentDir,
+    settingsManager,
+    appendSystemPromptOverride: (prompts) => [...prompts, finalValidationGuidance],
+  })
+
+  await resourceLoader.reload()
+
+  return { resourceLoader, settingsManager }
+}
 
 export async function createManagedSessionServices(
   cwd: string,
   policy: ManagedSessionRuntimePolicy,
   methodology: string,
-  options: ManagedSessionServicesOptions = {}
-): Promise<ManagedSessionServices> {
+  options: SessionServicesOptions = {}
+): Promise<SessionServices> {
   const agentDir = options.agentDir ?? getAgentDir()
   const settingsManager = SettingsManager.create(cwd, agentDir)
   const repositoryPaths = policy.repositories
@@ -48,7 +73,7 @@ export async function createManagedSessionServices(
     agentsFilesOverride: ({ agentsFiles }) => ({
       agentsFiles: deduplicateContextFiles([...agentsFiles, ...repositoryContextFiles]),
     }),
-    appendSystemPromptOverride: (prompts) => [...prompts, methodology],
+    appendSystemPromptOverride: (prompts) => [...prompts, methodology, finalValidationGuidance],
   })
 
   await resourceLoader.reload()

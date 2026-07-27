@@ -5,12 +5,39 @@ import { join } from 'node:path'
 import { afterEach, test } from 'node:test'
 import { sessionId } from '@/src/domain/session'
 import type { ManagedSessionRuntimePolicy } from '@/src/domain/managed-session'
-import { createManagedSessionServices } from './managed-session-resources'
+import { createDefaultSessionServices, createManagedSessionServices } from './managed-session-resources'
 
 const temporaryDirectories: string[] = []
 
 afterEach(async () => {
   await Promise.all(temporaryDirectories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })))
+})
+
+test('default Sessions append final local validation guidance', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'pi-workspace-default-resources-'))
+  const agentDir = join(root, 'agent')
+  const cwd = join(root, 'session-cwd')
+  temporaryDirectories.push(root)
+  await Promise.all([mkdir(agentDir, { recursive: true }), mkdir(cwd, { recursive: true })])
+
+  const services = await createDefaultSessionServices(cwd, { agentDir })
+
+  const appendedPrompts = services.resourceLoader.getAppendSystemPrompt()
+
+  assert.ok(
+    appendedPrompts.some((prompt) =>
+      prompt.includes(
+        'After the final workable Repository change, run the relevant local CI/CD checks, including GitHub Actions checks that can run locally.'
+      )
+    )
+  )
+  assert.ok(
+    appendedPrompts.some((prompt) =>
+      prompt.includes(
+        'Do this once as a final self-check immediately before completion—and before pushing or creating a pull request—not after each turn or as a separate pull-request preparation step.'
+      )
+    )
+  )
 })
 
 test('managed Sessions load normal global and Workspace Repository resources', async () => {
@@ -73,6 +100,13 @@ test('managed Sessions load normal global and Workspace Repository resources', a
       )
   )
   assert.ok(services.resourceLoader.getAppendSystemPrompt().includes('Managed methodology.'))
+  assert.ok(
+    services.resourceLoader
+      .getAppendSystemPrompt()
+      .some((prompt) =>
+        prompt.includes('After the final workable Repository change, run the relevant local CI/CD checks')
+      )
+  )
   assert.ok(services.resourceLoader.getExtensions().extensions[0]?.tools.has('trusted_tool'))
 })
 

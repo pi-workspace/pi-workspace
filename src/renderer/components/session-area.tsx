@@ -50,6 +50,7 @@ type SessionAreaProperties = {
   forkSession?: (sessionId: SessionId, options: ForkSessionOptions) => Promise<void>
   onToggleSessionPin: (sessionId: SessionId) => void
   acceptActionCard?: SessionTranscriptBridge['acceptActionCard']
+  dismissActionCard?: SessionTranscriptBridge['dismissActionCard']
   onStartImplementSession?: (workstreamId: string) => Promise<void>
   onOpenCurrentDiff?: (sessionId: SessionId, repositoryId: string | undefined, path: string) => void
 }
@@ -83,6 +84,7 @@ export function SessionArea({
   forkSession,
   onToggleSessionPin,
   acceptActionCard = async () => false,
+  dismissActionCard = async () => false,
   onStartImplementSession = async () => {},
   onOpenCurrentDiff = () => {},
 }: SessionAreaProperties) {
@@ -146,6 +148,7 @@ export function SessionArea({
             forkSession={forkSession ? (options) => forkSession(session.id, options) : undefined}
             onTogglePin={() => onToggleSessionPin(session.id)}
             acceptActionCard={acceptActionCard}
+            dismissActionCard={dismissActionCard}
             onStartImplementSession={onStartImplementSession}
             onOpenCurrentDiff={(repositoryId, path) => onOpenCurrentDiff(session.id, repositoryId, path)}
           />
