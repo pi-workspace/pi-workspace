@@ -62,7 +62,6 @@ function ownedWorkstream(workspaceId: string, workstreamId: string, goal: string
         id: sessionId(`${workstreamId}-session`),
         workstreamId,
         title: sessionName,
-        mode: 'implement',
         availability: 'available',
         repositoryAccess: { kind: 'managed' as const },
       },
@@ -337,7 +336,6 @@ test('selects and reveals a newly created Session from the returned snapshot', a
         id: newSessionId,
         workstreamId: workspaceAWorkstream.id,
         title: 'New Session',
-        mode: 'brainstorm',
         availability: 'available',
         repositoryAccess: { kind: 'managed' as const },
       },
@@ -390,7 +388,7 @@ test('reveals a forked Session with the selected message restored as its draft',
   const view = renderApp(bridge)
 
   await view.findByText('Ship Workspace A')
-  await user.click(view.getByRole('button', { name: 'Session A Implement' }))
+  await user.click(view.getByRole('button', { name: 'Session A Workstream Session' }))
   const sessionPane = (await view.findByRole('heading', { name: 'Session A' })).closest('section')
   assert.ok(sessionPane)
   await user.click(within(sessionPane).getByRole('button', { name: 'Session A options' }))
@@ -441,7 +439,6 @@ test('ignores an older mutation response within the selected Workspace', async (
         id: newSessionId,
         workstreamId: workspaceAWorkstream.id,
         title: 'Newer Session',
-        mode: 'implement',
         availability: 'available',
         repositoryAccess: { kind: 'managed' as const },
       },

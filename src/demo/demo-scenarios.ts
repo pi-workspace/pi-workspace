@@ -30,7 +30,6 @@ function ownedSession(id: string, title: string): OwnedSession {
     id: sessionId(id),
     workstreamId: 'Product reliability',
     title,
-    mode: 'implement',
     availability: 'available',
     repositoryAccess: { kind: 'managed' as const },
   }
@@ -216,16 +215,13 @@ const workstreamScenario: DemoScenario = {
     workstreams: workstreamScenarioBase.workstreams.workstreams.map((workstream) => ({
       ...workstream,
       goal: workstreamGoal,
-      sessions: workstream.sessions.map((session, index) => {
-        const description =
+      sessions: workstream.sessions.map((session, index) => ({
+        ...session,
+        description:
           index === 0
-            ? 'Mapping how offline edits, retries, and conflicts should behave before implementation.'
-            : 'Building durable offline saves, background retries, and visible recovery states.'
-
-        if (index !== 0 || session.mode === 'default') return { ...session, description }
-
-        return { ...session, description, mode: 'brainstorm' as const }
-      }),
+            ? 'Mapping how offline edits, retries, and conflicts should behave.'
+            : 'Building durable offline saves, background retries, and visible recovery states.',
+      })),
     })),
   },
   transcriptsBySessionId: {
@@ -991,7 +987,6 @@ const quickSessionsScenario: DemoScenario = {
             workstreamId: 'atlas-web-quick-session',
             title: 'Build the order tracking page',
             description: 'Building a clear customer timeline for live order progress and delivery updates.',
-            mode: 'default',
             availability: 'available',
             repositoryAccess: {
               kind: 'direct',
@@ -1022,7 +1017,6 @@ const quickSessionsScenario: DemoScenario = {
             workstreamId: 'atlas-api-quick-session',
             title: 'Add live order status events',
             description: 'Adding the API events that keep customer order timelines up to date.',
-            mode: 'default',
             availability: 'available',
             repositoryAccess: {
               kind: 'direct',

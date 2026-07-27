@@ -6,11 +6,10 @@ type RunLeaseStoreOptions = Readonly<{
   openDatabase: () => SqliteDatabase
 }>
 
+type SessionLeasePurpose = 'agent-run' | 'context-compaction' | 'worktree-creation'
+
 export function createRunLeaseStore({ openDatabase }: RunLeaseStoreOptions) {
-  async function acquireSessionLease(
-    sessionId: SessionId,
-    purpose: 'agent-run' | 'context-compaction'
-  ): Promise<boolean> {
+  async function acquireSessionLease(sessionId: SessionId, purpose: SessionLeasePurpose): Promise<boolean> {
     const database = openDatabase()
 
     try {
@@ -36,12 +35,33 @@ export function createRunLeaseStore({ openDatabase }: RunLeaseStoreOptions) {
         purpose === 'agent-run' &&
         database
           .prepare(
-            `SELECT 1
+            `WITH effective_locations AS (
+               SELECT session.id AS session_id, location.working_path
+                 FROM sessions session
+                 JOIN session_repository_locations location ON location.session_id = session.id
+                WHERE session.access_kind = 'direct'
+               UNION
+               SELECT session.id AS session_id,
+                      CASE
+                        WHEN location.kind = 'worktree' AND location.availability = 'available'
+                          THEN location.working_path
+                        ELSE repository.directory_path
+                      END AS working_path
+                 FROM sessions session
+                 JOIN workstreams workstream ON workstream.id = session.workstream_id
+                 JOIN workstream_repositories selected ON selected.workstream_id = workstream.id
+                 JOIN workspace_repositories membership
+                   ON membership.workspace_id = workstream.workspace_id AND membership.repository_id = selected.repository_id
+                 JOIN repositories repository ON repository.id = membership.repository_id
+                 LEFT JOIN session_repository_locations location
+                   ON location.session_id = session.id AND location.repository_id = repository.id
+                WHERE session.access_kind = 'managed'
+                  AND repository.availability = 'available'
+             )
+             SELECT 1
                FROM session_run_leases held
-               JOIN session_repository_locations held_location
-                 ON held_location.session_id = held.session_id
-               JOIN session_repository_locations requested_location
-                 ON requested_location.session_id = ?
+               JOIN effective_locations held_location ON held_location.session_id = held.session_id
+               JOIN effective_locations requested_location ON requested_location.session_id = ?
               WHERE held.purpose = 'agent-run'
                 AND held.session_id <> ?
                 AND held_location.working_path = requested_location.working_path
@@ -73,10 +93,7 @@ export function createRunLeaseStore({ openDatabase }: RunLeaseStoreOptions) {
     }
   }
 
-  async function settleSessionLease(
-    sessionId: SessionId,
-    purpose: 'agent-run' | 'context-compaction'
-  ): Promise<boolean> {
+  async function settleSessionLease(sessionId: SessionId, purpose: SessionLeasePurpose): Promise<boolean> {
     const database = openDatabase()
 
     try {
@@ -97,5 +114,7 @@ export function createRunLeaseStore({ openDatabase }: RunLeaseStoreOptions) {
     settleSessionRunLease: (sessionId: SessionId) => settleSessionLease(sessionId, 'agent-run'),
     acquireSessionCompactionLease: (sessionId: SessionId) => acquireSessionLease(sessionId, 'context-compaction'),
     settleSessionCompactionLease: (sessionId: SessionId) => settleSessionLease(sessionId, 'context-compaction'),
+    acquireSessionWorktreeLease: (sessionId: SessionId) => acquireSessionLease(sessionId, 'worktree-creation'),
+    settleSessionWorktreeLease: (sessionId: SessionId) => settleSessionLease(sessionId, 'worktree-creation'),
   }
 }

@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react'
-import { ChevronDown, ChevronRight, GitBranch, Hammer, Plus, Telescope } from 'lucide-react'
+import { ChevronDown, ChevronRight, GitBranch, Plus } from 'lucide-react'
 import { Button } from '@/components/ui-kit/button'
+import { Checkbox, CheckboxField, CheckboxGroup } from '@/components/ui-kit/checkbox'
 import { Dialog, DialogActions, DialogBody, DialogDescription, DialogTitle } from '@/components/ui-kit/dialog'
 import { Description, Field, FieldGroup, Fieldset, Label } from '@/components/ui-kit/fieldset'
 import { Input } from '@/components/ui-kit/input'
@@ -13,7 +14,6 @@ import type {
   CreateQuickSessionOptions,
   CreateSessionOptions,
   CreateWorkstreamOptions,
-  ManagedSessionMode,
   Workstream,
   WorkstreamLifecycle,
   WorkstreamWorkingLocation,
@@ -52,41 +52,6 @@ type DialogState =
   | Readonly<{ type: 'create-quick-session' }>
   | Readonly<{ type: 'create-session'; workstream: Workstream }>
 
-type SessionModeSelectorProperties = Readonly<{
-  mode: ManagedSessionMode
-  onChange(mode: ManagedSessionMode): void
-}>
-
-function SessionModeSelector({ mode, onChange }: SessionModeSelectorProperties) {
-  return (
-    <RadioGroup
-      aria-label="Session mode"
-      className="space-y-2!"
-      value={mode}
-      onChange={(value) => {
-        if (value === 'brainstorm' || value === 'implement') onChange(value)
-      }}
-    >
-      <RadioField className="rounded-lg border border-content-border bg-content-background p-2.5">
-        <Radio value="implement" />
-        <Label className="flex items-center gap-2">
-          <Hammer aria-hidden="true" className="size-4 text-content-muted-foreground" />
-          Implement
-        </Label>
-        <Description>Change and validate Workspace Repositories with Pi&apos;s normal tools.</Description>
-      </RadioField>
-      <RadioField className="rounded-lg border border-content-border bg-content-background p-2.5">
-        <Radio value="brainstorm" />
-        <Label className="flex items-center gap-2">
-          <Telescope aria-hidden="true" className="size-4 text-content-muted-foreground" />
-          Brainstorm
-        </Label>
-        <Description>Investigate Workspace Repositories without modifying their content.</Description>
-      </RadioField>
-    </RadioGroup>
-  )
-}
-
 export function WorkstreamNavigation({
   workstreams,
   repositories,
@@ -119,7 +84,7 @@ export function WorkstreamNavigation({
   const workstreamsId = useId()
   const [goal, setGoal] = useState('')
   const [title, setTitle] = useState('')
-  const [mode, setMode] = useState<ManagedSessionMode>('implement')
+  const [selectedRepositoryIds, setSelectedRepositoryIds] = useState<readonly string[]>([])
   const [workingLocation, setWorkingLocation] = useState<WorkstreamWorkingLocation>('current-checkouts')
   const [worktreePreview, setWorktreePreview] = useState<WorktreeLocationsPreview>()
   const [previewingWorktrees, setPreviewingWorktrees] = useState(false)
@@ -147,7 +112,7 @@ export function WorkstreamNavigation({
   const openWorkstreamDialog = () => {
     worktreePreviewRequest.current += 1
     setGoal('')
-    setMode('implement')
+    setSelectedRepositoryIds(availableRepositories.map((repository) => repository.id))
     setWorkingLocation('current-checkouts')
     setWorktreePreview(undefined)
     setPreviewingWorktrees(false)
@@ -215,7 +180,6 @@ export function WorkstreamNavigation({
 
   const openSessionDialog = (workstream: Workstream) => {
     setTitle('')
-    setMode('implement')
     setError(undefined)
     setDialog({ type: 'create-session', workstream })
   }
@@ -518,9 +482,36 @@ export function WorkstreamNavigation({
                 />
               </Field>
               <Field>
-                <Label>First Session mode</Label>
-                <Description>The mode is permanent for this Session.</Description>
-                <SessionModeSelector mode={mode} onChange={setMode} />
+                <Label>Repositories</Label>
+                <Description>
+                  Select the Repositories that every Session in this Workstream can use as context.
+                </Description>
+                <CheckboxGroup aria-label="Repositories" className="mt-3 space-y-2!">
+                  {repositories.map((repository) => (
+                    <CheckboxField
+                      key={repository.id}
+                      className="rounded-lg border border-content-border bg-content-background p-2.5"
+                    >
+                      <Checkbox
+                        checked={selectedRepositoryIds.includes(repository.id)}
+                        disabled={repository.availability === 'unavailable'}
+                        onChange={(checked) =>
+                          setSelectedRepositoryIds((selected) =>
+                            checked
+                              ? [...selected, repository.id]
+                              : selected.filter((repositoryId) => repositoryId !== repository.id)
+                          )
+                        }
+                      />
+                      <Label>{repository.name}</Label>
+                      <Description>
+                        {repository.availability === 'unavailable'
+                          ? 'Unavailable'
+                          : repository.role || repository.directoryPath}
+                      </Description>
+                    </CheckboxField>
+                  ))}
+                </CheckboxGroup>
               </Field>
             </FieldGroup>
           </Fieldset>
@@ -536,8 +527,8 @@ export function WorkstreamNavigation({
           </Button>
           <Button
             color="accent"
-            disabled={saving || !goal.trim()}
-            onClick={() => void run(() => onCreateWorkstream({ goal, mode }))}
+            disabled={saving || !goal.trim() || selectedRepositoryIds.length === 0}
+            onClick={() => void run(() => onCreateWorkstream({ goal, repositoryIds: selectedRepositoryIds }))}
           >
             {saving ? 'Creating…' : 'Create Workstream'}
           </Button>
@@ -547,8 +538,8 @@ export function WorkstreamNavigation({
       <Dialog open={dialog?.type === 'create-session'} onClose={closeDialog} size="lg">
         <DialogTitle>Start a new Session</DialogTitle>
         <DialogDescription>
-          This Session stays with “{dialog?.type === 'create-session' ? dialog.workstream.goal : ''}” and keeps the mode
-          you choose.
+          This Session stays with “{dialog?.type === 'create-session' ? dialog.workstream.goal : ''}” and shares its
+          selected Repository context.
         </DialogDescription>
         <DialogBody className="mt-5!">
           <Fieldset>
@@ -561,13 +552,6 @@ export function WorkstreamNavigation({
                   value={title}
                   onChange={(event) => setTitle(event.target.value)}
                 />
-              </Field>
-              <Field>
-                <Label>Session mode</Label>
-                <Description>
-                  The mode belongs only to this Session. Workspace Repository access is automatic.
-                </Description>
-                <SessionModeSelector mode={mode} onChange={setMode} />
               </Field>
             </FieldGroup>
           </Fieldset>
@@ -586,7 +570,7 @@ export function WorkstreamNavigation({
             disabled={saving}
             onClick={() => {
               if (dialog?.type !== 'create-session') return
-              void run(() => onCreateSession(dialog.workstream.id, { mode, title }))
+              void run(() => onCreateSession(dialog.workstream.id, { title }))
             }}
           >
             {saving ? 'Creating…' : 'Create Session'}

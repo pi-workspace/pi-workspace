@@ -4,15 +4,12 @@ import { createWorkstreamId } from '@/src/main/workstream-id'
 import type { ManagedSessionRuntimePolicy } from '@/src/domain/managed-session'
 import type { SessionId } from '@/src/domain/session'
 import {
-  normalizeSessionMode,
   normalizeWorkstreamGoal,
   type CreateQuickSessionOptions,
   type CreateSessionOptions,
   type CreateWorkstreamOptions,
   type ForkSessionOptions,
-  type ManagedSessionMode,
   type SessionForkPoint,
-  type SessionMode,
   type Workstream,
   type WorkstreamLifecycle,
   type WorkstreamWorkingLocation,
@@ -29,12 +26,9 @@ import { restorePiUserMessageDraft } from '@/src/main/pi-session-message-mapping
 import { normalizeSessionDescription } from '@/src/session-description'
 import { normalizeSessionTitle } from '@/src/session-title'
 import type { OwnedPiSessionLocation, PiSessionCreationIntent, PiSessionFileStore } from '@/src/main/pi-session-files'
+import type { SessionWorkingLocationsSnapshot } from '@/src/session-working-locations'
 import type { SqliteDatabase } from './sqlite'
-import {
-  initializeStoredWorkstreamKnowledge,
-  readCurrentWorkstreamRepositorySet,
-  readWorkstreamKnowledge,
-} from './workstream-knowledge-store'
+import { initializeStoredWorkstreamKnowledge, readCurrentWorkstreamRepositorySet } from './workstream-knowledge-store'
 import {
   inspectRepositoryAvailability,
   parseStringArray,
@@ -43,11 +37,13 @@ import {
 } from './workspace-repository-store'
 
 type RepositoryInspector = (directoryPath: string) => Promise<InspectedGitRepository>
+type BranchInspector = (directoryPath: string) => Promise<string>
 type SessionCreationStatus = 'available' | 'pending' | 'quarantined'
 
 type WorkstreamSessionStoreOptions = Readonly<{
   openDatabase: () => SqliteDatabase
   inspectRepository: RepositoryInspector
+  inspectBranch: BranchInspector
   createWorktree: (proposal: WorktreeProposal) => Promise<WorktreeProposal>
   restoreWorktree: (proposal: WorktreeProposal) => Promise<WorktreeProposal>
   sessionFiles: PiSessionFileStore
@@ -67,7 +63,6 @@ type WorkstreamProjection = Omit<Workstream, 'repositoryWorkingLocations' | 'ses
 
 export type OwnedSessionResolution = OwnedPiSessionLocation &
   Readonly<{
-    mode: SessionMode
     canSubmit: boolean
     toolAccess: 'none' | 'read-only' | 'full'
     managedPolicy?: ManagedSessionRuntimePolicy
@@ -97,6 +92,7 @@ export type SessionChangeRepositoryLocation = Readonly<{
 export function createWorkstreamSessionStore({
   openDatabase,
   inspectRepository,
+  inspectBranch,
   createWorktree,
   restoreWorktree,
   sessionFiles,
@@ -163,18 +159,13 @@ export function createWorkstreamSessionStore({
             availability: parseSessionAvailability(row.availability),
           }
 
-          if (row.mode === 'default') {
-            if (
-              row.access_kind !== 'direct' ||
-              typeof row.repository_id !== 'string' ||
-              typeof row.repository_directory_path !== 'string'
-            ) {
-              throw new Error('A Default Session must have direct Repository access.')
+          if (row.access_kind === 'direct') {
+            if (typeof row.repository_id !== 'string' || typeof row.repository_directory_path !== 'string') {
+              throw new Error('A Quick Session must have direct Repository access.')
             }
 
             workstream.sessions.push({
               ...sessionProperties,
-              mode: 'default',
               repositoryAccess: {
                 kind: 'direct',
                 repositoryId: row.repository_id,
@@ -183,29 +174,18 @@ export function createWorkstreamSessionStore({
               },
             })
           } else {
-            if ((row.mode !== 'brainstorm' && row.mode !== 'implement') || row.access_kind !== 'managed') {
-              throw new Error('A Brainstorm or Implement Session must have managed Repository access.')
+            if (row.access_kind !== 'managed') {
+              throw new Error('A Workstream Session must have managed Repository access.')
             }
 
             workstream.sessions.push({
               ...sessionProperties,
-              mode: row.mode,
               repositoryAccess: { kind: 'managed' },
             })
           }
         } catch (error) {
           workstream = unavailableWorkstream(workstreamId, workspaceId, row.goal, error)
           workstreams.set(workstreamId, workstream)
-        }
-      }
-
-      for (const [workstreamId, workstream] of workstreams) {
-        if (!workstream.goal || workstream.unavailability) continue
-
-        try {
-          readWorkstreamKnowledge(database, workstreamId)
-        } catch (error) {
-          workstreams.set(workstreamId, unavailableWorkstream(workstreamId, workspaceId, workstream.goal, error))
         }
       }
 
@@ -223,10 +203,12 @@ export function createWorkstreamSessionStore({
                FROM workstreams workstream
                JOIN workspace_repositories membership ON membership.workspace_id = workstream.workspace_id
                JOIN repositories repository ON repository.id = membership.repository_id
+               LEFT JOIN workstream_repositories selected
+                 ON selected.workstream_id = workstream.id AND selected.repository_id = repository.id
               WHERE workstream.workspace_id = ?
                 AND workstream.working_location = 'current-checkouts'
                 AND (
-                  workstream.goal IS NOT NULL
+                  (workstream.goal IS NOT NULL AND selected.repository_id IS NOT NULL)
                   OR repository.id = (
                     SELECT session.repository_id
                       FROM sessions session
@@ -304,17 +286,18 @@ export function createWorkstreamSessionStore({
         if (workstream.goal || workstream.unavailability) continue
 
         workstream.sessions = workstream.sessions.map((session) => {
-          if (session.mode !== 'default') return session
+          const repositoryAccess = session.repositoryAccess
+          if (repositoryAccess.kind !== 'direct') return session
 
           const recordedLocation = workstream.repositoryWorkingLocations.find(
-            (location) => location.repositoryId === session.repositoryAccess.repositoryId
+            (location) => location.repositoryId === repositoryAccess.repositoryId
           )
 
           return recordedLocation
             ? {
                 ...session,
                 repositoryAccess: {
-                  ...session.repositoryAccess,
+                  ...repositoryAccess,
                   availability: recordedLocation.availability,
                 },
               }
@@ -335,7 +318,7 @@ export function createWorkstreamSessionStore({
     workstreamId: string,
     options: Readonly<
       { title?: string; fork?: Readonly<{ parentSessionId: SessionId; entryId: string }> } & (
-        { mode: 'default'; repositoryId: string } | { mode: ManagedSessionMode; repositoryId?: never }
+        { access: 'direct'; repositoryId: string } | { access: 'managed'; repositoryId?: never }
       )
     >
   ): SessionId {
@@ -355,9 +338,9 @@ export function createWorkstreamSessionStore({
         sessionId,
         workstreamId,
         normalizeSessionTitle(options.title ?? '') ?? 'New Session',
-        options.mode,
-        options.mode === 'default' ? 'direct' : 'managed',
-        options.mode === 'default' ? options.repositoryId : null,
+        options.access === 'direct' ? 'default' : 'managed',
+        options.access,
+        options.access === 'direct' ? options.repositoryId : null,
         piSessionId,
         intent.sessionPath,
         Date.now(),
@@ -619,14 +602,34 @@ export function createWorkstreamSessionStore({
         throw new TypeError('The Workspace no longer exists.')
       }
 
+      const workspaceRepositories = database
+        .prepare(
+          `SELECT repository_id
+             FROM workspace_repositories
+            WHERE workspace_id = ?
+            ORDER BY rowid`
+        )
+        .all(workspaceId)
+        .map((row) => String(row.repository_id))
+      const repositoryIds = [...new Set(options.repositoryIds ?? workspaceRepositories)]
+
+      if (repositoryIds.length === 0) throw new TypeError('Select at least one Repository for the Workstream.')
+      if (repositoryIds.some((repositoryId) => !workspaceRepositories.includes(repositoryId))) {
+        throw new TypeError('Select Repositories from the current Workspace.')
+      }
+
       const workstreamId = createWorkstreamId()
       database
         .prepare(
           "INSERT INTO workstreams (id, workspace_id, goal, lifecycle, working_location, created_at) VALUES (?, ?, ?, 'active', 'current-checkouts', ?)"
         )
         .run(workstreamId, workspaceId, goal, Date.now())
+      const insertRepository = database.prepare(
+        'INSERT INTO workstream_repositories (workstream_id, repository_id) VALUES (?, ?)'
+      )
+      for (const repositoryId of repositoryIds) insertRepository.run(workstreamId, repositoryId)
       initializeStoredWorkstreamKnowledge(database, workstreamId)
-      sessionId = insertOwnedSession(database, workstreamId, { mode: normalizeSessionMode(options.mode) })
+      sessionId = insertOwnedSession(database, workstreamId, { access: 'managed' })
       incrementRevision(database)
       database.exec('COMMIT;')
     } catch (error) {
@@ -726,7 +729,7 @@ export function createWorkstreamSessionStore({
           .run(workstreamId, workspaceId, Date.now())
       }
       sessionId = insertOwnedSession(database, workstreamId, {
-        mode: 'default',
+        access: 'direct',
         title: 'Quick Session',
         repositoryId: options.repositoryId,
       })
@@ -779,93 +782,41 @@ export function createWorkstreamSessionStore({
     return revision
   }
 
-  async function prepareSessionRepository(
-    sessionId: SessionId,
-    repositoryId: string
-  ): Promise<PreparedSessionRepository> {
+  async function createSessionWorktree(sessionId: SessionId, repositoryId: string): Promise<PreparedSessionRepository> {
     const database = openDatabase()
-    let proposal: WorktreeProposal
-    let restoresPersistedWorktree = false
+    let proposal: WorktreeProposal | undefined
+    let reusesPersistedWorktree: boolean
 
     try {
       await refreshRepositoryAvailability(database, inspectRepository, incrementRevision)
       const repository = database
         .prepare(
-          `SELECT repository.directory_path, repository.common_directory_path, repository.availability
+          `SELECT repository.directory_path, repository.availability
              FROM sessions session
              JOIN workstreams workstream ON workstream.id = session.workstream_id
-             JOIN workspace_repositories membership ON membership.workspace_id = workstream.workspace_id
+             JOIN workstream_repositories selected ON selected.workstream_id = workstream.id
+             JOIN workspace_repositories membership
+               ON membership.workspace_id = workstream.workspace_id AND membership.repository_id = selected.repository_id
              JOIN repositories repository
                ON repository.id = membership.repository_id AND repository.id = ?
             WHERE session.id = ?
-              AND session.mode = 'implement'
+              AND session.access_kind = 'managed'
               AND workstream.lifecycle = 'active'`
         )
         .get(repositoryId, sessionId)
 
-      if (!repository) throw new TypeError('Select a Repository from the Implement Session Workspace.')
+      if (!repository) throw new TypeError('Select a Repository from the Workstream.')
       if (repository.availability !== 'available') throw new TypeError('The selected Repository is unavailable.')
 
       const existing = database
-        .prepare(
-          `SELECT kind, working_path, branch, base_commit, availability
-             FROM session_repository_locations
-            WHERE session_id = ? AND repository_id = ?`
-        )
+        .prepare('SELECT kind FROM session_repository_locations WHERE session_id = ? AND repository_id = ?')
         .get(sessionId, repositoryId)
-
-      if (existing && existing.kind !== 'current-checkout' && existing.kind !== 'worktree') {
-        throw new Error('The persisted Session working location is malformed.')
-      }
-      if (
-        existing?.kind === 'worktree' &&
-        (typeof existing.working_path !== 'string' ||
-          typeof existing.branch !== 'string' ||
-          typeof existing.base_commit !== 'string')
-      ) {
-        throw new Error('The persisted Session worktree is malformed.')
-      }
-
-      if (
-        existing?.kind === 'worktree' &&
-        typeof existing.working_path === 'string' &&
-        typeof existing.branch === 'string' &&
-        typeof existing.base_commit === 'string'
-      ) {
-        const observedAvailability = await inspectWorktree({
-          worktreePath: existing.working_path,
-          commonDirectoryPath: String(repository.common_directory_path),
-          expectedBranch: existing.branch,
-        })
-
-        if (observedAvailability === 'available') {
-          if (existing.availability !== 'available') {
-            database
-              .prepare(
-                "UPDATE session_repository_locations SET availability = 'available' WHERE session_id = ? AND repository_id = ?"
-              )
-              .run(sessionId, repositoryId)
-            incrementSessionWorkingLocationRevision(database, sessionId)
-            incrementRevision(database)
-          }
-
-          return {
-            repositoryId,
-            workingPath: existing.working_path,
-            resourcePolicyRevision: readSessionResourcePolicyRevision(database, sessionId),
-          }
+      reusesPersistedWorktree = existing?.kind === 'worktree'
+      if (!reusesPersistedWorktree) {
+        if (existing && existing.kind !== 'current-checkout') {
+          throw new Error('The persisted Session working location is malformed.')
         }
 
-        proposal = {
-          repositoryId,
-          sourcePath: String(repository.directory_path),
-          commonDirectoryPath: String(repository.common_directory_path),
-          worktreePath: existing.working_path,
-          branch: existing.branch,
-          baseCommit: existing.base_commit,
-        }
-        restoresPersistedWorktree = true
-      } else {
         proposal = await proposeWorktree({
           repositoryId,
           repositoryPath: String(repository.directory_path),
@@ -890,7 +841,153 @@ export function createWorkstreamSessionStore({
       database.close()
     }
 
-    await (restoresPersistedWorktree ? restoreWorktree(proposal) : createWorktree(proposal))
+    if (reusesPersistedWorktree) return prepareSessionRepository(sessionId, repositoryId)
+    if (!proposal) throw new Error('The Session worktree proposal is unavailable.')
+
+    await createWorktree(proposal)
+
+    const prepared = openDatabase()
+    let resourcePolicyRevision: number
+    try {
+      prepared.exec('BEGIN IMMEDIATE;')
+      prepared
+        .prepare(
+          "UPDATE session_repository_locations SET availability = 'available' WHERE session_id = ? AND repository_id = ?"
+        )
+        .run(sessionId, repositoryId)
+      incrementSessionWorkingLocationRevision(prepared, sessionId)
+      incrementRevision(prepared)
+      resourcePolicyRevision = readSessionResourcePolicyRevision(prepared, sessionId)
+      prepared.exec('COMMIT;')
+    } catch (error) {
+      prepared.exec('ROLLBACK;')
+      throw error
+    } finally {
+      prepared.close()
+    }
+
+    return { repositoryId, workingPath: proposal.worktreePath, resourcePolicyRevision }
+  }
+
+  async function prepareSessionRepository(
+    sessionId: SessionId,
+    repositoryId: string
+  ): Promise<PreparedSessionRepository> {
+    const database = openDatabase()
+    let proposal: WorktreeProposal
+
+    try {
+      await refreshRepositoryAvailability(database, inspectRepository, incrementRevision)
+      const repository = database
+        .prepare(
+          `SELECT repository.directory_path, repository.common_directory_path, repository.availability
+             FROM sessions session
+             JOIN workstreams workstream ON workstream.id = session.workstream_id
+             JOIN workstream_repositories selected ON selected.workstream_id = workstream.id
+             JOIN workspace_repositories membership
+               ON membership.workspace_id = workstream.workspace_id AND membership.repository_id = selected.repository_id
+             JOIN repositories repository
+               ON repository.id = membership.repository_id AND repository.id = ?
+            WHERE session.id = ?
+              AND session.access_kind = 'managed'
+              AND workstream.lifecycle = 'active'`
+        )
+        .get(repositoryId, sessionId)
+
+      if (!repository) throw new TypeError('Select a Repository from the Workstream.')
+      if (repository.availability !== 'available') throw new TypeError('The selected Repository is unavailable.')
+
+      const existing = database
+        .prepare(
+          `SELECT kind, working_path, branch, base_commit, availability
+             FROM session_repository_locations
+            WHERE session_id = ? AND repository_id = ?`
+        )
+        .get(sessionId, repositoryId)
+
+      if (existing && existing.kind !== 'current-checkout' && existing.kind !== 'worktree') {
+        throw new Error('The persisted Session working location is malformed.')
+      }
+      if (
+        existing?.kind === 'worktree' &&
+        (typeof existing.working_path !== 'string' ||
+          typeof existing.branch !== 'string' ||
+          typeof existing.base_commit !== 'string')
+      ) {
+        throw new Error('The persisted Session worktree is malformed.')
+      }
+
+      if (existing?.kind !== 'worktree') {
+        if (
+          !existing ||
+          existing.working_path !== repository.directory_path ||
+          existing.availability !== repository.availability
+        ) {
+          database
+            .prepare(
+              `INSERT INTO session_repository_locations
+                (session_id, repository_id, kind, working_path, branch, base_commit, availability)
+               VALUES (?, ?, 'current-checkout', ?, NULL, NULL, 'available')
+               ON CONFLICT (session_id, repository_id) DO UPDATE SET
+                 kind = excluded.kind,
+                 working_path = excluded.working_path,
+                 branch = NULL,
+                 base_commit = NULL,
+                 availability = excluded.availability`
+            )
+            .run(sessionId, repositoryId, repository.directory_path)
+          incrementRevision(database)
+        }
+
+        return {
+          repositoryId,
+          workingPath: String(repository.directory_path),
+          resourcePolicyRevision: readSessionResourcePolicyRevision(database, sessionId),
+        }
+      }
+
+      const persistedWorktree = {
+        workingPath: String(existing.working_path),
+        branch: String(existing.branch),
+        baseCommit: String(existing.base_commit),
+      }
+      const observedAvailability = await inspectWorktree({
+        worktreePath: persistedWorktree.workingPath,
+        commonDirectoryPath: String(repository.common_directory_path),
+        expectedBranch: persistedWorktree.branch,
+      })
+
+      if (observedAvailability === 'available') {
+        if (existing.availability !== 'available') {
+          database
+            .prepare(
+              "UPDATE session_repository_locations SET availability = 'available' WHERE session_id = ? AND repository_id = ?"
+            )
+            .run(sessionId, repositoryId)
+          incrementSessionWorkingLocationRevision(database, sessionId)
+          incrementRevision(database)
+        }
+
+        return {
+          repositoryId,
+          workingPath: persistedWorktree.workingPath,
+          resourcePolicyRevision: readSessionResourcePolicyRevision(database, sessionId),
+        }
+      }
+
+      proposal = {
+        repositoryId,
+        sourcePath: String(repository.directory_path),
+        commonDirectoryPath: String(repository.common_directory_path),
+        worktreePath: persistedWorktree.workingPath,
+        branch: persistedWorktree.branch,
+        baseCommit: persistedWorktree.baseCommit,
+      }
+    } finally {
+      database.close()
+    }
+
+    await restoreWorktree(proposal)
 
     const prepared = openDatabase()
     let resourcePolicyRevision: number
@@ -945,7 +1042,7 @@ export function createWorkstreamSessionStore({
 
     const leaseId = randomUUID()
     let sourceWorkstreamId: string
-    let sourceMode: SessionMode
+    let sourceAccessKind: 'direct' | 'managed'
     let sourceRepositoryId: string | undefined
     let sourceWorkingLocation: WorkstreamWorkingLocation
     let workspaceId: string
@@ -955,7 +1052,7 @@ export function createWorkstreamSessionStore({
       authority.exec('BEGIN IMMEDIATE;')
       const source = authority
         .prepare(
-          `SELECT session.workstream_id, session.mode, session.repository_id, session.creation_status,
+          `SELECT session.workstream_id, session.access_kind, session.repository_id, session.creation_status,
                   session.availability, workstream.workspace_id, workstream.goal, workstream.lifecycle,
                   workstream.working_location
              FROM sessions session
@@ -972,13 +1069,13 @@ export function createWorkstreamSessionStore({
       ) {
         throw new TypeError('The Session must be available and active before it can be forked.')
       }
-      if (source.mode !== 'default' && source.mode !== 'brainstorm' && source.mode !== 'implement') {
-        throw new TypeError('This Session mode cannot be forked.')
+      if (source.access_kind !== 'direct' && source.access_kind !== 'managed') {
+        throw new TypeError('This Session Repository access cannot be forked.')
       }
-      if (source.mode === 'default' && (source.goal !== null || typeof source.repository_id !== 'string')) {
+      if (source.access_kind === 'direct' && (source.goal !== null || typeof source.repository_id !== 'string')) {
         throw new TypeError('The Quick Session ownership is malformed.')
       }
-      if (source.mode !== 'default' && typeof source.goal !== 'string') {
+      if (source.access_kind === 'managed' && typeof source.goal !== 'string') {
         throw new TypeError('The Session must belong to a goal-based Workstream.')
       }
       if (source.working_location !== 'current-checkouts' && source.working_location !== 'worktrees') {
@@ -989,7 +1086,7 @@ export function createWorkstreamSessionStore({
       }
 
       sourceWorkstreamId = String(source.workstream_id)
-      sourceMode = source.mode
+      sourceAccessKind = source.access_kind
       sourceRepositoryId = typeof source.repository_id === 'string' ? source.repository_id : undefined
       sourceWorkingLocation = source.working_location
       workspaceId = String(source.workspace_id)
@@ -1014,7 +1111,7 @@ export function createWorkstreamSessionStore({
     try {
       let targetWorkstreamId = sourceWorkstreamId
 
-      if (sourceMode === 'default') {
+      if (sourceAccessKind === 'direct') {
         if (!sourceRepositoryId) throw new TypeError('The Quick Session Repository is unavailable.')
 
         targetWorkstreamId = createWorkstreamId()
@@ -1038,7 +1135,7 @@ export function createWorkstreamSessionStore({
           .get(sessionId)
         if (lease?.lease_id !== leaseId) throw new TypeError('The Session fork authority expired.')
 
-        if (sourceMode === 'default' && sourceWorkingLocation === 'current-checkouts') {
+        if (sourceAccessKind === 'direct' && sourceWorkingLocation === 'current-checkouts') {
           creation
             .prepare(
               "INSERT INTO workstreams (id, workspace_id, goal, lifecycle, working_location, created_at) VALUES (?, ?, NULL, 'active', 'current-checkouts', ?)"
@@ -1047,19 +1144,19 @@ export function createWorkstreamSessionStore({
         }
 
         targetSessionId =
-          sourceMode === 'default'
+          sourceAccessKind === 'direct'
             ? insertOwnedSession(creation, targetWorkstreamId, {
-                mode: 'default',
+                access: 'direct',
                 repositoryId: sourceRepositoryId!,
                 title,
                 fork: { parentSessionId: sessionId, entryId: options.entryId },
               })
             : insertOwnedSession(creation, targetWorkstreamId, {
-                mode: sourceMode,
+                access: 'managed',
                 title,
                 fork: { parentSessionId: sessionId, entryId: options.entryId },
               })
-        if (sourceMode === 'default') {
+        if (sourceAccessKind === 'direct') {
           if (sourceWorkingLocation === 'current-checkouts') {
             insertCurrentCheckoutSessionLocation(creation, targetSessionId, sourceRepositoryId!)
           } else {
@@ -1121,11 +1218,11 @@ export function createWorkstreamSessionStore({
       if (!workstream) throw new TypeError('The Workstream no longer exists.')
       if (workstream.lifecycle !== 'active') throw new TypeError('An archived Workstream cannot create Sessions.')
       if (typeof workstream.goal !== 'string') {
-        throw new TypeError('Set a Workstream goal before creating a Brainstorm or Implement Session.')
+        throw new TypeError('Set a Workstream goal before creating a Session.')
       }
 
       workspaceId = String(workstream.workspace_id)
-      sessionId = insertOwnedSession(database, workstreamId, options)
+      sessionId = insertOwnedSession(database, workstreamId, { access: 'managed', title: options.title })
       incrementRevision(database)
       database.exec('COMMIT;')
     } catch (error) {
@@ -1262,7 +1359,7 @@ export function createWorkstreamSessionStore({
       await reconcilePendingSessionFiles(database)
       const row = database
         .prepare(
-          `SELECT s.id, s.mode, s.access_kind, s.creation_status, s.pi_session_id,
+          `SELECT s.id, s.access_kind, s.creation_status, s.pi_session_id,
                 s.expected_jsonl_path, w.id AS workstream_id, w.workspace_id, w.goal, w.lifecycle,
                 w.working_location, w.working_location_revision, ws.metadata_revision, i.directory_path, s.repository_id,
                 r.directory_path AS repository_directory_path,
@@ -1282,17 +1379,13 @@ export function createWorkstreamSessionStore({
         .get(sessionId)
 
       if (!row || row.creation_status !== 'finalized') return undefined
-      if (row.mode !== 'default' && row.mode !== 'brainstorm' && row.mode !== 'implement') {
-        throw new Error('The Session has an unsupported mode.')
-      }
-      if ((row.mode === 'default') !== (row.access_kind === 'direct')) {
-        throw new Error('The Session mode does not match its Repository access.')
+      if (row.access_kind !== 'direct' && row.access_kind !== 'managed') {
+        throw new Error('The Session has unsupported Repository access.')
       }
 
       try {
         parseWorkstreamLifecycle(row.lifecycle)
         parseWorkstreamWorkingLocation(row.working_location)
-        if (typeof row.goal === 'string') readWorkstreamKnowledge(database, String(row.workstream_id))
       } catch {
         return undefined
       }
@@ -1347,30 +1440,34 @@ export function createWorkstreamSessionStore({
         .run(location ? 'available' : 'unavailable', sessionId)
 
       if (!location || !repositoryAvailable) return undefined
-      const mode: SessionMode = row.mode
       const canSubmit = row.lifecycle === 'active'
       const toolAccess = canSubmit ? 'full' : 'none'
       let managedPolicy: ManagedSessionRuntimePolicy | undefined
 
-      if (row.access_kind === 'managed' && (mode === 'brainstorm' || mode === 'implement')) {
+      if (row.access_kind === 'managed') {
         try {
           let workingLocationRevision = Number(row.working_location_revision)
           const repositoryRows = database
             .prepare(
               `SELECT repository.id, repository.directory_path, repository.common_directory_path,
                   repository.availability, membership.id AS membership_id, membership.role, membership.relationships,
-                  location.kind AS location_kind, location.working_path, location.branch,
+                  membership.validation_commands, location.kind AS location_kind, location.working_path, location.branch,
                   location.availability AS location_availability
-             FROM workspace_repositories membership
+             FROM workstream_repositories selected
+             JOIN workspace_repositories membership
+               ON membership.workspace_id = ? AND membership.repository_id = selected.repository_id
              JOIN repositories repository ON repository.id = membership.repository_id
              LEFT JOIN session_repository_locations location
                ON location.session_id = ? AND location.repository_id = repository.id
-            WHERE membership.workspace_id = ?
+            WHERE selected.workstream_id = ?
             ORDER BY membership.rowid`
             )
-            .all(sessionId, row.workspace_id)
+            .all(row.workspace_id, sessionId, row.workstream_id)
           const repositoryIdByMembershipId = new Map(
-            repositoryRows.map((repository) => [String(repository.membership_id), String(repository.id)])
+            database
+              .prepare('SELECT id, repository_id FROM workspace_repositories WHERE workspace_id = ?')
+              .all(row.workspace_id)
+              .map((membership) => [String(membership.id), String(membership.repository_id)])
           )
           const repositories = await Promise.all(
             repositoryRows.map(async (repository) => {
@@ -1428,6 +1525,7 @@ export function createWorkstreamSessionStore({
 
                   return repositoryId ? [repositoryId] : []
                 }),
+                validationCommands: parseStringArray(repository.validation_commands),
               }
 
               return availability === 'available' && typeof workingPath === 'string'
@@ -1446,7 +1544,7 @@ export function createWorkstreamSessionStore({
             workspaceId: String(row.workspace_id),
             workstreamId: String(row.workstream_id),
             sessionId,
-            mode,
+            goal: String(row.goal),
             lifecycle: parseWorkstreamLifecycle(row.lifecycle),
             runLeaseId: typeof lease?.lease_id === 'string' ? lease.lease_id : undefined,
             repositories,
@@ -1466,7 +1564,6 @@ export function createWorkstreamSessionStore({
               : String(row.repository_directory_path)
             : location.directoryPath,
         sessionPath: location.sessionPath,
-        mode,
         canSubmit,
         toolAccess,
         managedPolicy,
@@ -1479,16 +1576,58 @@ export function createWorkstreamSessionStore({
     }
   }
 
+  async function getSessionWorkingLocations(sessionId: SessionId): Promise<SessionWorkingLocationsSnapshot> {
+    const resolution = await resolveOwnedSession(sessionId)
+    if (!resolution) throw new TypeError('The Session is unavailable.')
+    if (!resolution.managedPolicy) return { sessionId, repositories: [] }
+
+    const repositories = await Promise.all(
+      resolution.managedPolicy.repositories.map(async (repository) => {
+        if (repository.availability !== 'available') {
+          return {
+            repositoryId: repository.id,
+            repositoryName: repository.name,
+            kind: 'current-checkout' as const,
+            availability: 'unavailable' as const,
+          }
+        }
+
+        const kind =
+          repository.workingLocation === 'session-worktree' ? ('worktree' as const) : ('current-checkout' as const)
+
+        try {
+          return {
+            repositoryId: repository.id,
+            repositoryName: repository.name,
+            kind,
+            availability: 'available' as const,
+            branch: await inspectBranch(repository.workingPath),
+            workingPath: repository.workingPath,
+          }
+        } catch {
+          return {
+            repositoryId: repository.id,
+            repositoryName: repository.name,
+            kind,
+            availability: 'unavailable' as const,
+          }
+        }
+      })
+    )
+
+    return { sessionId, repositories }
+  }
+
   async function resolveSessionChangeRepositories(
     sessionId: SessionId
   ): Promise<readonly SessionChangeRepositoryLocation[]> {
     const database = openDatabase()
 
     try {
-      const session = database.prepare('SELECT mode, creation_status FROM sessions WHERE id = ?').get(sessionId)
+      const session = database.prepare('SELECT access_kind, creation_status FROM sessions WHERE id = ?').get(sessionId)
 
-      if (!session || session.creation_status !== 'finalized' || session.mode === 'brainstorm') return []
-      if (session.mode !== 'default' && session.mode !== 'implement') return []
+      if (!session || session.creation_status !== 'finalized') return []
+      if (session.access_kind !== 'direct' && session.access_kind !== 'managed') return []
 
       const rows = database
         .prepare(
@@ -1497,10 +1636,9 @@ export function createWorkstreamSessionStore({
              JOIN repositories repository ON repository.id = location.repository_id
             WHERE location.session_id = ?
               AND location.availability = 'available'
-              AND (? = 'default' OR location.kind = 'worktree')
             ORDER BY location.rowid`
         )
-        .all(sessionId, session.mode)
+        .all(sessionId)
 
       return rows.map((row) => ({
         repositoryId: String(row.repository_id),
@@ -1551,6 +1689,7 @@ export function createWorkstreamSessionStore({
     previewWorktreeLocations,
     createWorkstream,
     createQuickSession,
+    createSessionWorktree,
     prepareSessionRepository,
     createWorkstreamSession,
     getSessionForkPoints,
@@ -1559,6 +1698,7 @@ export function createWorkstreamSessionStore({
     renameWorkstreamSession,
     setSessionDescription,
     resolveOwnedSession,
+    getSessionWorkingLocations,
     resolveSessionChangeRepositories,
     resolveWorkstreamWorkingLocation,
     getCurrentWorkstreamRepositorySet,

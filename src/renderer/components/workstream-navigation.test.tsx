@@ -23,7 +23,6 @@ const workstreams: WorkstreamNavigationProperties['workstreams'] = [
         id: sessionId('session-a'),
         workstreamId: 'workstream-a',
         title: 'Map current contracts',
-        mode: 'brainstorm',
         availability: 'available',
         repositoryAccess: { kind: 'managed' as const },
       },
@@ -42,7 +41,6 @@ const unavailableQuickWorkstream: WorkstreamNavigationProperties['workstreams'][
       id: sessionId('quick-session'),
       workstreamId: 'quick-workstream',
       title: 'Quick Session',
-      mode: 'default',
       availability: 'unavailable',
       repositoryAccess: {
         kind: 'direct',
@@ -171,17 +169,17 @@ test('hides archived Workstreams and Quick Sessions from navigation', () => {
   assert.doesNotMatch(markup, /Archived Workstream/)
 })
 
-test('shows Workstream-owned Sessions with their mode', () => {
+test('shows mode-less Sessions in their goal-based Workstream', () => {
   const markup = renderToStaticMarkup(createNavigation())
 
   assert.match(markup, /Ship cancellation reasons/)
   assert.match(markup, /Map current contracts/)
-  assert.match(markup, />Brainstorm</)
+  assert.match(markup, />Workstream Session</)
+  assert.doesNotMatch(markup, /Brainstorm|Implement/)
   assert.match(markup, /aria-label="New Session in Ship cancellation reasons"/)
-  assert.doesNotMatch(markup, /aria-label="Awaiting Repository scope"/)
 })
 
-test('replaces a working Brainstorm Session mode icon with an accessible spinner', () => {
+test('replaces a working Workstream Session icon with an accessible spinner', () => {
   const markup = renderToStaticMarkup(createNavigation({ workingSessionIds: new Set([sessionId('session-a')]) }))
 
   assert.match(markup, /data-slot="session-working-icon"/)
@@ -190,12 +188,11 @@ test('replaces a working Brainstorm Session mode icon with an accessible spinner
   assert.doesNotMatch(markup, /aria-live/)
 })
 
-test('replaces a working Implement Session mode icon with a spinner', () => {
+test('replaces another working Workstream Session icon with a spinner', () => {
   const implementSession = {
     id: sessionId('session-b'),
     workstreamId: 'workstream-a',
     title: 'Implement the change',
-    mode: 'implement' as const,
     availability: 'available' as const,
     repositoryAccess: { kind: 'managed' as const },
   }
@@ -220,7 +217,7 @@ test('keeps working state independent from Workstream selection', () => {
   assert.match(markup, /Pi is working/)
 })
 
-test('replaces a working Quick Session mode icon with a spinner', () => {
+test('replaces a working Quick Session icon with a spinner', () => {
   const quickWorkstream = {
     ...unavailableQuickWorkstream,
     sessions: [{ ...unavailableQuickWorkstream.sessions[0]!, availability: 'available' as const }],
@@ -275,7 +272,6 @@ test('quietly identifies a Quick Session that uses a worktree', () => {
               id: sessionId('quick-session'),
               workstreamId: 'quick-workstream',
               title: 'Quick Session',
-              mode: 'default',
               availability: 'available',
               repositoryAccess: {
                 kind: 'direct',
@@ -329,7 +325,6 @@ test('shows Quick Sessions in their own section above Workstreams', () => {
               id: sessionId('quick-session-a'),
               workstreamId: 'quick-workstream-a',
               title: 'Quick Session A',
-              mode: 'default',
               availability: 'available',
               repositoryAccess: {
                 kind: 'direct',
@@ -351,7 +346,6 @@ test('shows Quick Sessions in their own section above Workstreams', () => {
               id: sessionId('quick-session-b'),
               workstreamId: 'quick-workstream-b',
               title: 'Quick Session B',
-              mode: 'default',
               availability: 'available',
               repositoryAccess: {
                 kind: 'direct',
@@ -437,7 +431,6 @@ test('distinguishes an unavailable Quick Session checkout from unavailable histo
     sessions: [
       {
         ...unavailableQuickWorkstream.sessions[0]!,
-        mode: 'default' as const,
         availability: 'available' as const,
         repositoryAccess: {
           kind: 'direct' as const,
@@ -460,7 +453,6 @@ test('identifies both unavailable Quick Session history and checkout', () => {
     sessions: [
       {
         ...unavailableQuickWorkstream.sessions[0]!,
-        mode: 'default' as const,
         repositoryAccess: {
           kind: 'direct' as const,
           repositoryId: 'repository-a',
@@ -527,7 +519,9 @@ test('disables unavailable Quick Session options', () => {
 test('disables unavailable managed Session activation', () => {
   const view = renderInBrowser({ workstreams: [unavailableManagedWorkstream] })
 
-  assert.ok((view.getByRole('button', { name: /Map current contracts Brainstorm/ }) as HTMLButtonElement).disabled)
+  assert.ok(
+    (view.getByRole('button', { name: /Map current contracts Workstream Session/ }) as HTMLButtonElement).disabled
+  )
 })
 
 test('moves managed Session pinning into its options menu', async () => {
@@ -574,7 +568,6 @@ test('labels a goal-less Workstream lifecycle action as archiving its Quick Sess
             id: sessionId('quick-session'),
             workstreamId: 'quick-workstream',
             title: 'Quick Session',
-            mode: 'default',
             availability: 'available',
             repositoryAccess: {
               kind: 'direct',
@@ -860,7 +853,7 @@ test('shows unavailable Repositories in the Quick Session chooser without allowi
   assert.equal(view.getByText('Repository B').closest('[data-slot="field"]')?.getAttribute('title'), '/repositories/a')
 })
 
-test('creates a Workstream with Implement selected by default', async () => {
+test('creates a Workstream with its available Repository selected by default', async () => {
   const creations: unknown[] = []
   const user = createUser()
   const view = renderInBrowser({
@@ -876,14 +869,18 @@ test('creates a Workstream with Implement selected by default', async () => {
   await user.type(view.getByRole('textbox', { name: 'Goal' }), 'Ship cancellation reasons')
   await user.click(view.getByRole('button', { name: 'Create Workstream' }))
 
-  assert.deepEqual(creations, [{ goal: 'Ship cancellation reasons', mode: 'implement' }])
+  assert.deepEqual(creations, [{ goal: 'Ship cancellation reasons', repositoryIds: ['repository-a'] }])
 })
 
-test('allows an explicit Brainstorm mode when creating a Workstream', async () => {
+test('allows an explicit Repository selection when creating a Workstream', async () => {
   const creations: unknown[] = []
   const user = createUser()
   const view = renderInBrowser({
     workstreams: [],
+    repositories: [
+      ...repositories,
+      { ...repositories[0]!, id: 'repository-b', membershipId: 'membership-b', name: 'Repository B' },
+    ],
     onCreateWorkstream: async (options) => {
       creations.push(options)
     },
@@ -891,10 +888,10 @@ test('allows an explicit Brainstorm mode when creating a Workstream', async () =
 
   await openNewWorkstreamDialog(view, user)
   await user.type(view.getByRole('textbox', { name: 'Goal' }), 'Understand current behavior')
-  await user.click(view.getByRole('radio', { name: /Brainstorm/ }))
+  await user.click(view.getByRole('checkbox', { name: 'Repository A' }))
   await user.click(view.getByRole('button', { name: 'Create Workstream' }))
 
-  assert.deepEqual(creations, [{ goal: 'Understand current behavior', mode: 'brainstorm' }])
+  assert.deepEqual(creations, [{ goal: 'Understand current behavior', repositoryIds: ['repository-b'] }])
 })
 
 test('keeps Workstream creation open and announces a failure', async () => {
@@ -944,5 +941,5 @@ test('creates a named Session inside its permanent Workstream', async () => {
   await user.type(view.getByRole('textbox', { name: 'Session name' }), 'Implement the change')
   await user.click(view.getByRole('button', { name: 'Create Session' }))
 
-  assert.deepEqual(creations, [['workstream-a', { mode: 'implement', title: 'Implement the change' }]])
+  assert.deepEqual(creations, [['workstream-a', { title: 'Implement the change' }]])
 })

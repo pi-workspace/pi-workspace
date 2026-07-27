@@ -133,13 +133,11 @@ export function SessionForkDialog({
   const choosingForkPoint = initialPosition === undefined
 
   const repositoryState =
-    session.mode === 'implement'
-      ? 'This fork stays in Implement mode and creates new worktrees when it prepares each Repository. Worktree paths in copied history are reference only.'
-      : session.mode === 'brainstorm'
-        ? 'This fork stays in Brainstorm mode and in the current Workstream.'
-        : workingLocation === 'worktrees'
-          ? 'This fork starts from the current HEAD in a separate worktree. Uncommitted changes are not copied.'
-          : 'This fork uses the same Repository checkout. Your files stay as they are—they do not rewind with the Session history.'
+    session.repositoryAccess.kind === 'managed'
+      ? 'This fork stays in the current Workstream and gets its own Repository working-location choices. Worktree paths in copied history are reference only.'
+      : workingLocation === 'worktrees'
+        ? 'This fork starts from the current HEAD in a separate worktree. Uncommitted changes are not copied.'
+        : 'This fork uses the same Repository checkout. Your files stay as they are—they do not rewind with the Session history.'
 
   const close = () => {
     if (!saving) onClose()

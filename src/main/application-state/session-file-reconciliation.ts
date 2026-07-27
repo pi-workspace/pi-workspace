@@ -26,7 +26,7 @@ export function createSessionFileReconciliation({
     const intents = database
       .prepare(
         `SELECT intent.id, intent.kind, intent.session_id, intent.pi_session_id, intent.directory_path,
-                intent.session_path, session.title, session.mode, session.forked_from_entry_id,
+                intent.session_path, session.title, session.access_kind, session.forked_from_entry_id,
                 workstream.working_location, parent.expected_jsonl_path AS parent_session_path
            FROM external_side_effect_intents intent
            JOIN sessions session ON session.id = intent.session_id
@@ -60,9 +60,9 @@ export function createSessionFileReconciliation({
           }
 
           const contextMessage =
-            row.mode === 'implement'
-              ? 'This is a forked Implement Session. Earlier Session worktree paths in the copied history are reference only. Call workspace_overview and prepare_repository before modifying a Repository in this Session.'
-              : row.mode === 'default' && row.working_location === 'worktrees'
+            row.access_kind === 'managed'
+              ? 'This is a forked Workstream Session. Earlier Session worktree paths in the copied history are reference only. Use the Repository context in the system prompt and call prepare_repository before modifying a Repository in this Session.'
+              : row.access_kind === 'direct' && row.working_location === 'worktrees'
                 ? 'This is a forked Quick Session with a new dedicated worktree. Earlier working paths in the copied history are reference only.'
                 : undefined
           const forkIntent: PiSessionForkIntent = {

@@ -2,18 +2,14 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { sessionId } from '@/src/domain/session'
 import type { ManagedSessionRuntimePolicy } from '@/src/domain/managed-session'
-import {
-  managedSessionMethodology,
-  parsePiWorkstreamKnowledgeMutation,
-  projectWorkspaceOverview,
-} from './managed-session-tools'
+import { managedSessionMethodology, projectWorkspaceOverview } from './managed-session-tools'
 
-function policy(mode: 'brainstorm' | 'implement' = 'brainstorm'): ManagedSessionRuntimePolicy {
+function policy(): ManagedSessionRuntimePolicy {
   return {
     workspaceId: 'workspace-a',
     workstreamId: 'workstream-a',
     sessionId: sessionId('session-a'),
-    mode,
+    goal: 'Ship the Workstream goal',
     lifecycle: 'active',
     repositories: [
       {
@@ -25,6 +21,7 @@ function policy(mode: 'brainstorm' | 'implement' = 'brainstorm'): ManagedSession
         availability: 'available',
         role: 'Application',
         relationships: ['repository-b'],
+        validationCommands: ['bun test'],
       },
       {
         id: 'repository-b',
@@ -33,6 +30,7 @@ function policy(mode: 'brainstorm' | 'implement' = 'brainstorm'): ManagedSession
         availability: 'unavailable',
         role: 'Library',
         relationships: [],
+        validationCommands: [],
       },
     ],
     piSessionPath: '/sessions/session-a.jsonl',
@@ -40,76 +38,26 @@ function policy(mode: 'brainstorm' | 'implement' = 'brainstorm'): ManagedSession
   }
 }
 
-test('Workspace overview supplies working paths only for available Repositories', () => {
+test('Workspace overview supplies working paths only for selected available Repositories', () => {
   const overview = projectWorkspaceOverview(policy())
 
+  assert.equal('mode' in overview, false)
   assert.equal(overview.repositories[0]?.workingPath, '/workspaces/available')
   assert.equal(overview.repositories[0]?.workingLocation, 'source-checkout')
   assert.equal('workingPath' in overview.repositories[1]!, false)
   assert.deepEqual(overview.repositories[0]?.relationships, ['repository-b'])
 })
 
-test('Brainstorm methodology directs investigation and structured knowledge capture without Repository changes', () => {
-  assert.equal(
-    managedSessionMethodology('brainstorm'),
-    [
-      'You are operating a Railyard Brainstorm Session.',
-      'Call workspace_overview before Repository work, then use the supplied Repository working paths.',
-      'Read workstream_knowledge before investigating. Use update_workstream_knowledge to preserve relevant evidence, findings, questions, proposed decisions, Repository impact, plan steps, and validation requirements for the Workstream.',
-      'Investigate the Workspace and produce an implementation-ready specification. Do not modify Repository content.',
-    ].join('\n')
-  )
-})
+test('Workstream methodology adds selected Repository metadata and locations to the system prompt', () => {
+  const methodology = managedSessionMethodology(policy())
 
-test('Implement methodology directs implementation from shared knowledge and records progress', () => {
-  assert.equal(
-    managedSessionMethodology('implement'),
-    [
-      'You are operating a Railyard Implement Session.',
-      'Call workspace_overview before Repository work. Source checkout paths are for inspection only.',
-      'Read workstream_knowledge before implementing. Use update_workstream_knowledge to preserve relevant implementation progress and newly discovered Workstream knowledge.',
-      'Before modifying a Repository, call prepare_repository with its id. Make and validate all changes in the returned Session worktree path.',
-    ].join('\n')
-  )
-})
-
-test('Pi Workstream knowledge mutation accepts draft record changes', () => {
-  assert.deepEqual(
-    parsePiWorkstreamKnowledgeMutation({
-      operation: 'put-record',
-      expectedKnowledgeRevision: 2,
-      expectedRecordRevision: 0,
-      record: {
-        id: 'finding-a',
-        kind: 'finding',
-        summary: 'The runtime uses normal tools.',
-        repositoryIds: ['repository-a'],
-        evidenceIds: [],
-      },
-    }),
-    {
-      type: 'put-record',
-      expectedKnowledgeRevision: 2,
-      expectedRecordRevision: 0,
-      record: {
-        id: 'finding-a',
-        kind: 'finding',
-        summary: 'The runtime uses normal tools.',
-        repositoryIds: ['repository-a'],
-        evidenceIds: [],
-      },
-    }
-  )
-})
-
-test('Pi Workstream knowledge mutation does not expose user-only transitions', () => {
-  assert.equal(
-    parsePiWorkstreamKnowledgeMutation({
-      operation: 'accept-decision',
-      expectedKnowledgeRevision: 1,
-      expectedRecordRevision: 1,
-      recordId: 'decision-a',
-    }),
-    undefined
-  )
+  assert.match(methodology, /Railyard Workstream Session/)
+  assert.match(methodology, /Workstream goal: Ship the Workstream goal/)
+  assert.match(methodology, /"name": "Available Repository"/)
+  assert.match(methodology, /"workingPath": "\/workspaces\/available"/)
+  assert.match(methodology, /"role": "Application"/)
+  assert.match(methodology, /"relationships": \[/)
+  assert.match(methodology, /"validationCommands": \[/)
+  assert.match(methodology, /Before modifying a Repository, call prepare_repository with its id/)
+  assert.doesNotMatch(methodology, /Brainstorm|Implement mode|Implement Session/)
 })

@@ -11,6 +11,7 @@ import type {
 import type { SessionConfigurationBridge } from '@/src/session-configuration'
 import type { SessionSkillsBridge } from '@/src/session-skills'
 import type { SessionFilesBridge } from '@/src/session-files'
+import type { SessionWorkingLocationsBridge } from '@/src/session-working-locations'
 import type { SessionTranscriptBridge } from '@/src/session-transcript'
 import { SessionContainer } from '@/src/renderer/components/session-container'
 
@@ -44,12 +45,12 @@ type SessionAreaProperties = {
   sessionConfiguration?: SessionConfigurationBridge
   sessionSkills?: SessionSkillsBridge
   sessionFiles?: SessionFilesBridge
+  sessionWorkingLocations?: SessionWorkingLocationsBridge
   getSessionForkPoints?: (sessionId: SessionId) => Promise<readonly SessionForkPoint[]>
   forkSession?: (sessionId: SessionId, options: ForkSessionOptions) => Promise<void>
   onToggleSessionPin: (sessionId: SessionId) => void
   acceptActionCard?: SessionTranscriptBridge['acceptActionCard']
   dismissActionCard?: SessionTranscriptBridge['dismissActionCard']
-  onStartImplementSession?: (workstreamId: string) => Promise<void>
   onOpenCurrentDiff?: (sessionId: SessionId, repositoryId: string | undefined, path: string) => void
 }
 
@@ -77,12 +78,12 @@ export function SessionArea({
   sessionConfiguration,
   sessionSkills,
   sessionFiles,
+  sessionWorkingLocations,
   getSessionForkPoints,
   forkSession,
   onToggleSessionPin,
   acceptActionCard = async () => false,
   dismissActionCard = async () => false,
-  onStartImplementSession = async () => {},
   onOpenCurrentDiff = () => {},
 }: SessionAreaProperties) {
   const sessionPaneRefs = useRef(new Map<SessionId, HTMLDivElement>())
@@ -140,12 +141,12 @@ export function SessionArea({
             sessionConfiguration={sessionConfiguration}
             sessionSkills={sessionSkills}
             sessionFiles={sessionFiles}
+            sessionWorkingLocations={sessionWorkingLocations}
             getForkPoints={getSessionForkPoints ? () => getSessionForkPoints(session.id) : undefined}
             forkSession={forkSession ? (options) => forkSession(session.id, options) : undefined}
             onTogglePin={() => onToggleSessionPin(session.id)}
             acceptActionCard={acceptActionCard}
             dismissActionCard={dismissActionCard}
-            onStartImplementSession={onStartImplementSession}
             onOpenCurrentDiff={(repositoryId, path) => onOpenCurrentDiff(session.id, repositoryId, path)}
           />
         </div>

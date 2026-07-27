@@ -10,7 +10,6 @@ function recentSession(title: string, availability: 'available' | 'unavailable' 
     id: sessionId('session-a'),
     workstreamId: 'workstream-a',
     title,
-    mode: 'implement',
     availability,
     repositoryAccess: { kind: 'managed' as const },
   }

@@ -24,7 +24,6 @@ import { getVisibleSessionIds, updateSessionPinning, type SessionPinningState } 
 import { useWorkingSessionIds } from '@/src/renderer/session-transcript-state'
 import { initialWorkstreamSelection, updateWorkstreamSelection } from '@/src/renderer/workstream-selection'
 import { normalizeSessionTitle } from '@/src/session-title'
-import { useWorkstreamKnowledge } from '@/src/renderer/use-workstream-knowledge'
 
 const initialSessionPinningState: SessionPinningState = {
   pinnedSessionIds: [],
@@ -181,7 +180,6 @@ export function WorkspaceShell({ initialWorkspacesSnapshot, initialSessionDispla
 
   const workstreams = workstreamsSnapshot?.workstreams ?? []
   const selectedWorkstream = workstreams.find((workstream) => workstream.id === workstreamSelection.workstreamId)
-  const workstreamKnowledgeResource = useWorkstreamKnowledge(selectedWorkstream)
 
   const selectedWorkspace = workspacesSnapshot.workspaces.find((workspace) => workspace.id === selectedWorkspaceId)
   const repositories = selectedWorkspace?.repositories ?? []
@@ -466,13 +464,8 @@ export function WorkspaceShell({ initialWorkspacesSnapshot, initialSessionDispla
       }
     >
       <WorkstreamContextLayout
-        workstream={selectedWorkstream}
         activeSession={activeSession}
         changesSelection={changesSelection?.sessionId === activeSession?.id ? changesSelection : undefined}
-        stateResource={workstreamKnowledgeResource}
-        onShowWorkingLocation={(workstreamId, repositoryId) =>
-          window.piWorkspace.workstreams.showWorkingLocation(workstreamId, repositoryId)
-        }
       >
         {!workstreamsSnapshot ? (
           <WorkstreamsLoadScreen
@@ -508,12 +501,12 @@ export function WorkspaceShell({ initialWorkspacesSnapshot, initialSessionDispla
             sessionConfiguration={window.piWorkspace.sessionConfiguration}
             sessionSkills={window.piWorkspace.sessionSkills}
             sessionFiles={window.piWorkspace.sessionFiles}
+            sessionWorkingLocations={window.piWorkspace.sessionWorkingLocations}
             getSessionForkPoints={(sessionId) => window.piWorkspace.workstreams.getSessionForkPoints(sessionId)}
             forkSession={forkSession}
             onToggleSessionPin={toggleSessionPin}
             acceptActionCard={window.piWorkspace.transcript.acceptActionCard}
             dismissActionCard={window.piWorkspace.transcript.dismissActionCard}
-            onStartImplementSession={(workstreamId) => createSession(workstreamId, { mode: 'implement' })}
             onOpenCurrentDiff={openCurrentDiff}
           />
         ) : selectedWorkstream?.goal ? (

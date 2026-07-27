@@ -120,7 +120,6 @@ function ownedSession(candidate: Session): OwnedSession {
   return {
     ...candidate,
     workstreamId: 'workstream-a',
-    mode: 'implement',
     availability: 'available',
     repositoryAccess: { kind: 'managed' as const },
   }

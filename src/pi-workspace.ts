@@ -3,6 +3,7 @@ import type { ApplicationStateBridge } from '@/src/application-state-ipc'
 import type { SessionConfigurationBridge } from '@/src/session-configuration'
 import type { SessionSkillsBridge } from '@/src/session-skills'
 import type { SessionChangesBridge } from '@/src/session-changes'
+import type { SessionWorkingLocationsBridge } from '@/src/session-working-locations'
 import type { SessionFilesBridge } from '@/src/session-files'
 import type { SessionTranscriptBridge } from '@/src/session-transcript'
 import type { SettingsBridge } from '@/src/settings'
@@ -15,6 +16,7 @@ export type PiWorkspaceBridge = Readonly<{
   sessionSkills: SessionSkillsBridge
   sessionFiles: SessionFilesBridge
   sessionChanges: SessionChangesBridge
+  sessionWorkingLocations: SessionWorkingLocationsBridge
   sessionConfiguration: SessionConfigurationBridge
   transcript: SessionTranscriptBridge
   settings: SettingsBridge

@@ -41,7 +41,7 @@ export function initializeWorkstreams(authority: ApplicationAuthority, options: 
 
     return request
       ? authority.createWorkstream(request.workspaceId, request.options)
-      : Promise.reject(new TypeError('A Workstream goal and valid Session mode are required.'))
+      : Promise.reject(new TypeError('A Workstream goal and at least one Repository are required.'))
   })
   handleTrustedIpc(workstreamsIpcChannels.createQuickSession, (_event, value: unknown) => {
     const request = parseCreateQuickSessionRequest(value)
@@ -55,7 +55,7 @@ export function initializeWorkstreams(authority: ApplicationAuthority, options: 
 
     return request
       ? authority.createWorkstreamSession(request.workstreamId, request.options)
-      : Promise.reject(new TypeError('A Workstream and valid Session mode are required.'))
+      : Promise.reject(new TypeError('A Workstream is required.'))
   })
   handleTrustedIpc(workstreamsIpcChannels.getSessionForkPoints, (_event, value: unknown) => {
     const request = parseSessionForkPointsRequest(value)

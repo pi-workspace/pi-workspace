@@ -1,6 +1,5 @@
 import { isSessionId, type SessionId } from '@/src/domain/session'
 import {
-  managedSessionModes,
   type CreateQuickSessionOptions,
   type CreateSessionOptions,
   type CreateWorkstreamOptions,
@@ -41,18 +40,23 @@ export function parseCreateWorkstreamRequest(
 
   const workspaceId = (value as { workspaceId?: unknown }).workspaceId
   const goal = (value as { goal?: unknown }).goal
+  const repositoryIds = (value as { repositoryIds?: unknown }).repositoryIds
   const mode = (value as { mode?: unknown }).mode
 
-  if (typeof workspaceId !== 'string' || typeof goal !== 'string' || !isOptionalSessionMode(mode)) {
+  if (
+    mode !== undefined ||
+    typeof workspaceId !== 'string' ||
+    typeof goal !== 'string' ||
+    !Array.isArray(repositoryIds) ||
+    repositoryIds.length === 0 ||
+    repositoryIds.some((repositoryId) => typeof repositoryId !== 'string' || !repositoryId)
+  ) {
     return undefined
   }
 
   return {
     workspaceId,
-    options: {
-      goal,
-      ...(mode ? { mode } : {}),
-    },
+    options: { goal, repositoryIds: [...new Set(repositoryIds)] },
   }
 }
 
@@ -92,14 +96,14 @@ export function parseCreateSessionRequest(
   if (typeof value !== 'object' || value === null) return undefined
 
   const workstreamId = (value as { workstreamId?: unknown }).workstreamId
-  const mode = (value as { mode?: unknown }).mode
   const title = (value as { title?: unknown }).title
+  const mode = (value as { mode?: unknown }).mode
 
-  if (typeof workstreamId !== 'string' || !isSessionMode(mode) || (title !== undefined && typeof title !== 'string')) {
+  if (mode !== undefined || typeof workstreamId !== 'string' || (title !== undefined && typeof title !== 'string')) {
     return undefined
   }
 
-  return { workstreamId, options: title === undefined ? { mode } : { mode, title } }
+  return { workstreamId, options: title === undefined ? {} : { title } }
 }
 
 export function parseSessionForkPointsRequest(value: unknown): Readonly<{ sessionId: SessionId }> | undefined {
@@ -167,12 +171,4 @@ function isUuid(value: string): boolean {
 
 function isOptionalWorkingLocation(value: unknown): value is CreateQuickSessionOptions['workingLocation'] {
   return value === undefined || value === 'current-checkouts' || value === 'worktrees'
-}
-
-function isOptionalSessionMode(value: unknown): value is CreateWorkstreamOptions['mode'] {
-  return value === undefined || isSessionMode(value)
-}
-
-function isSessionMode(value: unknown): value is CreateSessionOptions['mode'] {
-  return typeof value === 'string' && managedSessionModes.some((mode) => mode === value)
 }

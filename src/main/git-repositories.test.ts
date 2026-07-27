@@ -5,7 +5,13 @@ import { tmpdir } from 'node:os'
 import { join, parse } from 'node:path'
 import { promisify } from 'node:util'
 import test from 'node:test'
-import { createWorktree, inspectGitRepository, proposeWorktree, repositoryRootsOverlap } from './git-repositories'
+import {
+  createWorktree,
+  inspectGitBranch,
+  inspectGitRepository,
+  proposeWorktree,
+  repositoryRootsOverlap,
+} from './git-repositories'
 
 const exec = promisify(execFile)
 
@@ -24,6 +30,13 @@ async function createRepository(): Promise<string> {
   await exec('git', ['init', directoryPath])
   return realpath(directoryPath)
 }
+
+test('reads the current branch from a Repository without requiring a commit', async () => {
+  const repositoryPath = await createRepository()
+  await exec('git', ['-C', repositoryPath, 'branch', '-m', 'feature/current'])
+
+  assert.equal(await inspectGitBranch(repositoryPath), 'feature/current')
+})
 
 test('resolves a selected Repository subdirectory to its canonical Git root and common directory', async () => {
   const repositoryPath = await createRepository()

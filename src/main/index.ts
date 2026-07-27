@@ -19,6 +19,7 @@ import {
 import { createStartupFailureUrl, startupRetryUrl } from '@/src/main/startup-failure'
 import { initializeSettings, subscribeToSettings } from '@/src/main/settings'
 import { initializeSessionChanges } from '@/src/main/session-changes-ipc'
+import { initializeSessionWorkingLocations } from '@/src/main/session-working-locations-ipc'
 import { initializeWorkstreams } from '@/src/main/workstreams-ipc'
 import { initializeWorkstreamKnowledge } from '@/src/main/workstream-knowledge-ipc'
 import { configureTrustedRendererUrl, registerTrustedRendererWindow } from '@/src/main/trusted-ipc'
@@ -114,6 +115,7 @@ async function initializeApplication(): Promise<void> {
     const authority = await initializeApplicationAuthority(app.getPath('userData'))
     initializeApplicationStateIpc(authority)
     initializeSessionChanges(authority)
+    initializeSessionWorkingLocations(authority)
     initializeWorkstreams(authority, { openPath: (path) => shell.openPath(path) })
     initializeWorkstreamKnowledge(authority)
     const settings = await initializeSettings()

@@ -13,6 +13,7 @@ import type { SessionConfigurationBridge } from '@/src/session-configuration'
 import type { SessionSkillsBridge } from '@/src/session-skills'
 import type { SessionActionCard } from '@/src/session-action-cards'
 import type { SessionFilesBridge } from '@/src/session-files'
+import type { SessionWorkingLocationsBridge } from '@/src/session-working-locations'
 import type { SessionTranscriptBridge } from '@/src/session-transcript'
 import { Composer } from '@/src/renderer/components/composer'
 import { QueuedFollowUpTray } from '@/src/renderer/components/queued-follow-up-tray'
@@ -45,12 +46,12 @@ type SessionContainerProperties = {
   sessionConfiguration?: SessionConfigurationBridge
   sessionSkills?: SessionSkillsBridge
   sessionFiles?: SessionFilesBridge
+  sessionWorkingLocations?: SessionWorkingLocationsBridge
   getForkPoints?: () => Promise<readonly SessionForkPoint[]>
   forkSession?: (options: ForkSessionOptions) => Promise<void>
   onTogglePin: () => void
   acceptActionCard?: SessionTranscriptBridge['acceptActionCard']
   dismissActionCard?: SessionTranscriptBridge['dismissActionCard']
-  onStartImplementSession?: (workstreamId: string) => Promise<void>
   onOpenCurrentDiff?: (repositoryId: string | undefined, path: string) => void
 }
 
@@ -76,12 +77,12 @@ export function SessionContainer({
   sessionConfiguration,
   sessionSkills,
   sessionFiles,
+  sessionWorkingLocations,
   getForkPoints,
   forkSession,
   onTogglePin,
   acceptActionCard = async () => false,
   dismissActionCard = async () => false,
-  onStartImplementSession = async () => {},
   onOpenCurrentDiff = () => {},
 }: SessionContainerProperties) {
   const headingId = useId()
@@ -92,12 +93,8 @@ export function SessionContainer({
   const isWorking = transcriptState.snapshot?.isWorking ?? false
   const unavailability = getSessionUnavailability(session)
   const composerUnavailable = Boolean(unavailability) || workstreamLifecycle === 'archived'
-  const modeLabel =
-    session.mode === 'default'
-      ? session.repositoryAccess.repositoryName
-      : session.mode === 'brainstorm'
-        ? 'Brainstorm'
-        : 'Implement'
+  const sessionContext =
+    session.repositoryAccess.kind === 'direct' ? session.repositoryAccess.repositoryName : 'Workstream Session'
 
   useLayoutEffect(() => {
     const transcriptContainer = transcriptContainerRef.current
@@ -158,7 +155,7 @@ export function SessionContainer({
               >
                 {session.title}
               </h1>
-              <p className="text-xs/4 text-content-muted-foreground">{modeLabel}</p>
+              <p className="text-xs/4 text-content-muted-foreground">{sessionContext}</p>
             </div>
             <button
               type="button"
@@ -217,10 +214,7 @@ export function SessionContainer({
           }
           onOpenCurrentDiff={onOpenCurrentDiff}
           onActionCard={async (card: SessionActionCard) => {
-            if (card.kind === 'start-implement-session') {
-              await onStartImplementSession(session.workstreamId)
-              return acceptActionCard(session.id, card.id)
-            }
+            if (card.kind === 'start-implement-session') return false
 
             const result = await submitMessage({
               sessionId: session.id,
@@ -278,6 +272,8 @@ export function SessionContainer({
               sessionConfiguration={sessionConfiguration}
               sessionSkills={sessionSkills}
               sessionFiles={sessionFiles}
+              sessionWorkingLocations={sessionWorkingLocations}
+              canCreateWorktree={session.repositoryAccess.kind === 'managed' && workstreamLifecycle === 'active'}
             />
           )}
         </div>
