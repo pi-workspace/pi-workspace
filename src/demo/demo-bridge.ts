@@ -359,6 +359,28 @@ export function createDemoBridge(scenarioName?: string): PiWorkspaceBridge {
       async acceptActionCard() {
         return false
       },
+      async dismissActionCard(sessionId, actionCardId) {
+        const transcript = transcriptSnapshot(sessionId)
+        const card = transcript.actionCards?.find(
+          (candidate) => candidate.id === actionCardId && candidate.status === 'available'
+        )
+        if (!card) return false
+
+        const snapshot = {
+          ...transcript,
+          revision: transcript.revision + 1,
+          actionCards: transcript.actionCards?.map((candidate) =>
+            candidate.id === actionCardId ? { ...candidate, status: 'dismissed' as const } : candidate
+          ),
+        }
+        transcriptsBySessionId[sessionId] = snapshot
+
+        for (const listener of transcriptListeners) {
+          listener({ sessionId, revision: snapshot.revision, snapshot })
+        }
+
+        return true
+      },
       async openExternalLink() {},
       subscribe(listener) {
         transcriptListeners.add(listener)
