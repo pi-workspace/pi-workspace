@@ -4,6 +4,7 @@ import type { SessionFileDiffView } from '@/src/session-changes'
 export const sessionChangesIpcChannels = {
   getSnapshot: 'session-changes:get-snapshot',
   loadFileDiff: 'session-changes:load-file-diff',
+  setFileStaged: 'session-changes:set-file-staged',
 } as const
 
 export function parseSessionChangesRequest(value: unknown): Readonly<{ sessionId: SessionId }> | undefined {
@@ -16,12 +17,33 @@ export function parseSessionChangesRequest(value: unknown): Readonly<{ sessionId
 export function parseSessionFileDiffRequest(
   value: unknown
 ): Readonly<{ sessionId: SessionId; repositoryId: string; path: string; view: SessionFileDiffView }> | undefined {
+  const request = parseSessionFileRequest(value)
+  if (!request) return undefined
+
+  const view = (value as { view?: unknown }).view
+  if (view !== 'all' && view !== 'staged' && view !== 'unstaged') return undefined
+
+  return { ...request, view }
+}
+
+export function parseSessionFileStageRequest(
+  value: unknown
+): Readonly<{ sessionId: SessionId; repositoryId: string; path: string; staged: boolean }> | undefined {
+  const request = parseSessionFileRequest(value)
+  if (!request) return undefined
+
+  const staged = (value as { staged?: unknown }).staged
+  return typeof staged === 'boolean' ? { ...request, staged } : undefined
+}
+
+function parseSessionFileRequest(
+  value: unknown
+): Readonly<{ sessionId: SessionId; repositoryId: string; path: string }> | undefined {
   const request = parseSessionChangesRequest(value)
   if (!request) return undefined
 
   const repositoryId = (value as { repositoryId?: unknown }).repositoryId
   const path = (value as { path?: unknown }).path
-  const view = (value as { view?: unknown }).view
 
   if (
     typeof repositoryId !== 'string' ||
@@ -29,11 +51,10 @@ export function parseSessionFileDiffRequest(
     repositoryId.length > 256 ||
     typeof path !== 'string' ||
     path.length === 0 ||
-    path.length > 8_192 ||
-    (view !== 'all' && view !== 'staged' && view !== 'unstaged')
+    path.length > 8_192
   ) {
     return undefined
   }
 
-  return { ...request, repositoryId, path, view }
+  return { ...request, repositoryId, path }
 }

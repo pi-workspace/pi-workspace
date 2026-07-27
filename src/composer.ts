@@ -1,4 +1,5 @@
 import type { SessionId } from '@/src/domain/session'
+import type { SessionCodeReference, SessionCodeReview, SessionCodeReviewDraft } from '@/src/session-code-review'
 
 export const sessionMessageDeliveries = ['steer', 'follow-up', 'action'] as const
 
@@ -11,6 +12,14 @@ export type SessionMessageSubmission = Readonly<{
   sessionId: SessionId
   text: string
   delivery: SessionMessageDelivery
+  codeReview?: SessionCodeReview
+}>
+
+export type SessionCodeReviewCommentCommand = Readonly<{
+  sessionId: SessionId
+  commentId?: string
+  text: string
+  reference: SessionCodeReference
 }>
 
 export function isSessionSkillName(value: unknown): value is string {
@@ -56,6 +65,10 @@ export type SessionMessageSubmissionResult =
 export interface ComposerBridge {
   compact(sessionId: SessionId): Promise<SessionContextCompactionResult>
   submit(submission: SessionMessageSubmission): Promise<SessionMessageSubmissionResult>
+  getCodeReviewDraft(sessionId: SessionId): Promise<SessionCodeReviewDraft>
+  saveCodeReviewComment(command: SessionCodeReviewCommentCommand): Promise<SessionCodeReviewDraft>
+  removeCodeReviewComment(sessionId: SessionId, commentId: string): Promise<SessionCodeReviewDraft>
+  finishCodeReview(sessionId: SessionId): Promise<SessionMessageSubmissionResult>
   stop(sessionId: SessionId): Promise<SessionRunStopResult>
   removeQueuedFollowUp(sessionId: SessionId, followUpId: string): Promise<boolean>
   resumeQueuedFollowUps(sessionId: SessionId): Promise<boolean>

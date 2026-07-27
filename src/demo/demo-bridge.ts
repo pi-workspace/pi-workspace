@@ -6,6 +6,11 @@ import { sessionId } from '@/src/domain/session'
 import type { WorkstreamsSnapshot } from '@/src/domain/workstream'
 import type { SessionTranscriptSnapshot } from '@/src/session-transcript'
 import {
+  formatSessionCodeReviewText,
+  type SessionCodeReview,
+  type SessionCodeReviewDraft,
+} from '@/src/session-code-review'
+import {
   createEmptyWorkstreamKnowledge,
   deriveWorkstreamKnowledgeReadiness,
 } from '@/src/domain/workstream-knowledge-transitions'
@@ -65,6 +70,11 @@ export function createDemoBridge(scenarioName?: string): PiWorkspaceBridge {
   const transcriptsBySessionId: Record<string, SessionTranscriptSnapshot> = { ...scenario.transcriptsBySessionId }
   const transcriptListeners = new Set<Parameters<PiWorkspaceBridge['transcript']['subscribe']>[0]>()
   const settingsListeners = new Set<Parameters<PiWorkspaceBridge['settings']['subscribe']>[0]>()
+  const codeReviewDrafts = new Map<string, SessionCodeReviewDraft>()
+  const demoFileStaging = new Map<string, 'staged' | 'unstaged' | 'partial'>([
+    ['src/notes/note-store.ts', 'partial'],
+    ['src/notes/sync-queue.ts', 'unstaged'],
+  ])
 
   colorSchemeMediaQuery.addEventListener('change', (event) => {
     if (settingsSnapshot.appearance !== 'system') {
@@ -78,6 +88,11 @@ export function createDemoBridge(scenarioName?: string): PiWorkspaceBridge {
     }
   })
 
+  const stagingState = (path: string) => {
+    const state = demoFileStaging.get(path) ?? 'unstaged'
+    return { staged: state !== 'unstaged', unstaged: state !== 'staged' }
+  }
+
   const transcriptSnapshot = (requestedSessionId: string): SessionTranscriptSnapshot =>
     transcriptsBySessionId[requestedSessionId] ?? {
       sessionId: sessionId(requestedSessionId),
@@ -86,6 +101,32 @@ export function createDemoBridge(scenarioName?: string): PiWorkspaceBridge {
       runs: [],
       entries: [],
     }
+  const publishCodeReview = (requestedSessionId: string, codeReview: SessionCodeReview) => {
+    const transcript = transcriptSnapshot(requestedSessionId)
+    const revision = transcript.revision + 1
+    const snapshot = {
+      ...transcript,
+      revision,
+      entries: [
+        ...transcript.entries,
+        {
+          type: 'message' as const,
+          message: {
+            id: `demo-review-${revision}`,
+            role: 'user' as const,
+            text: formatSessionCodeReviewText(codeReview),
+            codeReview,
+            state: 'complete' as const,
+            revision,
+          },
+        },
+      ],
+    }
+    transcriptsBySessionId[requestedSessionId] = snapshot
+    transcriptListeners.forEach((listener) =>
+      listener({ sessionId: sessionId(requestedSessionId), revision, snapshot })
+    )
+  }
 
   return {
     applicationState: {
@@ -130,8 +171,48 @@ export function createDemoBridge(scenarioName?: string): PiWorkspaceBridge {
       async compact() {
         return { status: 'compacted' as const }
       },
-      async submit() {
-        return { status: 'rejected', reason: 'unexpected' }
+      async submit(submission) {
+        if (!submission.codeReview) return { status: 'rejected' as const, reason: 'unexpected' as const }
+
+        publishCodeReview(submission.sessionId, submission.codeReview)
+        return { status: 'accepted' as const, delivery: submission.delivery }
+      },
+      async getCodeReviewDraft(sessionId) {
+        return codeReviewDrafts.get(sessionId) ?? { comments: [] }
+      },
+      async saveCodeReviewComment(command) {
+        const current = codeReviewDrafts.get(command.sessionId) ?? { comments: [] }
+        const existing = command.commentId
+          ? current.comments.find((comment) => comment.id === command.commentId)
+          : undefined
+        const comment = {
+          id: existing?.id ?? `demo-review-${current.comments.length + 1}`,
+          text: command.text,
+          reference: command.reference,
+          createdAt: existing?.createdAt ?? Date.now(),
+        }
+        const next = {
+          comments: existing
+            ? current.comments.map((candidate) => (candidate.id === existing.id ? comment : candidate))
+            : [...current.comments, comment],
+        }
+        codeReviewDrafts.set(command.sessionId, next)
+        return next
+      },
+      async removeCodeReviewComment(sessionId, commentId) {
+        const next = {
+          comments: (codeReviewDrafts.get(sessionId)?.comments ?? []).filter((comment) => comment.id !== commentId),
+        }
+        codeReviewDrafts.set(sessionId, next)
+        return next
+      },
+      async finishCodeReview(sessionId) {
+        const draft = codeReviewDrafts.get(sessionId) ?? { comments: [] }
+        if (draft.comments.length === 0) return { status: 'rejected' as const, reason: 'invalid-submission' as const }
+
+        codeReviewDrafts.set(sessionId, { comments: [] })
+        publishCodeReview(sessionId, { kind: 'review', comments: draft.comments })
+        return { status: 'accepted' as const, delivery: 'prompt' as const }
       },
       async stop() {
         return { status: 'not-running' }
@@ -194,16 +275,14 @@ export function createDemoBridge(scenarioName?: string): PiWorkspaceBridge {
                       {
                         path: 'src/notes/note-store.ts',
                         status: 'modified' as const,
-                        staged: true,
-                        unstaged: true,
+                        ...stagingState('src/notes/note-store.ts'),
                         additions: 8,
                         deletions: 2,
                       },
                       {
                         path: 'src/notes/sync-queue.ts',
                         status: 'added' as const,
-                        staged: false,
-                        unstaged: true,
+                        ...stagingState('src/notes/sync-queue.ts'),
                         additions: 42,
                         deletions: 0,
                       },
@@ -223,6 +302,12 @@ export function createDemoBridge(scenarioName?: string): PiWorkspaceBridge {
           content: `diff --git a/${path} b/${path}\n--- a/${path}\n+++ b/${path}\n@@ -1,2 +1,3 @@\n-export const sync = saveRemote\n+export const sync = queueLocalSave\n+export const state = '${view}'`,
           truncated: false,
         }
+      },
+      async setFileStaged(sessionId, _repositoryId, path, staged) {
+        if (!demoFileStaging.has(path)) throw new Error('The changed file is no longer available.')
+
+        demoFileStaging.set(path, staged ? 'staged' : 'unstaged')
+        return this.getSnapshot(sessionId)
       },
     },
     sessionConfiguration: {

@@ -1,4 +1,9 @@
 import type { QueuedFollowUp, QueuedFollowUpRecord } from '@/src/queued-follow-up'
+import {
+  maximumSessionCodeReviewLength,
+  parseSessionCodeReview,
+  type SessionCodeReviewRecord,
+} from '@/src/session-code-review'
 import type { SessionActionCard, SessionActionCardStatus } from '@/src/session-action-cards'
 import {
   agentActivityKinds,
@@ -36,6 +41,7 @@ export type ActivityLayerRecord =
       status: Exclude<SessionActionCardStatus, 'available'>
     }>
   | Readonly<{ version: 1 } & QueuedFollowUpRecord>
+  | Readonly<{ version: 1 } & SessionCodeReviewRecord>
   | Readonly<{ version: 1; type: 'steering-message'; text: string; acceptedAt: number }>
   | Readonly<{ version: 1; type: 'action-message'; text: string; acceptedAt: number }>
   | Readonly<{
@@ -60,6 +66,21 @@ export function isActivityLayerRecord(value: unknown): value is ActivityLayerRec
   }
   if (value.type === 'queued-follow-up') return isQueuedFollowUp(value.followUp)
   if (value.type === 'queued-follow-up-removed') return isNonEmptyString(value.followUpId)
+  if (value.type === 'code-review-comment') {
+    return Boolean(parseSessionCodeReview({ kind: 'review', comments: [value.comment] }))
+  }
+  if (value.type === 'code-review-comment-removed') return isNonEmptyString(value.commentId)
+  if (value.type === 'code-review-comments-cleared') {
+    return Array.isArray(value.commentIds) && value.commentIds.every(isNonEmptyString)
+  }
+  if (value.type === 'code-review-message') {
+    return (
+      Boolean(parseSessionCodeReview(value.review)) &&
+      typeof value.text === 'string' &&
+      value.text.length <= maximumSessionCodeReviewLength &&
+      isTimestamp(value.acceptedAt)
+    )
+  }
   if (value.type === 'steering-message' || value.type === 'action-message') {
     return typeof value.text === 'string' && isTimestamp(value.acceptedAt)
   }
@@ -101,6 +122,7 @@ function isQueuedFollowUp(value: unknown): value is QueuedFollowUp {
     isNonEmptyString(value.id) &&
     typeof value.text === 'string' &&
     (value.skills === undefined || (Array.isArray(value.skills) && value.skills.every(isSessionSkillMention))) &&
+    (value.codeReview === undefined || Boolean(parseSessionCodeReview(value.codeReview))) &&
     isTimestamp(value.createdAt)
   )
 }

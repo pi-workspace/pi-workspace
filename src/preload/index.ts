@@ -164,6 +164,18 @@ const composerBridge: ComposerBridge = {
   submit(submission) {
     return ipcRenderer.invoke(composerIpcChannels.submit, submission) as Promise<SessionMessageSubmissionResult>
   },
+  getCodeReviewDraft(sessionId) {
+    return ipcRenderer.invoke(composerIpcChannels.getCodeReviewDraft, { sessionId })
+  },
+  saveCodeReviewComment(command) {
+    return ipcRenderer.invoke(composerIpcChannels.saveCodeReviewComment, command)
+  },
+  removeCodeReviewComment(sessionId, commentId) {
+    return ipcRenderer.invoke(composerIpcChannels.removeCodeReviewComment, { sessionId, commentId })
+  },
+  finishCodeReview(sessionId) {
+    return ipcRenderer.invoke(composerIpcChannels.finishCodeReview, { sessionId })
+  },
   stop(sessionId) {
     return ipcRenderer.invoke(composerIpcChannels.stop, { sessionId }) as Promise<SessionRunStopResult>
   },
@@ -192,6 +204,14 @@ const sessionChangesBridge: SessionChangesBridge = {
       path,
       view,
     }) as Promise<SessionFileDiff>
+  },
+  setFileStaged(sessionId, repositoryId, path, staged) {
+    return ipcRenderer.invoke(sessionChangesIpcChannels.setFileStaged, {
+      sessionId,
+      repositoryId,
+      path,
+      staged,
+    }) as Promise<SessionChangesSnapshot>
   },
 }
 

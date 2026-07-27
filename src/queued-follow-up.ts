@@ -1,9 +1,11 @@
 import type { SessionSkillMention } from '@/src/session-skills'
+import type { SessionCodeReview } from '@/src/session-code-review'
 
 export type QueuedFollowUp = Readonly<{
   id: string
   text: string
   skills?: readonly SessionSkillMention[]
+  codeReview?: SessionCodeReview
   createdAt: number
 }>
 

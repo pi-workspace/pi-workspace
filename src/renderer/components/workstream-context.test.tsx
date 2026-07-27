@@ -266,10 +266,10 @@ test('shows Knowledge and Changes in a keyboard-resizable utility dock when spac
     const separator = await waitFor(() => view.getByRole('separator', { name: 'Resize utility panel' }))
     assert.ok(view.getAllByRole('tab', { name: 'Knowledge' }).length >= 1)
     assert.ok(view.getAllByRole('tab', { name: 'Changes' }).length >= 1)
-    assert.equal(separator.getAttribute('aria-valuenow'), '420')
+    assert.equal(separator.getAttribute('aria-valuenow'), '520')
 
     fireEvent.keyDown(separator, { key: 'ArrowLeft' })
-    assert.equal(separator.getAttribute('aria-valuenow'), '440')
+    assert.equal(separator.getAttribute('aria-valuenow'), '540')
   } finally {
     if (originalRect) {
       Object.defineProperty(browser.window.HTMLElement.prototype, 'getBoundingClientRect', originalRect)

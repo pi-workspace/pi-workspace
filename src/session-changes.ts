@@ -53,4 +53,10 @@ export interface SessionChangesBridge {
     path: string,
     view: SessionFileDiffView
   ): Promise<SessionFileDiff>
+  setFileStaged(
+    sessionId: SessionId,
+    repositoryId: string,
+    path: string,
+    staged: boolean
+  ): Promise<SessionChangesSnapshot>
 }

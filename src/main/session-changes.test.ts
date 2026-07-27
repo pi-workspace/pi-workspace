@@ -5,7 +5,12 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import test from 'node:test'
-import { inspectRepositoryChanges, loadRepositoryFileDiff, parseGitStatus } from './session-changes'
+import {
+  inspectRepositoryChanges,
+  loadRepositoryFileDiff,
+  parseGitStatus,
+  setRepositoryFileStaged,
+} from './session-changes'
 
 const exec = promisify(execFile)
 
@@ -84,6 +89,81 @@ test('inspects staged and unstaged state once per changed file', async () => {
       { path: 'tracked.txt', staged: true, unstaged: true },
       { path: 'untracked.txt', staged: false, unstaged: true },
     ]
+  )
+})
+
+test('stages all current changes for a partially staged file and can unstage them again', async () => {
+  const workingPath = await createRepository()
+  const repository = { repositoryId: 'repository', repositoryName: 'Repository', workingPath }
+  await writeFile(join(workingPath, 'tracked.txt'), 'staged\n')
+  await exec('git', ['-C', workingPath, 'add', 'tracked.txt'])
+  await writeFile(join(workingPath, 'tracked.txt'), 'staged\nunstaged\n')
+
+  await setRepositoryFileStaged(repository, { path: 'tracked.txt', staged: true })
+  const staged = await inspectRepositoryChanges(repository)
+  assert.deepEqual(
+    staged.files.map(({ path, staged, unstaged }) => ({ path, staged, unstaged })),
+    [{ path: 'tracked.txt', staged: true, unstaged: false }]
+  )
+
+  await setRepositoryFileStaged(repository, { path: 'tracked.txt', staged: false })
+  const unstaged = await inspectRepositoryChanges(repository)
+  assert.deepEqual(
+    unstaged.files.map(({ path, staged, unstaged }) => ({ path, staged, unstaged })),
+    [{ path: 'tracked.txt', staged: false, unstaged: true }]
+  )
+})
+
+test('stages and unstages an untracked file before the first commit', async () => {
+  const workingPath = await mkdtemp(join(tmpdir(), 'railyard-unborn-stage-'))
+  const repository = { repositoryId: 'repository', repositoryName: 'Repository', workingPath }
+  await exec('git', ['init', workingPath])
+  await writeFile(join(workingPath, 'new.txt'), 'new file\n')
+
+  await setRepositoryFileStaged(repository, { path: 'new.txt', staged: true })
+  const staged = await inspectRepositoryChanges(repository)
+  assert.deepEqual(
+    staged.files.map(({ path, staged, unstaged }) => ({ path, staged, unstaged })),
+    [{ path: 'new.txt', staged: true, unstaged: false }]
+  )
+
+  await setRepositoryFileStaged(repository, { path: 'new.txt', staged: false })
+  const unstaged = await inspectRepositoryChanges(repository)
+  assert.deepEqual(
+    unstaged.files.map(({ path, staged, unstaged }) => ({ path, staged, unstaged })),
+    [{ path: 'new.txt', staged: false, unstaged: true }]
+  )
+})
+
+test('refuses to stage a conflicted file', async () => {
+  const workingPath = await createRepository()
+  const repository = { repositoryId: 'repository', repositoryName: 'Repository', workingPath }
+  const { stdout: branchOutput } = await exec('git', ['-C', workingPath, 'branch', '--show-current'])
+  const baseBranch = branchOutput.trim()
+
+  await exec('git', ['-C', workingPath, 'checkout', '-b', 'conflicting-change'])
+  await writeFile(join(workingPath, 'tracked.txt'), 'branch\n')
+  await exec('git', ['-C', workingPath, 'commit', '-am', 'Branch change'])
+  await exec('git', ['-C', workingPath, 'checkout', baseBranch])
+  await writeFile(join(workingPath, 'tracked.txt'), 'base\n')
+  await exec('git', ['-C', workingPath, 'commit', '-am', 'Base change'])
+  await assert.rejects(exec('git', ['-C', workingPath, 'merge', 'conflicting-change']))
+
+  await assert.rejects(
+    setRepositoryFileStaged(repository, { path: 'tracked.txt', staged: true }),
+    /Resolve the conflict/
+  )
+})
+
+test('rejects staging paths outside the current Repository', async () => {
+  const workingPath = await createRepository()
+
+  await assert.rejects(
+    setRepositoryFileStaged(
+      { repositoryId: 'repository', repositoryName: 'Repository', workingPath },
+      { path: '../secret', staged: true }
+    ),
+    /no longer available/
   )
 })
 

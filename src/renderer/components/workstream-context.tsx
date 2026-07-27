@@ -257,7 +257,7 @@ export function WorkstreamContextLayout({
   const hasChanges = Boolean(activeSession && activeSession.mode !== 'brainstorm')
   const [open, setOpen] = useState(hasKnowledge)
   const [tab, setTab] = useState<UtilityTab>(hasKnowledge ? 'knowledge' : 'changes')
-  const [dockWidth, setDockWidth] = useState(420)
+  const [dockWidth, setDockWidth] = useState(520)
   const [layoutWidth, setLayoutWidth] = useState(0)
   const layoutRef = useRef<HTMLDivElement>(null)
   const persistent = layoutWidth >= 400 + dockWidth

@@ -118,6 +118,38 @@ export async function inspectRepositoryChanges(repository: SessionChangeReposito
   }
 }
 
+export async function setRepositoryFileStaged(
+  repository: SessionChangeRepository,
+  request: Readonly<{ path: string; staged: boolean }>
+): Promise<void> {
+  if (!isSafeRelativePath(request.path)) throw new Error('The changed file is no longer available.')
+
+  const status = parseGitStatus(await runGit(repository.workingPath, ['status', '--porcelain=v2', '--branch', '-z']))
+  const file = status.files.find((candidate) => candidate.path === request.path)
+  if (!file) throw new Error('The changed file is no longer available.')
+  if (file.status === 'conflicted') throw new Error('Resolve the conflict before staging this file.')
+
+  if ((request.staged && !file.unstaged) || (!request.staged && !file.staged)) return
+
+  const paths = [
+    file.path,
+    ...(file.status === 'renamed' && file.previousPath && isSafeRelativePath(file.previousPath)
+      ? [file.previousPath]
+      : []),
+  ]
+  if (request.staged) {
+    await runGit(repository.workingPath, ['add', '--all', '--', ...paths])
+    return
+  }
+
+  if (status.branch.unborn) {
+    await runGit(repository.workingPath, ['rm', '--cached', '--ignore-unmatch', '--', ...paths])
+    return
+  }
+
+  await runGit(repository.workingPath, ['restore', '--staged', '--', ...paths])
+}
+
 export async function loadRepositoryFileDiff(
   repository: SessionChangeRepository,
   request: Readonly<{ path: string; view: SessionFileDiffView }>

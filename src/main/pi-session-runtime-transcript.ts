@@ -95,10 +95,20 @@ export function hydrateTimeline(timeline: SessionRuntimeTimeline, history: PiSes
 
   const hiddenMessageIds = new Set<string>()
   const steeringMessageIds = new Set<string>()
+  const codeReviewsByMessageId = new Map<
+    string,
+    Extract<ActivityLayerRecord, { type: 'code-review-message' }>['review']
+  >()
   const unmatchedConversations = [...history.conversations]
 
   for (const record of history.activityRecords) {
-    if (record.type !== 'steering-message' && record.type !== 'action-message') continue
+    if (
+      record.type !== 'steering-message' &&
+      record.type !== 'action-message' &&
+      record.type !== 'code-review-message'
+    ) {
+      continue
+    }
 
     let index = -1
     let nearestTimestampDifference = Number.POSITIVE_INFINITY
@@ -120,8 +130,10 @@ export function hydrateTimeline(timeline: SessionRuntimeTimeline, history: PiSes
 
     if (record.type === 'action-message') {
       hiddenMessageIds.add(conversation.id)
-    } else {
+    } else if (record.type === 'steering-message') {
       steeringMessageIds.add(conversation.id)
+    } else {
+      codeReviewsByMessageId.set(conversation.id, record.review)
     }
   }
 
@@ -133,6 +145,7 @@ export function hydrateTimeline(timeline: SessionRuntimeTimeline, history: PiSes
       role: conversation.role,
       text: conversation.text,
       skills: conversation.skills,
+      codeReview: codeReviewsByMessageId.get(conversation.id),
       delivery: steeringMessageIds.has(conversation.id) ? 'steer' : undefined,
       state: 'complete',
       revision: 0,
