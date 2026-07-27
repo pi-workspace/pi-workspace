@@ -27,8 +27,15 @@ import { ContentEditable } from '@lexical/react/LexicalContentEditable'
 import { LexicalErrorBoundary } from '@lexical/react/LexicalErrorBoundary'
 import { HistoryPlugin } from '@lexical/react/LexicalHistoryPlugin'
 import { PlainTextPlugin } from '@lexical/react/LexicalPlainTextPlugin'
-import { forwardRef, useCallback, useEffect, useId, useImperativeHandle, useMemo, useState } from 'react'
+import { forwardRef, useCallback, useEffect, useId, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import type { SessionMessageDelivery } from '@/src/composer'
+import {
+  $createComposerFileNode,
+  $getComposerFileNode,
+  $isComposerFileNode,
+  ComposerFileNode,
+  removeComposerFileCommand,
+} from '@/src/renderer/components/composer-file-node'
 import {
   $createComposerSkillNode,
   $getComposerSkillNode,
@@ -36,7 +43,13 @@ import {
   ComposerSkillNode,
   removeComposerSkillCommand,
 } from '@/src/renderer/components/composer-skill-node'
-import { projectSessionSkillSelections, type SessionSkill, type SessionSkillReference } from '@/src/session-skills'
+import type { SessionSkill, SessionSkillReference } from '@/src/session-skills'
+import {
+  findSessionFileTokens,
+  sessionFileToken,
+  type SessionFile,
+  type SessionFileReference,
+} from '@/src/session-files'
 
 const externalDraftUpdateTag = 'composer-external-draft'
 const composerCaretMarker = '\u00a0'
@@ -49,12 +62,14 @@ export type ComposerEditorHandle = Readonly<{
 
 type ComposerEditorProperties = Readonly<{
   availableSkills: readonly SessionSkill[]
+  availableFiles: readonly SessionFile[]
   describedBy: string
   draft: string
   label: string
   readOnly: boolean
   onChange: (draft: string) => void
   onFocus: () => void
+  onFileQuery: (query: string) => void
   onSubmit: (delivery: SessionMessageDelivery) => void
 }>
 
@@ -78,20 +93,70 @@ function skillReference(skillName: string, availableSkills: readonly SessionSkil
   return available ? { ...available, availability: 'available' } : { name: skillName, availability: 'unavailable' }
 }
 
-function replaceDraft(draft: string, availableSkills: readonly SessionSkill[], selectEnd = false): void {
+function fileReference(path: string, availableFiles: readonly SessionFile[]): SessionFileReference {
+  const available = availableFiles.find((file) => file.path === path)
+
+  return available
+    ? { path: available.path, kind: available.kind, availability: 'available' }
+    : { path, kind: 'file', availability: 'unavailable' }
+}
+
+type ComposerReferenceToken = Readonly<{
+  startOffset: number
+  endOffset: number
+  visibleLength: number
+  type: 'skill' | 'file'
+  value: string
+}>
+
+function composerReferenceTokens(draft: string): readonly ComposerReferenceToken[] {
+  const skills = [...draft.matchAll(/(?<!\S)\/skill:([a-z0-9]+(?:-[a-z0-9]+)*)/g)].flatMap((match) => {
+    const name = match[1]
+    const startOffset = match.index
+    if (!name || startOffset === undefined) return []
+
+    return [
+      {
+        startOffset,
+        endOffset: startOffset + match[0].length,
+        visibleLength: name.length,
+        type: 'skill' as const,
+        value: name,
+      },
+    ]
+  })
+  const files = findSessionFileTokens(draft).map((token) => ({
+    startOffset: token.startOffset,
+    endOffset: token.endOffset,
+    visibleLength: token.path.length + 1,
+    type: 'file' as const,
+    value: token.path,
+  }))
+
+  return [...skills, ...files].sort((left, right) => left.startOffset - right.startOffset)
+}
+
+function replaceDraft(
+  draft: string,
+  availableSkills: readonly SessionSkill[],
+  availableFiles: readonly SessionFile[] = [],
+  selectEnd = false
+): void {
   const root = $getRoot()
   const paragraph = $createParagraphNode()
-  const projected = projectSessionSkillSelections(draft)
   let textOffset = 0
 
-  for (const selection of projected.selections) {
-    appendPlainText(paragraph, projected.text.slice(textOffset, selection.offset))
-    paragraph.append($createComposerSkillNode(skillReference(selection.name, availableSkills)))
-    textOffset = selection.offset
+  for (const token of composerReferenceTokens(draft)) {
+    appendPlainText(paragraph, draft.slice(textOffset, token.startOffset))
+    if (token.type === 'skill') paragraph.append($createComposerSkillNode(skillReference(token.value, availableSkills)))
+    else paragraph.append($createComposerFileNode(fileReference(token.value, availableFiles)))
+    textOffset = token.endOffset
   }
 
-  appendPlainText(paragraph, projected.text.slice(textOffset))
-  if ($isComposerSkillNode(paragraph.getLastChild())) paragraph.append($createTextNode(composerCaretMarker))
+  appendPlainText(paragraph, draft.slice(textOffset))
+  if ($isComposerSkillNode(paragraph.getLastChild()) || $isComposerFileNode(paragraph.getLastChild())) {
+    paragraph.append($createTextNode(composerCaretMarker))
+  }
   root.clear().append(paragraph)
 
   if (selectEnd) paragraph.selectEnd()
@@ -116,11 +181,22 @@ function getDOMComposerDraft(node: Node): string {
   if (node instanceof HTMLElement && node.hasAttribute('data-skill-reference')) {
     return `/skill:${node.getAttribute('data-skill-reference') ?? ''}`
   }
+  if (node instanceof HTMLElement && node.hasAttribute('data-file-reference')) {
+    return sessionFileToken(node.getAttribute('data-file-reference') ?? '')
+  }
 
   if (node.nodeType === Node.TEXT_NODE) return normalizeComposerCaretMarkers(node.textContent ?? '')
-  if (node.nodeName === 'BR') return '\n'
+  if (node.nodeName === 'BR') {
+    return node instanceof HTMLElement && node.hasAttribute('data-lexical-managed-linebreak') ? '' : '\n'
+  }
 
-  const childText = Array.from(node.childNodes, getDOMComposerDraft).join('')
+  const children =
+    node instanceof HTMLElement &&
+    node.hasAttribute('data-lexical-editor') &&
+    node.querySelector('[data-file-reference]')
+      ? Array.from(node.childNodes).filter((child) => child.nodeType !== Node.TEXT_NODE)
+      : Array.from(node.childNodes)
+  const childText = children.map(getDOMComposerDraft).join('')
   return htmlBlockNames.has(node.nodeName) && childText.length > 0 && !childText.endsWith('\n')
     ? `${childText}\n`
     : childText
@@ -142,27 +218,37 @@ function getPlainClipboardText(clipboardData: DataTransfer): string {
   return getDOMPlainText(new DOMParser().parseFromString(html, 'text/html').body).replace(/\n+$/, '')
 }
 
-function removeSkillNode(skillNode: ComposerSkillNode): void {
-  const nextSibling = skillNode.getNextSibling()
+function removeInlineReferenceNode(referenceNode: ComposerSkillNode | ComposerFileNode): void {
+  const nextSibling = referenceNode.getNextSibling()
   if ($isTextNode(nextSibling) && nextSibling.getTextContent().includes(composerCaretMarker)) {
     const text = nextSibling.getTextContent().replaceAll(composerCaretMarker, '')
     if (text.length > 0) nextSibling.setTextContent(text)
     else nextSibling.remove()
   }
-  skillNode.remove()
+  referenceNode.remove()
 }
 
 function ComposerEditorPlugins({
   availableSkills,
+  availableFiles,
   draft,
   readOnly,
   onChange,
   onSubmit,
   editorHandle,
-}: Pick<ComposerEditorProperties, 'availableSkills' | 'draft' | 'readOnly' | 'onChange' | 'onSubmit'> & {
+}: Pick<
+  ComposerEditorProperties,
+  'availableSkills' | 'availableFiles' | 'draft' | 'readOnly' | 'onChange' | 'onSubmit'
+> & {
   editorHandle: React.Ref<ComposerEditorHandle>
 }) {
   const [editor] = useLexicalComposerContext()
+  const latestEditorDraft = useRef(draft)
+  const editorDraftIsPending = useRef(false)
+  if (latestEditorDraft.current !== draft) {
+    latestEditorDraft.current = draft
+    editorDraftIsPending.current = false
+  }
 
   useImperativeHandle(editorHandle, () => ({
     focus() {
@@ -205,19 +291,65 @@ function ComposerEditorPlugins({
 
   useEffect(() => {
     editor.getEditorState().read(() => {
-      if (normalizeComposerCaretMarkers($getRoot().getTextContent()) === draft) return
+      const currentDraft = normalizeComposerCaretMarkers($getRoot().getTextContent())
+      if (currentDraft === draft) return
+      if (editorDraftIsPending.current && latestEditorDraft.current === currentDraft) return
 
-      editor.update(() => replaceDraft(draft, availableSkills), { tag: externalDraftUpdateTag })
+      latestEditorDraft.current = draft
+      editorDraftIsPending.current = false
+      editor.update(() => replaceDraft(draft, availableSkills, availableFiles), { tag: externalDraftUpdateTag })
     })
-  }, [availableSkills, draft, editor])
+  }, [availableFiles, availableSkills, draft, editor])
 
   useEffect(() => {
-    editor.update(() => {
+    let needsUpdate = false
+    editor.getEditorState().read(() => {
       for (const node of $nodesOfType(ComposerSkillNode)) {
-        node.setSkill(skillReference(node.getSkill().name, availableSkills))
+        const skill = skillReference(node.getSkill().name, availableSkills)
+        const currentSkill = node.getSkill()
+        if (currentSkill.name !== skill.name || currentSkill.availability !== skill.availability) {
+          needsUpdate = true
+          break
+        }
+      }
+
+      if (needsUpdate) return
+
+      for (const node of $nodesOfType(ComposerFileNode)) {
+        const file = fileReference(node.getFile().path, availableFiles)
+        const currentFile = node.getFile()
+        if (
+          currentFile.path !== file.path ||
+          currentFile.kind !== file.kind ||
+          currentFile.availability !== file.availability
+        ) {
+          needsUpdate = true
+          break
+        }
       }
     })
-  }, [availableSkills, editor])
+
+    if (!needsUpdate) return
+
+    editor.update(() => {
+      for (const node of $nodesOfType(ComposerSkillNode)) {
+        const skill = skillReference(node.getSkill().name, availableSkills)
+        const currentSkill = node.getSkill()
+        if (currentSkill.name !== skill.name || currentSkill.availability !== skill.availability) node.setSkill(skill)
+      }
+      for (const node of $nodesOfType(ComposerFileNode)) {
+        const file = fileReference(node.getFile().path, availableFiles)
+        const currentFile = node.getFile()
+        if (
+          currentFile.path !== file.path ||
+          currentFile.kind !== file.kind ||
+          currentFile.availability !== file.availability
+        ) {
+          node.setFile(file)
+        }
+      }
+    })
+  }, [availableFiles, availableSkills, editor])
 
   useEffect(
     () =>
@@ -313,6 +445,7 @@ function ComposerEditorPlugins({
             replaceDraft(
               `${normalizeComposerCaretMarkers($getRoot().getTextContent())}${plainText}`,
               availableSkills,
+              availableFiles,
               true
             )
           })
@@ -321,7 +454,7 @@ function ComposerEditorPlugins({
         },
         COMMAND_PRIORITY_HIGH
       ),
-    [availableSkills, editor]
+    [availableFiles, availableSkills, editor]
   )
 
   useEffect(
@@ -329,7 +462,24 @@ function ComposerEditorPlugins({
       editor.registerCommand(
         CONTROLLED_TEXT_INSERTION_COMMAND,
         (text) => {
-          if ($getSelection() !== null || typeof text !== 'string') return false
+          if (typeof text !== 'string') return false
+
+          const selection = $getSelection()
+          if ($isRangeSelection(selection) && selection.isCollapsed() && selection.anchor.type === 'text') {
+            const marker = selection.anchor.getNode()
+            const referenceNode = $isTextNode(marker) ? marker.getPreviousSibling() : undefined
+            if (
+              $isTextNode(marker) &&
+              marker.getTextContent() === composerCaretMarker &&
+              selection.anchor.offset === composerCaretMarker.length &&
+              ($isComposerSkillNode(referenceNode) || $isComposerFileNode(referenceNode))
+            ) {
+              marker.setTextContent(`${composerCaretMarker}${text}`).selectEnd()
+              return true
+            }
+          }
+
+          if (selection !== null) return false
 
           const firstElement = $getRoot().getFirstChild()
           if (!$isElementNode(firstElement)) return false
@@ -337,8 +487,8 @@ function ComposerEditorPlugins({
           const marker = firstElement.getLastChild()
           if (!$isTextNode(marker) || marker.getTextContent() !== composerCaretMarker) return false
 
-          const skillNode = marker.getPreviousSibling()
-          if (!$isComposerSkillNode(skillNode)) return false
+          const referenceNode = marker.getPreviousSibling()
+          if (!$isComposerSkillNode(referenceNode) && !$isComposerFileNode(referenceNode)) return false
 
           marker.setTextContent(`${composerCaretMarker}${text}`).selectEnd()
           return true
@@ -357,11 +507,11 @@ function ComposerEditorPlugins({
 
           const selection = $getSelection()
           if (selection === null) {
-            const skillNode = $nodesOfType(ComposerSkillNode).at(-1)
-            if (!skillNode) return false
+            const referenceNode = [...$nodesOfType(ComposerSkillNode), ...$nodesOfType(ComposerFileNode)].at(-1)
+            if (!referenceNode) return false
 
             event.preventDefault()
-            removeSkillNode(skillNode)
+            removeInlineReferenceNode(referenceNode)
             return true
           }
           if (!$isRangeSelection(selection) || !selection.isCollapsed()) return false
@@ -376,10 +526,10 @@ function ComposerEditorPlugins({
               : anchor.offset === 0 && $isTextNode(anchorNode)
                 ? anchorNode.getPreviousSibling()
                 : undefined
-          if (!$isComposerSkillNode(previousNode)) return false
+          if (!$isComposerSkillNode(previousNode) && !$isComposerFileNode(previousNode)) return false
 
           event.preventDefault()
-          removeSkillNode(previousNode)
+          removeInlineReferenceNode(previousNode)
           return true
         },
         COMMAND_PRIORITY_CRITICAL
@@ -395,7 +545,24 @@ function ComposerEditorPlugins({
           const skillNode = $getComposerSkillNode(nodeKey)
           if (!skillNode) return false
 
-          removeSkillNode(skillNode)
+          removeInlineReferenceNode(skillNode)
+          editor.focus()
+          return true
+        },
+        COMMAND_PRIORITY_CRITICAL
+      ),
+    [editor]
+  )
+
+  useEffect(
+    () =>
+      editor.registerCommand(
+        removeComposerFileCommand,
+        (nodeKey) => {
+          const fileNode = $getComposerFileNode(nodeKey)
+          if (!fileNode) return false
+
+          removeInlineReferenceNode(fileNode)
           editor.focus()
           return true
         },
@@ -414,6 +581,8 @@ function ComposerEditorPlugins({
         editorState.read(() => {
           const nextDraft = normalizeComposerCaretMarkers($getRoot().getTextContent())
 
+          latestEditorDraft.current = nextDraft
+          editorDraftIsPending.current = true
           if (nextDraft !== draft) {
             onChange(nextDraft)
           }
@@ -425,7 +594,12 @@ function ComposerEditorPlugins({
   return (
     <>
       <HistoryPlugin />
-      <SkillAutocomplete availableSkills={availableSkills} draft={draft} disabled={readOnly} />
+      <SkillAutocomplete
+        availableSkills={availableSkills}
+        availableFiles={availableFiles}
+        draft={draft}
+        disabled={readOnly}
+      />
     </>
   )
 }
@@ -454,6 +628,17 @@ function findSkillQuery(draft: string, caretOffset: number): SkillQuery | undefi
     search,
     signature: `${startOffset}:${caretOffset}:${search}`,
   }
+}
+
+function findFileQuery(draft: string, caretOffset: number): SkillQuery | undefined {
+  const textBeforeCaret = draft.slice(0, caretOffset)
+  const match = /(?:^|\s)@([^\s@,;:!?)}\]]*)$/.exec(textBeforeCaret)
+  if (!match) return undefined
+
+  const search = (match[1] ?? '').toLowerCase()
+  const startOffset = caretOffset - search.length - 1
+
+  return { draft, startOffset, endOffset: caretOffset, search, signature: `${startOffset}:${caretOffset}:${search}` }
 }
 
 function getDOMTextLength(node: Node): number {
@@ -504,19 +689,49 @@ function getDOMSkillQuery(editor: LexicalEditor): SkillQuery | undefined {
 }
 
 function canonicalDraftOffset(draft: string, visibleOffset: number): number {
-  const { selections } = projectSessionSkillSelections(draft)
-  let precedingSkillNameLength = 0
-  let tokenPrefixLength = 0
+  let sourceOffset = 0
+  let currentVisibleOffset = 0
 
-  for (const selection of selections) {
-    const visibleSkillEnd = selection.offset + precedingSkillNameLength + selection.name.length
-    if (visibleSkillEnd > visibleOffset) break
+  for (const token of composerReferenceTokens(draft)) {
+    const plainTextLength = token.startOffset - sourceOffset
+    if (visibleOffset <= currentVisibleOffset + plainTextLength) {
+      return sourceOffset + visibleOffset - currentVisibleOffset
+    }
 
-    precedingSkillNameLength += selection.name.length
-    tokenPrefixLength += '/skill:'.length
+    currentVisibleOffset += plainTextLength
+
+    if (visibleOffset <= currentVisibleOffset + token.visibleLength) {
+      return visibleOffset === currentVisibleOffset ? token.startOffset : token.endOffset
+    }
+
+    sourceOffset = token.endOffset
+    currentVisibleOffset += token.visibleLength
   }
 
-  return visibleOffset + tokenPrefixLength
+  return sourceOffset + visibleOffset - currentVisibleOffset
+}
+
+function visibleDraftOffset(draft: string, canonicalOffset: number): number {
+  let sourceOffset = 0
+  let visibleOffset = 0
+
+  for (const token of composerReferenceTokens(draft)) {
+    const plainTextLength = token.startOffset - sourceOffset
+    if (canonicalOffset <= sourceOffset + plainTextLength) {
+      return visibleOffset + canonicalOffset - sourceOffset
+    }
+
+    visibleOffset += plainTextLength
+
+    if (canonicalOffset <= token.endOffset) {
+      return visibleOffset + (canonicalOffset === token.startOffset ? 0 : token.visibleLength)
+    }
+
+    sourceOffset = token.endOffset
+    visibleOffset += token.visibleLength
+  }
+
+  return visibleOffset + canonicalOffset - sourceOffset
 }
 
 function insertSkillAtSelection(skill: SessionSkill): string | undefined {
@@ -536,6 +751,45 @@ function insertSkillAtSelection(skill: SessionSkill): string | undefined {
 
   const marker = $createTextNode(composerCaretMarker)
   selection.insertNodes([$createComposerSkillNode({ ...skill, availability: 'available' }), marker])
+  marker.select(composerCaretMarker.length, composerCaretMarker.length)
+  return marker.getKey()
+}
+
+function getDOMFileQuery(editor: LexicalEditor): SkillQuery | undefined {
+  const rootElement = editor.getRootElement()
+  if (!rootElement) return undefined
+
+  const draft = getDOMComposerDraft(rootElement).replace(/\n+$/, '')
+  const selection = window.getSelection()
+  const visibleCaretOffset =
+    selection?.isCollapsed && selection.anchorNode && rootElement.contains(selection.anchorNode)
+      ? getDOMOffsetWithin(rootElement, selection.anchorNode, selection.anchorOffset)
+      : undefined
+  const caretOffset = visibleCaretOffset === undefined ? undefined : canonicalDraftOffset(draft, visibleCaretOffset)
+
+  return caretOffset === undefined ? undefined : findFileQuery(draft, caretOffset)
+}
+
+function insertFileAtSelection(file: SessionFile): string | undefined {
+  const selection = $getSelection()
+  if (!$isRangeSelection(selection) || !selection.isCollapsed() || selection.anchor.type !== 'text') return undefined
+
+  const anchorNode = selection.anchor.getNode()
+  if (!$isTextNode(anchorNode)) return undefined
+
+  const textBeforeCaret = anchorNode.getTextContent().slice(0, selection.anchor.offset)
+  const match = /(?:^|\s)@([^\s@]*)$/.exec(textBeforeCaret)
+  if (!match) return undefined
+
+  const queryLength = (match[1]?.length ?? 0) + 1
+  const queryStart = selection.anchor.offset - queryLength
+  selection.setTextNodeRange(anchorNode, queryStart, anchorNode, selection.anchor.offset)
+
+  const marker = $createTextNode(composerCaretMarker)
+  selection.insertNodes([
+    $createComposerFileNode({ path: file.path, kind: file.kind, availability: 'available' }),
+    marker,
+  ])
   marker.select(composerCaretMarker.length, composerCaretMarker.length)
   return marker.getKey()
 }
@@ -562,10 +816,12 @@ function selectDraftOffset(offset: number): void {
 
 function SkillAutocomplete({
   availableSkills,
+  availableFiles,
   draft,
   disabled,
 }: Readonly<{
   availableSkills: readonly SessionSkill[]
+  availableFiles: readonly SessionFile[]
   draft: string
   disabled: boolean
 }>) {
@@ -671,12 +927,12 @@ function SkillAutocomplete({
       const nextDraft = `${currentDraft.slice(0, startOffset)}${token}${currentDraft.slice(endOffset)}`
       let markerKey: string | undefined
       const insert = () => {
-        replaceDraft(currentDraft, availableSkills)
+        replaceDraft(currentDraft, availableSkills, availableFiles)
         selectDraftOffset(endOffset)
         markerKey = insertSkillAtSelection(skill)
 
         if (!markerKey) {
-          replaceDraft(nextDraft, availableSkills)
+          replaceDraft(nextDraft, availableSkills, availableFiles)
           selectDraftOffset(startOffset + token.length)
         }
       }
@@ -702,7 +958,7 @@ function SkillAutocomplete({
         },
       })
     },
-    [availableSkills, editor, query]
+    [availableFiles, availableSkills, editor, query]
   )
 
   useEffect(() => {
@@ -799,8 +1055,215 @@ function SkillAutocomplete({
   )
 }
 
+function scrollOptionIntoView(listbox: HTMLElement, option: HTMLElement): void {
+  const optionTop = option.offsetTop
+  const optionBottom = optionTop + option.offsetHeight
+
+  if (optionTop < listbox.scrollTop) {
+    listbox.scrollTop = optionTop
+    return
+  }
+
+  const visibleBottom = listbox.scrollTop + listbox.clientHeight
+  if (optionBottom > visibleBottom) listbox.scrollTop = optionBottom - listbox.clientHeight
+}
+
+function FileAutocomplete({
+  availableFiles,
+  availableSkills,
+  disabled,
+  onQuery,
+}: Readonly<{
+  availableFiles: readonly SessionFile[]
+  availableSkills: readonly SessionSkill[]
+  disabled: boolean
+  onQuery: (query: string) => void
+}>) {
+  const [editor] = useLexicalComposerContext()
+  const listboxId = useId()
+  const listboxRef = useRef<HTMLDivElement>(null)
+  const [activeIndex, setActiveIndex] = useState(0)
+  const [query, setQuery] = useState<SkillQuery>()
+  const [dismissedQuery, setDismissedQuery] = useState<string>()
+  const options = useMemo(
+    () =>
+      disabled || !query || dismissedQuery === query.signature
+        ? []
+        : availableFiles.filter((file) => file.path.toLowerCase().includes(query.search)),
+    [availableFiles, disabled, dismissedQuery, query]
+  )
+  const activeOptionId = options[activeIndex] ? `${listboxId}-option-${activeIndex}` : undefined
+
+  useEffect(() => {
+    if (!activeOptionId || !listboxRef.current) return
+
+    const activeOption = listboxRef.current.ownerDocument.getElementById(activeOptionId)
+    if (activeOption) scrollOptionIntoView(listboxRef.current, activeOption)
+  }, [activeOptionId])
+
+  useEffect(() => {
+    const root = editor.getRootElement()
+    if (!root) return
+
+    let frame: number | undefined
+    const update = () => {
+      if (frame !== undefined) window.cancelAnimationFrame(frame)
+      frame = window.requestAnimationFrame(() => {
+        frame = undefined
+        setQuery(disabled ? undefined : getDOMFileQuery(editor))
+      })
+    }
+
+    root.addEventListener('input', update)
+    root.addEventListener('keyup', update)
+    root.addEventListener('focus', update)
+    document.addEventListener('selectionchange', update)
+    update()
+    return () => {
+      root.removeEventListener('input', update)
+      root.removeEventListener('keyup', update)
+      root.removeEventListener('focus', update)
+      document.removeEventListener('selectionchange', update)
+      if (frame !== undefined) window.cancelAnimationFrame(frame)
+    }
+  }, [disabled, editor])
+
+  useEffect(() => {
+    onQuery(query?.search ?? '')
+  }, [onQuery, query?.search])
+
+  useEffect(() => {
+    setActiveIndex(0)
+    if (query?.signature && dismissedQuery !== query.signature) setDismissedQuery(undefined)
+  }, [dismissedQuery, query?.signature])
+
+  const select = useCallback(
+    (file: SessionFile) => {
+      if (!query) return
+      const root = editor.getRootElement()
+      if (!root) return
+
+      const currentDraft = getDOMComposerDraft(root).replace(/\n+$/, '')
+      const suffix = currentDraft.slice(query.endOffset)
+      const token = sessionFileToken(file.path)
+      const nextDraft = `${currentDraft.slice(0, query.startOffset)}${token}${suffix.length > 0 ? ` ${suffix}` : ''}`
+      let markerKey: string | undefined
+
+      setQuery(undefined)
+      setDismissedQuery(`${query.startOffset}:${query.startOffset + token.length}:${file.path.toLowerCase()}`)
+      editor.update(
+        () => {
+          replaceDraft(currentDraft, availableSkills, availableFiles)
+          selectDraftOffset(visibleDraftOffset(currentDraft, query.endOffset))
+          markerKey = insertFileAtSelection(file)
+          if (!markerKey) replaceDraft(nextDraft, availableSkills, availableFiles, true)
+        },
+        {
+          discrete: true,
+          onUpdate() {
+            if (!markerKey) return
+
+            const rootElement = editor.getRootElement()
+            const markerElement = editor.getElementByKey(markerKey)
+            const markerText = markerElement?.firstChild
+            if (!rootElement || !markerText) return
+
+            rootElement.focus()
+            const range = document.createRange()
+            range.setStart(markerText, markerText.textContent?.length ?? 0)
+            range.collapse(true)
+
+            const selection = window.getSelection()
+            selection?.removeAllRanges()
+            selection?.addRange(range)
+          },
+        }
+      )
+    },
+    [availableFiles, availableSkills, editor, query]
+  )
+
+  useEffect(() => {
+    const unregister = [
+      editor.registerCommand(
+        KEY_ARROW_DOWN_COMMAND,
+        (event) => {
+          if (options.length === 0) return false
+          event?.preventDefault()
+          setActiveIndex((index) => (index + 1) % options.length)
+          return true
+        },
+        COMMAND_PRIORITY_CRITICAL
+      ),
+      editor.registerCommand(
+        KEY_ARROW_UP_COMMAND,
+        (event) => {
+          if (options.length === 0) return false
+          event?.preventDefault()
+          setActiveIndex((index) => (index - 1 + options.length) % options.length)
+          return true
+        },
+        COMMAND_PRIORITY_CRITICAL
+      ),
+      editor.registerCommand(
+        KEY_ENTER_COMMAND,
+        (event) => {
+          const file = options[activeIndex]
+          if (!event || !file) return false
+          event.preventDefault()
+          select(file)
+          return true
+        },
+        COMMAND_PRIORITY_CRITICAL
+      ),
+      editor.registerCommand(
+        KEY_TAB_COMMAND,
+        (event) => {
+          const file = options[activeIndex]
+          if (!event || !file) return false
+          event.preventDefault()
+          select(file)
+          return true
+        },
+        COMMAND_PRIORITY_CRITICAL
+      ),
+    ]
+    return () => unregister.forEach((dispose) => dispose())
+  }, [activeIndex, editor, options, select])
+
+  if (!query || options.length === 0) return null
+
+  return (
+    <div
+      ref={listboxRef}
+      aria-label="Files and folders"
+      id={listboxId}
+      className="absolute right-3.5 bottom-full left-3.5 z-30 mb-1 max-h-64 overflow-y-auto rounded-lg border border-content-border bg-content-background p-1 shadow-lg"
+      role="listbox"
+    >
+      {options.map((file, index) => (
+        <button
+          key={file.path}
+          id={`${listboxId}-option-${index}`}
+          type="button"
+          aria-selected={index === activeIndex}
+          className="block w-full rounded-md px-2.5 py-2 text-left hover:bg-session-interaction data-[selected=true]:bg-session-interaction"
+          onMouseDown={(event) => event.preventDefault()}
+          data-selected={index === activeIndex ? 'true' : undefined}
+          onClick={() => select(file)}
+          onMouseEnter={() => setActiveIndex(index)}
+          role="option"
+        >
+          <div className="text-sm/5 font-medium text-content-foreground">{file.path}</div>
+          <div className="text-xs/5 text-content-muted-foreground">{file.kind}</div>
+        </button>
+      ))}
+    </div>
+  )
+}
+
 export const ComposerEditor = forwardRef<ComposerEditorHandle, ComposerEditorProperties>(function ComposerEditor(
-  { availableSkills, describedBy, draft, label, readOnly, onChange, onFocus, onSubmit },
+  { availableSkills, availableFiles, describedBy, draft, label, readOnly, onChange, onFocus, onFileQuery, onSubmit },
   editorHandle
 ) {
   return (
@@ -808,8 +1271,8 @@ export const ComposerEditor = forwardRef<ComposerEditorHandle, ComposerEditorPro
       initialConfig={{
         namespace: `Composer:${label}`,
         editable: !readOnly,
-        editorState: () => replaceDraft(draft, availableSkills, true),
-        nodes: [ComposerSkillNode],
+        editorState: () => replaceDraft(draft, availableSkills, availableFiles, true),
+        nodes: [ComposerSkillNode, ComposerFileNode],
         onError(error) {
           throw error
         },
@@ -842,11 +1305,18 @@ export const ComposerEditor = forwardRef<ComposerEditorHandle, ComposerEditorPro
         </div>
         <ComposerEditorPlugins
           availableSkills={availableSkills}
+          availableFiles={availableFiles}
           draft={draft}
           readOnly={readOnly}
           onChange={onChange}
           onSubmit={onSubmit}
           editorHandle={editorHandle}
+        />
+        <FileAutocomplete
+          availableFiles={availableFiles}
+          availableSkills={availableSkills}
+          disabled={readOnly}
+          onQuery={onFileQuery}
         />
       </div>
     </LexicalComposer>

@@ -10,6 +10,7 @@ import type {
 } from '@/src/domain/workstream'
 import type { SessionConfigurationBridge } from '@/src/session-configuration'
 import type { SessionSkillsBridge } from '@/src/session-skills'
+import type { SessionFilesBridge } from '@/src/session-files'
 import type { SessionTranscriptBridge } from '@/src/session-transcript'
 import { SessionContainer } from '@/src/renderer/components/session-container'
 
@@ -42,6 +43,7 @@ type SessionAreaProperties = {
   resumeQueuedFollowUps?: NonNullable<ComposerBridge['resumeQueuedFollowUps']>
   sessionConfiguration?: SessionConfigurationBridge
   sessionSkills?: SessionSkillsBridge
+  sessionFiles?: SessionFilesBridge
   getSessionForkPoints?: (sessionId: SessionId) => Promise<readonly SessionForkPoint[]>
   forkSession?: (sessionId: SessionId, options: ForkSessionOptions) => Promise<void>
   onToggleSessionPin: (sessionId: SessionId) => void
@@ -73,6 +75,7 @@ export function SessionArea({
   resumeQueuedFollowUps,
   sessionConfiguration,
   sessionSkills,
+  sessionFiles,
   getSessionForkPoints,
   forkSession,
   onToggleSessionPin,
@@ -134,6 +137,7 @@ export function SessionArea({
             resumeQueuedFollowUps={resumeQueuedFollowUps}
             sessionConfiguration={sessionConfiguration}
             sessionSkills={sessionSkills}
+            sessionFiles={sessionFiles}
             getForkPoints={getSessionForkPoints ? () => getSessionForkPoints(session.id) : undefined}
             forkSession={forkSession ? (options) => forkSession(session.id, options) : undefined}
             onTogglePin={() => onToggleSessionPin(session.id)}

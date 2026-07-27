@@ -81,6 +81,45 @@ test('restores a persisted raw Skill token as an inline reference', () => {
   })
 })
 
+test('restores a persisted raw file tag as an unavailable inline reference', () => {
+  assert.deepEqual(projectPiUserMessage('Review @src/main/index.ts.'), {
+    text: 'Review .',
+    files: [
+      {
+        offset: 7,
+        file: { path: 'src/main/index.ts', kind: 'file', availability: 'unavailable' },
+      },
+    ],
+  })
+})
+
+test('restores a quoted file tag as an unavailable inline reference', () => {
+  assert.deepEqual(projectPiUserMessage('Review @@"src/my file.ts".'), {
+    text: 'Review .',
+    files: [
+      {
+        offset: 7,
+        file: { path: 'src/my file.ts', kind: 'file', availability: 'unavailable' },
+      },
+    ],
+  })
+})
+
+test('restores file tags from persisted expanded context', () => {
+  const source = 'Review @src/main/index.ts.'
+  const persisted = `## Referenced file: \`src/main/index.ts\`\n\n\`\`\`ts\nexport {}\n\`\`\`\n\n<!-- pi-workspace-source:${Buffer.from(source).toString('base64url')} -->`
+
+  assert.deepEqual(projectPiUserMessage(persisted), {
+    text: 'Review .',
+    files: [
+      {
+        offset: 7,
+        file: { path: 'src/main/index.ts', kind: 'file', availability: 'unavailable' },
+      },
+    ],
+  })
+})
+
 test('projects multiple persisted Pi Skill invocations at their authored positions', () => {
   const projected = projectPiUserMessage(
     'Use <skill name="code-review" location="/private/code-review/SKILL.md">\nReview instructions\n</skill> and <skill name="tdd" location="/private/tdd/SKILL.md">\nTDD instructions\n</skill>.',

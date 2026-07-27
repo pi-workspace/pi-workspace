@@ -10,6 +10,8 @@ import type { SessionSkillsBridge } from '@/src/session-skills'
 import { sessionSkillsIpcChannels } from '@/src/session-skills-ipc'
 import type { SessionChangesBridge, SessionChangesSnapshot, SessionFileDiff } from '@/src/session-changes'
 import { sessionChangesIpcChannels } from '@/src/session-changes-ipc'
+import type { SessionFilesBridge } from '@/src/session-files'
+import { sessionFilesIpcChannels } from '@/src/session-files-ipc'
 import type {
   SessionConfigurationBridge,
   SessionConfigurationCommandResult,
@@ -202,6 +204,12 @@ const sessionSkillsBridge: SessionSkillsBridge = {
   },
 }
 
+const sessionFilesBridge: SessionFilesBridge = {
+  getAvailable(sessionId, query) {
+    return ipcRenderer.invoke(sessionFilesIpcChannels.getAvailable, { sessionId, query })
+  },
+}
+
 const sessionChangesBridge: SessionChangesBridge = {
   getSnapshot(sessionId) {
     return ipcRenderer.invoke(sessionChangesIpcChannels.getSnapshot, { sessionId }) as Promise<SessionChangesSnapshot>
@@ -295,6 +303,7 @@ const piWorkspaceBridge: PiWorkspaceBridge = {
   applicationState: applicationStateBridge,
   composer: composerBridge,
   sessionSkills: sessionSkillsBridge,
+  sessionFiles: sessionFilesBridge,
   sessionChanges: sessionChangesBridge,
   sessionConfiguration: sessionConfigurationBridge,
   transcript: sessionTranscriptBridge,

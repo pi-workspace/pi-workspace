@@ -7,6 +7,7 @@ import type { SessionCodeReview, SessionCodeReviewComment } from '@/src/session-
 import { projectSessionSkillSelections, type SessionSkillMention } from '@/src/session-skills'
 import { AgentActivityCard } from '@/src/renderer/components/agent-activity-card'
 import { DiffView } from '@/src/renderer/components/diff-view'
+import { ReferenceMentionText } from '@/src/renderer/components/reference-mention-text'
 import { SkillMentionText } from '@/src/renderer/components/skill-mention-text'
 import type { AgentActivity, ContextCompaction } from '@/src/session-timeline'
 import type { SessionTranscriptMessage, SessionTranscriptSnapshot } from '@/src/session-transcript'
@@ -463,7 +464,11 @@ function SessionMessageRow({
       >
         {steering && <p className="mb-1 text-xs/4 font-medium text-content-muted-foreground">Steering</p>}
         <p className="whitespace-pre-wrap break-words">
-          <SkillMentionText text={message.text} skills={message.skills ?? []} />
+          {message.files?.length ? (
+            <ReferenceMentionText text={message.text} skills={message.skills ?? []} files={message.files} />
+          ) : (
+            <SkillMentionText text={message.text} skills={message.skills ?? []} />
+          )}
         </p>
         {onForkFromMessage && userPosition !== undefined && message.state === 'complete' && !isWorking && (
           <button
