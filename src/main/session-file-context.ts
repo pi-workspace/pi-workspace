@@ -81,9 +81,14 @@ function markdownCodeFence(value: string): string {
   return '`'.repeat(Math.max(3, longestDelimiter + 1))
 }
 
-function candidateRank(candidate: SessionFile, query: string): number {
+function candidateDepth(candidate: SessionFile): number {
+  return candidate.path.split('/').length - 1
+}
+
+function candidateMatchRank(candidate: SessionFile, query: string): number {
   const path = candidate.path.toLowerCase()
   const name = candidate.name.toLowerCase()
+
   if (path === query || name === query) return 0
   if (path.startsWith(query) || name.startsWith(query)) return 1
   return 2
@@ -128,7 +133,8 @@ export async function findSessionFiles(roots: SessionFileRoots, query = ''): Pro
 
   return candidates.sort(
     (left, right) =>
-      candidateRank(left, normalizedQuery) - candidateRank(right, normalizedQuery) ||
+      candidateDepth(left) - candidateDepth(right) ||
+      candidateMatchRank(left, normalizedQuery) - candidateMatchRank(right, normalizedQuery) ||
       left.path.localeCompare(right.path)
   )
 }

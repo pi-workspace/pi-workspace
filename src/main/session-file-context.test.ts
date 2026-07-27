@@ -84,6 +84,22 @@ test('finds files and folders across scoped roots with repository prefixes', asy
   )
 })
 
+test('orders matching files by hierarchy before match quality', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'pi-workspace-file-context-'))
+  await mkdir(join(directory, 'a'))
+  await writeFile(join(directory, 'README.md'), '')
+  await writeFile(join(directory, 'README.md-notes'), '')
+  await writeFile(join(directory, 'a', 'README.md'), '')
+
+  const files = await findSessionFiles(directory, 'README.md')
+
+  assert.deepEqual(files.slice(0, 3), [
+    { path: 'README.md', name: 'README.md', kind: 'file' },
+    { path: 'README.md-notes', name: 'README.md-notes', kind: 'file' },
+    { path: 'a/README.md', name: 'README.md', kind: 'file' },
+  ])
+})
+
 test('finds files and folders without exposing Git metadata', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'pi-workspace-file-context-'))
   await mkdir(join(directory, '.git'))

@@ -48,7 +48,7 @@ type SessionFileMention = Readonly<{
 }>
 ```
 
-The Composer bridge should expose a scoped candidate query, rather than returning an entire repository index. Results should be bounded and ordered by exact path/name match, then prefix match, then substring match.
+The Composer bridge should expose a scoped candidate query, rather than returning an entire repository index. Results should be bounded and ordered by path hierarchy, then exact path/name match, prefix match, and substring match.
 
 ## Implementation sequence
 
