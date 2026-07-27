@@ -1,4 +1,4 @@
-import { useId, useState } from 'react'
+import { useId, useLayoutEffect, useRef, useState } from 'react'
 import { Ellipsis, GitFork, LockKeyhole, Pencil, TriangleAlert } from 'lucide-react'
 import { Dropdown, DropdownButton, DropdownItem, DropdownLabel, DropdownMenu } from '@/components/ui-kit/dropdown'
 import type { ComposerBridge } from '@/src/composer'
@@ -85,6 +85,8 @@ export function SessionContainer({
   onOpenCurrentDiff = () => {},
 }: SessionContainerProperties) {
   const headingId = useId()
+  const transcriptContainerRef = useRef<HTMLDivElement>(null)
+  const composerLayerRef = useRef<HTMLDivElement>(null)
   const [forkPosition, setForkPosition] = useState<number | 'latest'>()
   const transcriptState = useSessionTranscript(session.id)
   const isWorking = transcriptState.snapshot?.isWorking ?? false
@@ -96,6 +98,30 @@ export function SessionContainer({
       : session.mode === 'brainstorm'
         ? 'Brainstorm'
         : 'Implement'
+
+  useLayoutEffect(() => {
+    const transcriptContainer = transcriptContainerRef.current
+    const composerLayer = composerLayerRef.current
+    if (!transcriptContainer || !composerLayer) return
+
+    const updateComposerLayerHeight = () => {
+      transcriptContainer.style.setProperty('--composer-layer-height', `${composerLayer.offsetHeight}px`)
+    }
+
+    updateComposerLayerHeight()
+
+    if (typeof ResizeObserver === 'undefined') {
+      return () => transcriptContainer.style.removeProperty('--composer-layer-height')
+    }
+
+    const observer = new ResizeObserver(updateComposerLayerHeight)
+    observer.observe(composerLayer)
+
+    return () => {
+      observer.disconnect()
+      transcriptContainer.style.removeProperty('--composer-layer-height')
+    }
+  }, [])
 
   return (
     <section
@@ -175,94 +201,98 @@ export function SessionContainer({
         />
       </header>
 
-      <SessionMessages
-        sessionId={session.id}
-        isWorking={isWorking}
-        isCompacting={transcriptState.snapshot?.isCompacting ?? false}
-        transcript={transcriptState.snapshot}
-        timelineAnnouncement={transcriptState.announcement}
-        timelineError={transcriptState.error}
-        onReloadTimeline={transcriptState.reload}
-        onForkFromMessage={
-          getForkPoints && forkSession && workstreamLifecycle === 'active' && !unavailability
-            ? (position) => setForkPosition(position)
-            : undefined
-        }
-        onOpenCurrentDiff={onOpenCurrentDiff}
-        onActionCard={async (card: SessionActionCard) => {
-          if (card.kind === 'start-implement-session') {
-            await onStartImplementSession(session.workstreamId)
-            return acceptActionCard(session.id, card.id)
-          }
-
-          const result = await submitMessage({
-            sessionId: session.id,
-            delivery: 'action',
-            text: 'Create a draft pull request for the completed work. Review the current changes, validation results, and branch status, then prepare a clear title and description for my approval.',
-          })
-
-          return result.status === 'accepted' && (await acceptActionCard(session.id, card.id))
-        }}
-        onDismissActionCard={(card) => dismissActionCard(session.id, card.id)}
-      />
-      {!composerUnavailable && transcriptState.snapshot?.queuedFollowUps && (
-        <QueuedFollowUpTray
+      <div ref={transcriptContainerRef} className="session-transcript relative flex min-h-0 flex-1 flex-col">
+        <SessionMessages
           sessionId={session.id}
           isWorking={isWorking}
-          queuedFollowUps={transcriptState.snapshot.queuedFollowUps}
-          queuedFollowUpsPaused={transcriptState.snapshot.queuedFollowUpsPaused ?? false}
-          removeQueuedFollowUp={removeQueuedFollowUp}
-          resumeQueuedFollowUps={resumeQueuedFollowUps}
-        />
-      )}
-      {getForkPoints && forkSession && forkPosition !== undefined && (
-        <SessionForkDialog
-          open
-          session={session}
-          initialPosition={forkPosition === 'latest' ? undefined : forkPosition}
-          workingLocation={workingLocation}
-          getForkPoints={getForkPoints}
-          onFork={forkSession}
-          onClose={() => setForkPosition(undefined)}
-        />
-      )}
-      {composerUnavailable ? (
-        <div className="composer-tray relative z-10 shrink-0 px-4 pt-3 pb-4">
-          <div className="composer-surface flex min-h-13 items-center justify-center gap-2 rounded-xl border border-dashed border-composer-border bg-composer-background px-4 text-center text-sm/5 text-composer-muted-foreground">
-            {unavailability ? (
-              <>
-                <TriangleAlert aria-hidden="true" className="size-4 shrink-0" />
-                {unavailability === 'history-and-checkout'
-                  ? 'This Session’s history file and Repository checkout are unavailable.'
-                  : unavailability === 'history'
-                    ? 'This Session’s history file is unavailable.'
-                    : 'This Session’s Repository checkout is unavailable.'}
-              </>
-            ) : (
-              <>
-                <LockKeyhole aria-hidden="true" className="size-4 shrink-0" />
-                Restore this Workstream to continue.
-              </>
-            )}
-          </div>
-        </div>
-      ) : (
-        <Composer
-          session={session}
-          draft={draft}
-          focusRequest={composerFocusRequest}
-          isWorking={isWorking}
           isCompacting={transcriptState.snapshot?.isCompacting ?? false}
-          contextUsage={transcriptState.snapshot?.contextUsage}
-          onActivate={onActivate}
-          onDraftChange={onDraftChange}
-          submitMessage={submitMessage}
-          stopRun={stopRun}
-          sessionConfiguration={sessionConfiguration}
-          sessionSkills={sessionSkills}
-          sessionFiles={sessionFiles}
+          transcript={transcriptState.snapshot}
+          timelineAnnouncement={transcriptState.announcement}
+          timelineError={transcriptState.error}
+          onReloadTimeline={transcriptState.reload}
+          onForkFromMessage={
+            getForkPoints && forkSession && workstreamLifecycle === 'active' && !unavailability
+              ? (position) => setForkPosition(position)
+              : undefined
+          }
+          onOpenCurrentDiff={onOpenCurrentDiff}
+          onActionCard={async (card: SessionActionCard) => {
+            if (card.kind === 'start-implement-session') {
+              await onStartImplementSession(session.workstreamId)
+              return acceptActionCard(session.id, card.id)
+            }
+
+            const result = await submitMessage({
+              sessionId: session.id,
+              delivery: 'action',
+              text: 'Create a draft pull request for the completed work. Review the current changes, validation results, and branch status, then prepare a clear title and description for my approval.',
+            })
+
+            return result.status === 'accepted' && (await acceptActionCard(session.id, card.id))
+          }}
+          onDismissActionCard={(card) => dismissActionCard(session.id, card.id)}
         />
-      )}
+        <div ref={composerLayerRef} className="session-composer-layer absolute inset-x-0 bottom-0 z-10">
+          {!composerUnavailable && transcriptState.snapshot?.queuedFollowUps && (
+            <QueuedFollowUpTray
+              sessionId={session.id}
+              isWorking={isWorking}
+              queuedFollowUps={transcriptState.snapshot.queuedFollowUps}
+              queuedFollowUpsPaused={transcriptState.snapshot.queuedFollowUpsPaused ?? false}
+              removeQueuedFollowUp={removeQueuedFollowUp}
+              resumeQueuedFollowUps={resumeQueuedFollowUps}
+            />
+          )}
+          {composerUnavailable ? (
+            <div className="composer-tray relative z-10 shrink-0 px-6 pt-3 pb-4">
+              <div className="composer-surface flex min-h-13 items-center justify-center gap-2 rounded-xl border border-dashed border-composer-border bg-composer-background px-4 text-center text-sm/5 text-composer-muted-foreground">
+                {unavailability ? (
+                  <>
+                    <TriangleAlert aria-hidden="true" className="size-4 shrink-0" />
+                    {unavailability === 'history-and-checkout'
+                      ? 'This Session’s history file and Repository checkout are unavailable.'
+                      : unavailability === 'history'
+                        ? 'This Session’s history file is unavailable.'
+                        : 'This Session’s Repository checkout is unavailable.'}
+                  </>
+                ) : (
+                  <>
+                    <LockKeyhole aria-hidden="true" className="size-4 shrink-0" />
+                    Restore this Workstream to continue.
+                  </>
+                )}
+              </div>
+            </div>
+          ) : (
+            <Composer
+              session={session}
+              draft={draft}
+              focusRequest={composerFocusRequest}
+              isWorking={isWorking}
+              isCompacting={transcriptState.snapshot?.isCompacting ?? false}
+              contextUsage={transcriptState.snapshot?.contextUsage}
+              onActivate={onActivate}
+              onDraftChange={onDraftChange}
+              submitMessage={submitMessage}
+              stopRun={stopRun}
+              sessionConfiguration={sessionConfiguration}
+              sessionSkills={sessionSkills}
+              sessionFiles={sessionFiles}
+            />
+          )}
+        </div>
+        {getForkPoints && forkSession && forkPosition !== undefined && (
+          <SessionForkDialog
+            open
+            session={session}
+            initialPosition={forkPosition === 'latest' ? undefined : forkPosition}
+            workingLocation={workingLocation}
+            getForkPoints={getForkPoints}
+            onFork={forkSession}
+            onClose={() => setForkPosition(undefined)}
+          />
+        )}
+      </div>
     </section>
   )
 }

@@ -173,7 +173,7 @@ export function SessionMessages({
       {hasUnseenContent ? (
         <button
           type="button"
-          className="absolute right-4 bottom-3 rounded-lg bg-composer-action-background px-3 py-1.5 text-xs font-medium text-composer-action-foreground shadow-sm outline-none transition-colors motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-content-background"
+          className="session-messages-jump-to-latest absolute right-4 rounded-lg bg-composer-action-background px-3 py-1.5 text-xs font-medium text-composer-action-foreground shadow-sm outline-none transition-colors motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-content-background"
           onClick={jumpToLatest}
         >
           Jump to latest

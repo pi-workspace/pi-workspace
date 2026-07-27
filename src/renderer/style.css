@@ -416,14 +416,30 @@ body,
   container-type: inline-size;
 }
 
+.session-composer-layer {
+  pointer-events: none;
+  border-left: 1px solid var(--theme-sidebar-border);
+}
+
 .composer-editable {
   max-height: 10.75rem;
 }
 
 .composer-surface {
+  pointer-events: auto;
+  border-color: var(--theme-composer-border);
+  background-color: color-mix(in oklab, var(--theme-content-background) 36%, transparent);
+  background-image: linear-gradient(
+    145deg,
+    color-mix(in oklab, var(--theme-control-background) 24%, transparent),
+    color-mix(in oklab, var(--theme-control-background) 10%, transparent)
+  );
   box-shadow:
-    0 0.125rem 0.375rem color-mix(in oklab, var(--theme-overlay-background) 65%, transparent),
-    0 0.75rem 1.75rem color-mix(in oklab, var(--theme-overlay-background) 45%, transparent);
+    inset 0 1px 0 color-mix(in oklab, var(--theme-control-background) 72%, transparent),
+    0 0.125rem 0.25rem color-mix(in oklab, var(--theme-overlay-background) 38%, transparent),
+    0 0.375rem 1rem color-mix(in oklab, var(--theme-overlay-background) 24%, transparent);
+  -webkit-backdrop-filter: blur(1.25rem) saturate(135%);
+  backdrop-filter: blur(1.25rem) saturate(135%);
   transition:
     border-color 150ms ease-out,
     box-shadow 150ms ease-out;
@@ -432,12 +448,17 @@ body,
 .composer-surface:focus-within {
   border-color: var(--theme-content-hover-border);
   box-shadow:
-    0 0.125rem 0.5rem color-mix(in oklab, var(--theme-overlay-background) 75%, transparent),
-    0 0.875rem 2rem color-mix(in oklab, var(--theme-overlay-background) 55%, transparent);
+    inset 0 1px 0 color-mix(in oklab, var(--theme-control-background) 82%, transparent),
+    0 0.125rem 0.375rem color-mix(in oklab, var(--theme-overlay-background) 46%, transparent),
+    0 0.5rem 1.25rem color-mix(in oklab, var(--theme-overlay-background) 30%, transparent);
 }
 
 .session-messages-reading-column {
-  padding: 1rem;
+  padding: 1rem 1rem calc(1rem + var(--composer-layer-height, 0px));
+}
+
+.session-messages-jump-to-latest {
+  bottom: calc(0.75rem + var(--composer-layer-height, 0px));
 }
 
 @container session-pane (min-width: 520px) {
