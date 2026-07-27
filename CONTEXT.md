@@ -56,6 +56,9 @@ An ordinary Git worktree owned by one Implement Session for one Repository. It i
 A persistent Pi interaction associated with one Workstream. Each Session has an immutable mode and Repository access: direct access to one selected Repository working location for Default or automatic access to every current Workspace Repository for Brainstorm and Implement. Implement changes use that Session's lazily created Implement Session Worktrees.
 _Avoid_: Chat, thread
 
+**Session Fork**:
+A new Session whose history is copied through the response before one selected user message from a source Session. The selected message becomes an editable draft, the source remains unchanged, and Repository state is not rewound. A goal-based Session Fork remains in its Workstream and mode. A Quick Session Fork owns a new goal-less Workstream and preserves the source working-location policy without sharing a dedicated worktree.
+
 **Session Description**:
 One or two concise, agent-authored sentences that summarize a Session's current focus for navigation. Pi can revise it as the focus materially changes.
 

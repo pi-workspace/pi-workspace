@@ -1,5 +1,11 @@
 import { app, shell } from 'electron'
 import { readFileSync } from 'node:fs'
+import {
+  findSessionFiles,
+  getSessionFileReference,
+  renderSessionFileContext,
+  type SessionFileRoot,
+} from '@/src/main/session-file-context'
 import type { SessionManager } from '@earendil-works/pi-coding-agent'
 import { isSessionSkillName, type SessionMessageSubmissionResult, type SessionRunStopResult } from '@/src/composer'
 import type { ManagedSessionRuntimePolicy } from '@/src/domain/managed-session'
@@ -9,6 +15,8 @@ import type {
 } from '@/src/domain/workstream-knowledge-transitions'
 import {
   composerIpcChannels,
+  parseCodeReviewCommentCommand,
+  parseCodeReviewCommentRemovalRequest,
   parseQueuedFollowUpRemovalRequest,
   parseSessionCompactRequest,
   parseSessionMessageSubmission,
@@ -17,6 +25,7 @@ import {
 import { sessionId } from '@/src/domain/session'
 import { parseSessionActionCardToolInput } from '@/src/session-action-cards'
 import { parseSessionSkillsRequest, sessionSkillsIpcChannels } from '@/src/session-skills-ipc'
+import { parseSessionFilesRequest, sessionFilesIpcChannels } from '@/src/session-files-ipc'
 import type {
   SessionConfigurationEffort,
   SessionConfigurationModelSelection,
@@ -44,6 +53,7 @@ import {
 import { canCompactSessionHistory } from '@/src/main/pi-session-compaction'
 import { classifyPersistedAgentState } from '@/src/main/pi-session-history'
 import { createManagedSessionServices } from '@/src/main/managed-session-resources'
+import { managedSessionFileRoots } from '@/src/main/managed-session-file-roots'
 import { createManagedSessionRuntimePolicyGuard } from '@/src/main/managed-session-runtime-policy'
 import {
   managedSessionMethodology,
@@ -326,6 +336,11 @@ export async function createPiSessionRuntime(
     const body = stripFrontmatter(readFileSync(skill.filePath, 'utf8')).trim()
     return `<skill name="${skill.name}" location="${skill.filePath}">\nReferences are relative to ${skill.baseDir}.\n\n${body}\n</skill>`
   }
+  const sessionFileRoots = async (): Promise<readonly SessionFileRoot[]> => {
+    if (options.kind === 'default') return [{ path: directoryPath }]
+
+    return managedSessionFileRoots(await validateManagedPolicy())
+  }
   const configuredHttpIdleTimeoutMs = session.settingsManager.getHttpIdleTimeoutMs()
   const modelTurnNoProgressTimeoutMs =
     configuredHttpIdleTimeoutMs === 0
@@ -443,7 +458,7 @@ export async function createPiSessionRuntime(
           message.role === 'user' ? projectPiUserMessage(content.text, getAvailableSkills()) : { text: content.text }
 
         if (message.role === 'assistant' && content.hasToolCalls) return []
-        if (projected.text.length === 0 && !projected.skills?.length) return []
+        if (projected.text.length === 0 && !projected.skills?.length && !projected.files?.length) return []
 
         return [
           {
@@ -489,6 +504,24 @@ export async function createPiSessionRuntime(
     },
     getSkills: getAvailableSkills,
     getSkillPrompt,
+    async getFiles(query) {
+      return findSessionFiles(await sessionFileRoots(), query)
+    },
+    async getFileReference(path) {
+      return getSessionFileReference(await sessionFileRoots(), path)
+    },
+    async getFileContext(path) {
+      return renderSessionFileContext(await sessionFileRoots(), path)
+    },
+    getActivityRepositoryLocations() {
+      const repositories = managedPolicyGuard?.currentPolicy().repositories ?? []
+
+      return repositories.flatMap((repository) =>
+        repository.availability === 'available'
+          ? [{ repositoryId: repository.id, workingPath: repository.workingPath }]
+          : []
+      )
+    },
     loadRawOperation(toolCallId) {
       let input: unknown
       let result: unknown
@@ -690,6 +723,34 @@ export function initializeComposer(authority: ApplicationAuthority): void {
       : Promise.resolve({ status: 'rejected', reason: 'invalid-submission' })
   })
 
+  handleTrustedIpc(composerIpcChannels.getCodeReviewDraft, (_event, value: unknown) => {
+    const request = parseSessionRunStopRequest(value)
+
+    return request ? registry.getCodeReviewDraft(request.sessionId) : Promise.reject(new Error('Invalid Session.'))
+  })
+
+  handleTrustedIpc(composerIpcChannels.saveCodeReviewComment, (_event, value: unknown) => {
+    const command = parseCodeReviewCommentCommand(value)
+
+    return command ? registry.saveCodeReviewComment(command) : Promise.reject(new Error('Invalid review comment.'))
+  })
+
+  handleTrustedIpc(composerIpcChannels.removeCodeReviewComment, (_event, value: unknown) => {
+    const request = parseCodeReviewCommentRemovalRequest(value)
+
+    return request
+      ? registry.removeCodeReviewComment(request.sessionId, request.commentId)
+      : Promise.reject(new Error('Invalid review comment.'))
+  })
+
+  handleTrustedIpc(composerIpcChannels.finishCodeReview, (_event, value: unknown) => {
+    const request = parseSessionRunStopRequest(value)
+
+    return request
+      ? registry.finishCodeReview(request.sessionId)
+      : Promise.resolve({ status: 'rejected' as const, reason: 'invalid-submission' as const })
+  })
+
   handleTrustedIpc(composerIpcChannels.stop, (_event, value: unknown): Promise<SessionRunStopResult> => {
     const request = parseSessionRunStopRequest(value)
 
@@ -712,6 +773,14 @@ export function initializeComposer(authority: ApplicationAuthority): void {
     const request = parseSessionSkillsRequest(value)
 
     return request ? registry.getAvailableSkills(request.sessionId) : Promise.reject(new Error('Invalid Session.'))
+  })
+
+  handleTrustedIpc(sessionFilesIpcChannels.getAvailable, (_event, value: unknown) => {
+    const request = parseSessionFilesRequest(value)
+
+    return request
+      ? registry.getAvailableFiles(request.sessionId, request.query)
+      : Promise.reject(new Error('Invalid Session.'))
   })
 
   handleTrustedIpc(sessionTranscriptIpcChannels.getSnapshot, (_event, value: unknown) => {

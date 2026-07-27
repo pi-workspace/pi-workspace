@@ -21,8 +21,8 @@ type RepositoryInspector = (directoryPath: string) => Promise<InspectedGitReposi
 const { Database } = (await Function('return import("bun:sqlite")')()) as BunSqliteModule
 const bunSqlite: SqliteModule = {
   DatabaseSync: Database as unknown as SqliteModule['DatabaseSync'],
-  async backup() {
-    throw new Error('Backup is not exercised by the Bun test adapter.')
+  async backup(_source, destination) {
+    await writeFile(destination, 'SQLite backup')
   },
 }
 
@@ -93,24 +93,33 @@ async function createInterruptedSessionWorktreeFixture() {
   return { storageDirectory, repositoryPath, interrupted, repository, created }
 }
 
-test('reset preserves external Git and Pi Session artifacts without adopting them', async () => {
-  const { authority, storageDirectory, workspace } = await createFixture()
-  const repository = workspace.repositories[0]
-  assert.ok(repository)
-  const created = await authority.createWorkstream(workspace.id, { goal: 'Preserve external artifacts' })
-  const resolution = await authority.resolveOwnedSession(created.sessionId)
-  assert.ok(resolution)
-  const reset = await authority.reset()
+test(
+  'reset preserves external Git and Pi Session artifacts without adopting them',
+  { skip: process.platform === 'win32' ? 'Bun retains closed SQLite handles on Windows.' : false },
+  async () => {
+    const { authority, storageDirectory, workspace } = await createFixture()
+    const repository = workspace.repositories[0]
+    assert.ok(repository)
+    const created = await authority.createWorkstream(workspace.id, { goal: 'Preserve external artifacts' })
+    const resolution = await authority.resolveOwnedSession(created.sessionId)
+    assert.ok(resolution)
+    const reset = await authority.reset()
 
-  assert.deepEqual(reset, { status: 'first-launch' })
-  await Promise.all([access(repository.directoryPath), access(resolution.sessionPath)])
-  assert.deepEqual((await authority.getWorkspaces()).workspaces, [])
-  assert.equal(await authority.resolveOwnedSession(created.sessionId), undefined)
-  assert.equal((await initializeApplicationAuthority(storageDirectory, { sqlite: bunSqlite })).startup.status, 'ready')
-})
+    assert.deepEqual(reset, { status: 'first-launch' })
+    await Promise.all([access(repository.directoryPath), access(resolution.sessionPath)])
+    assert.deepEqual((await authority.getWorkspaces()).workspaces, [])
+    assert.equal(await authority.resolveOwnedSession(created.sessionId), undefined)
+    assert.equal(
+      (await initializeApplicationAuthority(storageDirectory, { sqlite: bunSqlite })).startup.status,
+      'ready'
+    )
+  }
+)
 
 test('reset creates a new application authority generation', async () => {
-  const { authority, storageDirectory } = await createFixture()
+  const storageDirectory = await mkdtemp(join(tmpdir(), 'pi-workspace-reset-generation-'))
+  temporaryDirectories.push(storageDirectory)
+  const authority = await initializeApplicationAuthority(storageDirectory, { sqlite: bunSqlite })
   const markerPath = join(storageDirectory, 'application-state.json')
   const before = JSON.parse(await readFile(markerPath, 'utf8')) as { generationId: string }
 
@@ -138,6 +147,181 @@ test('reset backs up the prior SQLite generation before replacing it', async () 
   await authority.reset()
 
   assert.equal(backedUpGeneration, before.generationId)
+})
+
+test('forks an owned Session before a selected user message', async () => {
+  const { authority, workspace } = await createFixture()
+  const created = await authority.createWorkstream(workspace.id, { goal: 'Explore two approaches' })
+  const source = await authority.resolveOwnedSession(created.sessionId)
+  assert.ok(source)
+  const header = JSON.parse((await readFile(source.sessionPath, 'utf8')).trim()) as Record<string, unknown>
+  const timestamp = new Date().toISOString()
+  const usage = {
+    input: 1,
+    output: 1,
+    cacheRead: 0,
+    cacheWrite: 0,
+    totalTokens: 2,
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+  }
+  await writeFile(
+    source.sessionPath,
+    [
+      header,
+      {
+        type: 'message',
+        id: 'aaaa0001',
+        parentId: null,
+        timestamp,
+        message: { role: 'user', content: 'Build it one way', timestamp: Date.now() },
+      },
+      {
+        type: 'message',
+        id: 'bbbb0002',
+        parentId: 'aaaa0001',
+        timestamp,
+        message: {
+          role: 'assistant',
+          content: [{ type: 'text', text: 'First approach' }],
+          api: 'openai-responses',
+          provider: 'openai',
+          model: 'test-model',
+          usage,
+          stopReason: 'stop',
+          timestamp: Date.now(),
+        },
+      },
+      {
+        type: 'message',
+        id: 'cccc0003',
+        parentId: 'bbbb0002',
+        timestamp,
+        message: { role: 'user', content: 'Try the alternative', timestamp: Date.now() },
+      },
+    ]
+      .map((entry) => JSON.stringify(entry))
+      .join('\n') + '\n',
+    'utf8'
+  )
+
+  const points = await authority.getSessionForkPoints(created.sessionId)
+  const forked = await authority.forkSession(created.sessionId, {
+    entryId: points[1]!.entryId,
+    title: 'Alternative approach',
+  })
+
+  assert.deepEqual(
+    points.map(({ text }) => text),
+    ['Build it one way', 'Try the alternative']
+  )
+  assert.equal(forked.draft, 'Try the alternative')
+  assert.notEqual(forked.sessionId, created.sessionId)
+  const workstream = forked.snapshot.workstreams[0]
+  assert.equal(workstream?.sessions.length, 2)
+  assert.equal(workstream?.sessions[1]?.mode, 'implement')
+  assert.equal(workstream?.sessions[1]?.title, 'Alternative approach')
+  const target = await authority.resolveOwnedSession(forked.sessionId)
+  assert.ok(target)
+  assert.deepEqual(
+    SessionManager.open(target.sessionPath, undefined, target.directoryPath)
+      .getBranch()
+      .flatMap((entry) =>
+        entry.type === 'message' && (entry.message.role === 'user' || entry.message.role === 'assistant')
+          ? [entry.message.role]
+          : []
+      ),
+    ['user', 'assistant']
+  )
+})
+
+test('forks a current-checkout Quick Session into a new goal-less Workstream', async () => {
+  const { authority, workspace } = await createFixture()
+  const repository = workspace.repositories[0]!
+  const created = await authority.createQuickSession(workspace.id, { repositoryId: repository.id })
+  const source = await authority.resolveOwnedSession(created.sessionId)
+  assert.ok(source)
+  const header = JSON.parse((await readFile(source.sessionPath, 'utf8')).trim()) as Record<string, unknown>
+  const timestamp = new Date().toISOString()
+  await writeFile(
+    source.sessionPath,
+    [
+      header,
+      {
+        type: 'message',
+        id: 'aaaa0001',
+        parentId: null,
+        timestamp,
+        message: { role: 'user', content: 'Try another frontend', timestamp: Date.now() },
+      },
+    ]
+      .map((entry) => JSON.stringify(entry))
+      .join('\n') + '\n',
+    'utf8'
+  )
+
+  const [point] = await authority.getSessionForkPoints(created.sessionId)
+  assert.ok(point)
+  const forked = await authority.forkSession(created.sessionId, {
+    entryId: point.entryId,
+    title: 'Alternative frontend',
+  })
+
+  assert.equal(forked.snapshot.workstreams.length, 2)
+  const targetWorkstream = forked.snapshot.workstreams.find((workstream) =>
+    workstream.sessions.some((session) => session.id === forked.sessionId)
+  )
+  const target = targetWorkstream?.sessions[0]
+  assert.equal(targetWorkstream?.goal, undefined)
+  assert.equal(targetWorkstream?.workingLocation, 'current-checkouts')
+  assert.equal(target?.mode, 'default')
+  assert.equal(target?.repositoryAccess.kind, 'direct')
+  if (target?.repositoryAccess.kind === 'direct') {
+    assert.equal(target.repositoryAccess.repositoryId, repository.id)
+  }
+})
+
+test('forks a dedicated-worktree Quick Session into a separate worktree at the source HEAD', async () => {
+  const { authority, workspace } = await createFixture()
+  const repository = workspace.repositories[0]!
+  await commitRepositoryFile(repository.directoryPath, 'tracked.txt', 'initial', 'Initial commit')
+  const preview = await authority.previewWorktreeLocations(workspace.id, repository.id)
+  const created = await authority.createQuickSession(workspace.id, {
+    repositoryId: repository.id,
+    workingLocation: 'worktrees',
+    workstreamId: preview.workstreamId,
+  })
+  const source = await authority.resolveOwnedSession(created.sessionId)
+  assert.ok(source)
+  await commitRepositoryFile(source.directoryPath, 'tracked.txt', 'source branch', 'Source worktree commit')
+  const sourceHead = (await exec('git', ['-C', source.directoryPath, 'rev-parse', 'HEAD'])).stdout.trim()
+  const header = JSON.parse((await readFile(source.sessionPath, 'utf8')).trim()) as Record<string, unknown>
+  const timestamp = new Date().toISOString()
+  await writeFile(
+    source.sessionPath,
+    [
+      header,
+      {
+        type: 'message',
+        id: 'aaaa0001',
+        parentId: null,
+        timestamp,
+        message: { role: 'user', content: 'Try this in another worktree', timestamp: Date.now() },
+      },
+    ]
+      .map((entry) => JSON.stringify(entry))
+      .join('\n') + '\n',
+    'utf8'
+  )
+
+  const [point] = await authority.getSessionForkPoints(created.sessionId)
+  assert.ok(point)
+  const forked = await authority.forkSession(created.sessionId, { entryId: point.entryId, title: 'Forked worktree' })
+  const target = await authority.resolveOwnedSession(forked.sessionId)
+  assert.ok(target)
+
+  assert.notEqual(target.directoryPath, source.directoryPath)
+  assert.equal((await exec('git', ['-C', target.directoryPath, 'rev-parse', 'HEAD'])).stdout.trim(), sourceHead)
+  assert.equal(await readFile(join(target.directoryPath, 'tracked.txt'), 'utf8'), 'source branch')
 })
 
 test('creates a Workstream with exactly one default Implement Session', async () => {
@@ -188,6 +372,49 @@ test('lazily creates a Repository worktree for an Implement Session', async () =
 
   assert.equal(prepared.workingPath, expectedPath)
   assert.equal(await readFile(join(expectedPath, 'tracked.txt'), 'utf8'), 'committed')
+})
+
+test('exposes only prepared writable Repository locations for Session changes', async () => {
+  const { authority, workspace } = await createFixture()
+  const repository = workspace.repositories[0]!
+  await commitRepositoryFile(repository.directoryPath, 'tracked.txt', 'committed', 'Initial commit')
+  const created = await authority.createWorkstream(workspace.id, { goal: 'Review isolated changes' })
+
+  assert.deepEqual(await authority.resolveSessionChangeRepositories(created.sessionId), [])
+
+  const prepared = await authority.prepareSessionRepository(created.sessionId, repository.id)
+
+  assert.deepEqual(await authority.resolveSessionChangeRepositories(created.sessionId), [
+    {
+      repositoryId: repository.id,
+      repositoryName: repository.name,
+      workingPath: prepared.workingPath,
+    },
+  ])
+})
+
+test('exposes the direct working location for Quick Session changes', async () => {
+  const { authority, workspace } = await createFixture()
+  const repository = workspace.repositories[0]!
+  const quick = await authority.createQuickSession(workspace.id, { repositoryId: repository.id })
+
+  assert.deepEqual(await authority.resolveSessionChangeRepositories(quick.sessionId), [
+    {
+      repositoryId: repository.id,
+      repositoryName: repository.name,
+      workingPath: repository.directoryPath,
+    },
+  ])
+})
+
+test('excludes Brainstorm Sessions from Session changes', async () => {
+  const { authority, workspace } = await createFixture()
+  const created = await authority.createWorkstream(workspace.id, { goal: 'Inspect without changes' })
+  const brainstorm = await authority.createWorkstreamSession(created.snapshot.workstreams[0]!.id, {
+    mode: 'brainstorm',
+  })
+
+  assert.deepEqual(await authority.resolveSessionChangeRepositories(brainstorm.sessionId), [])
 })
 
 test('restores a removed Implement Session worktree from its persisted branch', async () => {
@@ -1648,6 +1875,27 @@ test('blocks concurrent Agent Runs that share a Repository working path', async 
   assert.equal(await authority.acquireSessionRunLease(second.sessionId), false)
 
   await authority.settleSessionRunLease(first.sessionId)
+})
+
+test('migrates version 5 application state to persist Session fork lineage', async () => {
+  const { storageDirectory } = await createFixture()
+  const database = new Database(join(storageDirectory, 'application-state.sqlite'))
+  database.exec('ALTER TABLE sessions DROP COLUMN forked_from_entry_id')
+  database.exec('ALTER TABLE sessions DROP COLUMN parent_session_id')
+  database.prepare("UPDATE metadata SET value = '5' WHERE key = 'schema_version'").run()
+  database.close()
+
+  const restarted = await initializeApplicationAuthority(storageDirectory, { sqlite: bunSqlite })
+  const migrated = new Database(join(storageDirectory, 'application-state.sqlite'))
+  const columns = migrated
+    .prepare('PRAGMA table_info(sessions)')
+    .all()
+    .map((row) => String(row.name))
+  migrated.close()
+
+  assert.equal(restarted.startup.status, 'ready')
+  assert.equal(columns.includes('parent_session_id'), true)
+  assert.equal(columns.includes('forked_from_entry_id'), true)
 })
 
 test('migrates prior application state to Session work locations', async () => {

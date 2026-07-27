@@ -16,6 +16,7 @@ import type {
 import { ComposerEditor, type ComposerEditorHandle } from '@/src/renderer/components/composer-editor'
 import { getComposerSubmissionState } from '@/src/renderer/composer-submission'
 import type { SessionSkill, SessionSkillsBridge } from '@/src/session-skills'
+import type { SessionFile, SessionFilesBridge } from '@/src/session-files'
 import { useSessionConfiguration } from '@/src/renderer/session-configuration-state'
 
 type ComposerProperties = Readonly<{
@@ -31,6 +32,7 @@ type ComposerProperties = Readonly<{
   stopRun?: ComposerBridge['stop']
   sessionConfiguration?: SessionConfigurationBridge
   sessionSkills?: SessionSkillsBridge
+  sessionFiles?: SessionFilesBridge
 }>
 
 export function Composer({
@@ -46,6 +48,7 @@ export function Composer({
   stopRun,
   sessionConfiguration,
   sessionSkills,
+  sessionFiles,
 }: ComposerProperties) {
   const descriptionId = useId()
   const statusId = useId()
@@ -54,6 +57,7 @@ export function Composer({
   const currentDraft = useRef(draft)
   const awaitingAcceptance = useRef(false)
   const restoreFocusAfterAcceptance = useRef(false)
+  const fileQueryRequest = useRef(0)
   const [submissionState, setSubmissionState] = useState(() => getComposerSubmissionState({ type: 'edit', draft }))
   const configuration = useSessionConfiguration(session.id, sessionConfiguration)
   const [pendingConfiguration, setPendingConfiguration] = useState<ReadonlySet<'model' | 'effort'>>(() => new Set())
@@ -64,6 +68,7 @@ export function Composer({
   const [compactError, setCompactError] = useState<string>()
   const [availableSkills, setAvailableSkills] = useState<readonly SessionSkill[]>([])
   const [skillsError, setSkillsError] = useState<string>()
+  const [availableFiles, setAvailableFiles] = useState<readonly SessionFile[]>([])
   const configurationPending = pendingConfiguration.size > 0
 
   useEffect(() => {
@@ -98,6 +103,26 @@ export function Composer({
   }, [session.id, sessionSkills])
 
   useEffect(() => {
+    if (!sessionFiles) return
+
+    let active = true
+    setAvailableFiles([])
+    const request = ++fileQueryRequest.current
+    void sessionFiles.getAvailable(session.id).then(
+      (files) => {
+        if (active && request === fileQueryRequest.current) setAvailableFiles(files)
+      },
+      () => {
+        if (active && request === fileQueryRequest.current) setAvailableFiles([])
+      }
+    )
+
+    return () => {
+      active = false
+    }
+  }, [session.id, sessionFiles])
+
+  useEffect(() => {
     if (focusRequest === undefined) {
       return
     }
@@ -117,6 +142,23 @@ export function Composer({
       editorHandle.current?.focus()
     }
   }, [submissionState.awaiting])
+
+  const updateAvailableFiles = useCallback(
+    (query: string) => {
+      if (!sessionFiles) return
+
+      const request = ++fileQueryRequest.current
+      void sessionFiles.getAvailable(session.id, query).then(
+        (files) => {
+          if (request === fileQueryRequest.current) setAvailableFiles(files)
+        },
+        () => {
+          if (request === fileQueryRequest.current) setAvailableFiles([])
+        }
+      )
+    },
+    [session.id, sessionFiles]
+  )
 
   const updateDraft = useCallback(
     (nextDraft: string) => {
@@ -271,12 +313,14 @@ export function Composer({
         <ComposerEditor
           ref={editorHandle}
           availableSkills={availableSkills}
+          availableFiles={availableFiles}
           describedBy={`${descriptionId} ${statusId}`}
           draft={submissionState.draft}
           label={`Message for ${session.title}`}
           readOnly={agentRunDisabled}
           onChange={updateDraft}
           onFocus={onActivate}
+          onFileQuery={updateAvailableFiles}
           onSubmit={(delivery) => void submit(delivery)}
         />
         <div className="flex items-end justify-between gap-2 px-3 pt-1 pb-2" data-slot="composer-control-row">

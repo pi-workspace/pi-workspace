@@ -1,5 +1,7 @@
 import type { SessionId } from '@/src/domain/session'
 import type { SessionSkillMention } from '@/src/session-skills'
+import type { SessionCodeReview } from '@/src/session-code-review'
+import type { SessionFileMention } from '@/src/session-files'
 
 export const agentActivityKinds = [
   'exploration',
@@ -22,6 +24,8 @@ export type ConversationEntry = Readonly<{
   role: 'user' | 'assistant'
   text: string
   skills?: readonly SessionSkillMention[]
+  files?: readonly SessionFileMention[]
+  codeReview?: SessionCodeReview
   delivery?: 'steer'
   timestamp: number
 }>
@@ -34,6 +38,7 @@ export type InspectedFileArtifact = Readonly<{
 export type FileChangeArtifact = Readonly<{
   type: 'file-change'
   path: string
+  repositoryId?: string
   additions?: number
   deletions?: number
 }>
@@ -108,6 +113,14 @@ export type SessionWorkingStateSnapshot = Readonly<{
   isWorking: boolean
 }>
 
+export type ActivityMutationPreview = Readonly<{
+  kind: 'diff' | 'code'
+  path: string
+  repositoryId?: string
+  content: string
+  truncated: boolean
+}>
+
 export type ActivityOperationDetail = Readonly<{
   toolCallId: string
   label: string
@@ -115,6 +128,7 @@ export type ActivityOperationDetail = Readonly<{
   inputPreview?: string
   input: string
   output?: string
+  preview?: ActivityMutationPreview
   truncated: boolean
 }>
 

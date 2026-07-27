@@ -6,6 +6,11 @@ import { sessionId } from '@/src/domain/session'
 import type { WorkstreamsSnapshot } from '@/src/domain/workstream'
 import type { SessionTranscriptSnapshot } from '@/src/session-transcript'
 import {
+  formatSessionCodeReviewText,
+  type SessionCodeReview,
+  type SessionCodeReviewDraft,
+} from '@/src/session-code-review'
+import {
   createEmptyWorkstreamKnowledge,
   deriveWorkstreamKnowledgeReadiness,
 } from '@/src/domain/workstream-knowledge-transitions'
@@ -65,6 +70,11 @@ export function createDemoBridge(scenarioName?: string): PiWorkspaceBridge {
   const transcriptsBySessionId: Record<string, SessionTranscriptSnapshot> = { ...scenario.transcriptsBySessionId }
   const transcriptListeners = new Set<Parameters<PiWorkspaceBridge['transcript']['subscribe']>[0]>()
   const settingsListeners = new Set<Parameters<PiWorkspaceBridge['settings']['subscribe']>[0]>()
+  const codeReviewDrafts = new Map<string, SessionCodeReviewDraft>()
+  const demoFileStaging = new Map<string, 'staged' | 'unstaged' | 'partial'>([
+    ['src/notes/note-store.ts', 'partial'],
+    ['src/notes/sync-queue.ts', 'unstaged'],
+  ])
 
   colorSchemeMediaQuery.addEventListener('change', (event) => {
     if (settingsSnapshot.appearance !== 'system') {
@@ -78,6 +88,11 @@ export function createDemoBridge(scenarioName?: string): PiWorkspaceBridge {
     }
   })
 
+  const stagingState = (path: string) => {
+    const state = demoFileStaging.get(path) ?? 'unstaged'
+    return { staged: state !== 'unstaged', unstaged: state !== 'staged' }
+  }
+
   const transcriptSnapshot = (requestedSessionId: string): SessionTranscriptSnapshot =>
     transcriptsBySessionId[requestedSessionId] ?? {
       sessionId: sessionId(requestedSessionId),
@@ -86,6 +101,32 @@ export function createDemoBridge(scenarioName?: string): PiWorkspaceBridge {
       runs: [],
       entries: [],
     }
+  const publishCodeReview = (requestedSessionId: string, codeReview: SessionCodeReview) => {
+    const transcript = transcriptSnapshot(requestedSessionId)
+    const revision = transcript.revision + 1
+    const snapshot = {
+      ...transcript,
+      revision,
+      entries: [
+        ...transcript.entries,
+        {
+          type: 'message' as const,
+          message: {
+            id: `demo-review-${revision}`,
+            role: 'user' as const,
+            text: formatSessionCodeReviewText(codeReview),
+            codeReview,
+            state: 'complete' as const,
+            revision,
+          },
+        },
+      ],
+    }
+    transcriptsBySessionId[requestedSessionId] = snapshot
+    transcriptListeners.forEach((listener) =>
+      listener({ sessionId: sessionId(requestedSessionId), revision, snapshot })
+    )
+  }
 
   return {
     applicationState: {
@@ -130,8 +171,48 @@ export function createDemoBridge(scenarioName?: string): PiWorkspaceBridge {
       async compact() {
         return { status: 'compacted' as const }
       },
-      async submit() {
-        return { status: 'rejected', reason: 'unexpected' }
+      async submit(submission) {
+        if (!submission.codeReview) return { status: 'rejected' as const, reason: 'unexpected' as const }
+
+        publishCodeReview(submission.sessionId, submission.codeReview)
+        return { status: 'accepted' as const, delivery: submission.delivery }
+      },
+      async getCodeReviewDraft(sessionId) {
+        return codeReviewDrafts.get(sessionId) ?? { comments: [] }
+      },
+      async saveCodeReviewComment(command) {
+        const current = codeReviewDrafts.get(command.sessionId) ?? { comments: [] }
+        const existing = command.commentId
+          ? current.comments.find((comment) => comment.id === command.commentId)
+          : undefined
+        const comment = {
+          id: existing?.id ?? `demo-review-${current.comments.length + 1}`,
+          text: command.text,
+          reference: command.reference,
+          createdAt: existing?.createdAt ?? Date.now(),
+        }
+        const next = {
+          comments: existing
+            ? current.comments.map((candidate) => (candidate.id === existing.id ? comment : candidate))
+            : [...current.comments, comment],
+        }
+        codeReviewDrafts.set(command.sessionId, next)
+        return next
+      },
+      async removeCodeReviewComment(sessionId, commentId) {
+        const next = {
+          comments: (codeReviewDrafts.get(sessionId)?.comments ?? []).filter((comment) => comment.id !== commentId),
+        }
+        codeReviewDrafts.set(sessionId, next)
+        return next
+      },
+      async finishCodeReview(sessionId) {
+        const draft = codeReviewDrafts.get(sessionId) ?? { comments: [] }
+        if (draft.comments.length === 0) return { status: 'rejected' as const, reason: 'invalid-submission' as const }
+
+        codeReviewDrafts.set(sessionId, { comments: [] })
+        publishCodeReview(sessionId, { kind: 'review', comments: draft.comments })
+        return { status: 'accepted' as const, delivery: 'prompt' as const }
       },
       async stop() {
         return { status: 'not-running' }
@@ -166,6 +247,75 @@ export function createDemoBridge(scenarioName?: string): PiWorkspaceBridge {
           { name: 'frontend-design', description: 'Create intentional, distinctive interfaces and interactions.' },
           { name: 'planning', description: 'Turn a goal into a focused implementation plan.' },
         ]
+      },
+    },
+    sessionFiles: {
+      async getAvailable() {
+        return [
+          { path: 'src/main/composer-ipc.ts', name: 'composer-ipc.ts', kind: 'file' as const },
+          { path: 'src/renderer/components', name: 'components', kind: 'folder' as const },
+        ]
+      },
+    },
+    sessionChanges: {
+      async getSnapshot(sessionId) {
+        const session = workstreamsSnapshot.workstreams
+          .flatMap((workstream) => workstream.sessions)
+          .find((candidate) => candidate.id === sessionId)
+
+        return {
+          sessionId,
+          repositories:
+            session?.mode === 'implement'
+              ? [
+                  {
+                    repositoryId: 'Atlas Notes',
+                    repositoryName: 'Atlas Notes',
+                    branch: {
+                      head: 'railyard/offline-editing',
+                      upstream: 'origin/main',
+                      ahead: 2,
+                      behind: 0,
+                      detached: false,
+                      unborn: false,
+                    },
+                    files: [
+                      {
+                        path: 'src/notes/note-store.ts',
+                        status: 'modified' as const,
+                        ...stagingState('src/notes/note-store.ts'),
+                        additions: 8,
+                        deletions: 2,
+                      },
+                      {
+                        path: 'src/notes/sync-queue.ts',
+                        status: 'added' as const,
+                        ...stagingState('src/notes/sync-queue.ts'),
+                        additions: 42,
+                        deletions: 0,
+                      },
+                    ],
+                  },
+                ]
+              : [],
+        }
+      },
+      async loadFileDiff(_sessionId, _repositoryId, path, view) {
+        if (path !== 'src/notes/note-store.ts' && path !== 'src/notes/sync-queue.ts') {
+          return { status: 'unavailable', message: 'The changed file is no longer available.' }
+        }
+
+        return {
+          status: 'available',
+          content: `diff --git a/${path} b/${path}\n--- a/${path}\n+++ b/${path}\n@@ -1,2 +1,3 @@\n-export const sync = saveRemote\n+export const sync = queueLocalSave\n+export const state = '${view}'`,
+          truncated: false,
+        }
+      },
+      async setFileStaged(sessionId, _repositoryId, path, staged) {
+        if (!demoFileStaging.has(path)) throw new Error('The changed file is no longer available.')
+
+        demoFileStaging.set(path, staged ? 'staged' : 'unstaged')
+        return this.getSnapshot(sessionId)
       },
     },
     sessionConfiguration: {
@@ -351,6 +501,71 @@ export function createDemoBridge(scenarioName?: string): PiWorkspaceBridge {
         }
 
         return { status: 'available', sessionId: createdSessionId, snapshot: workstreamsSnapshot }
+      },
+      async getSessionForkPoints(sourceSessionId) {
+        const userMessages = (transcriptsBySessionId[sourceSessionId]?.entries ?? []).flatMap((entry) =>
+          entry.type === 'message' && entry.message.role === 'user' ? [entry.message] : []
+        )
+
+        return userMessages.map((message, index) => ({
+          entryId: message.id,
+          text: message.text,
+          position: index + 1,
+          total: userMessages.length,
+        }))
+      },
+      async forkSession(sourceSessionId, options) {
+        const owner = workstreamsSnapshot.workstreams.find((workstream) =>
+          workstream.sessions.some((session) => session.id === sourceSessionId)
+        )
+        const source = owner?.sessions.find((session) => session.id === sourceSessionId)
+        const point = (await this.getSessionForkPoints(sourceSessionId)).find(
+          (candidate) => candidate.entryId === options.entryId
+        )
+        if (!owner || !source || !point) throw new TypeError('Select a user message from the Session history.')
+
+        createdSessionNumber += 1
+        const createdSessionId = sessionId(`forked-session-${createdSessionNumber}`)
+        const target = { ...source, id: createdSessionId, title: options.title.trim() }
+
+        if (source.mode === 'default') {
+          const workstreamId = `forked-quick-workstream-${createdSessionNumber}`
+          workstreamsSnapshot = {
+            revision: workstreamsSnapshot.revision + 1,
+            workstreams: [
+              ...workstreamsSnapshot.workstreams,
+              { ...owner, id: workstreamId, sessions: [{ ...target, workstreamId }] },
+            ],
+          }
+        } else {
+          workstreamsSnapshot = {
+            revision: workstreamsSnapshot.revision + 1,
+            workstreams: workstreamsSnapshot.workstreams.map((workstream) =>
+              workstream.id === owner.id ? { ...workstream, sessions: [...workstream.sessions, target] } : workstream
+            ),
+          }
+        }
+
+        const sourceTranscript = transcriptsBySessionId[sourceSessionId]
+        if (sourceTranscript) {
+          let userPosition = 0
+          transcriptsBySessionId[createdSessionId] = {
+            ...sourceTranscript,
+            sessionId: createdSessionId,
+            entries: sourceTranscript.entries.filter((entry) => {
+              if (entry.type !== 'message' || entry.message.role !== 'user') return userPosition < point.position
+              userPosition += 1
+              return userPosition < point.position
+            }),
+          }
+        }
+
+        return {
+          status: 'available',
+          sessionId: createdSessionId,
+          snapshot: workstreamsSnapshot,
+          draft: point.text,
+        }
       },
       async setLifecycle(workstreamId, lifecycle) {
         workstreamsSnapshot = {

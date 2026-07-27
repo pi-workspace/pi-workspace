@@ -2,6 +2,8 @@ import type { SessionId } from '@/src/domain/session'
 import type { QueuedFollowUp } from '@/src/queued-follow-up'
 import type { SessionSkillMention } from '@/src/session-skills'
 import type { SessionActionCard } from '@/src/session-action-cards'
+import type { SessionCodeReview } from '@/src/session-code-review'
+import type { SessionFileMention } from '@/src/session-files'
 
 const allowedExternalUrlProtocols = new Set(['http:', 'https:', 'mailto:'])
 export const maximumExternalUrlLength = 8_192
@@ -28,6 +30,8 @@ export type SessionTranscriptMessage = Readonly<{
   role: 'user' | 'assistant'
   text: string
   skills?: readonly SessionSkillMention[]
+  files?: readonly SessionFileMention[]
+  codeReview?: SessionCodeReview
   delivery?: 'steer'
   state: 'complete' | 'streaming'
   revision: number

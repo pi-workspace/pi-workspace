@@ -3,7 +3,8 @@ import { useCallback, useState } from 'react'
 import type { ComposerBridge } from '@/src/composer'
 import type { SessionId } from '@/src/domain/session'
 import type { QueuedFollowUp } from '@/src/queued-follow-up'
-import { SkillMentionText } from '@/src/renderer/components/skill-mention-text'
+import { ReferenceMentionText } from '@/src/renderer/components/reference-mention-text'
+import { projectSessionFileSelections } from '@/src/session-files'
 import { projectSessionSkillSelections } from '@/src/session-skills'
 
 const maximumVisibleFollowUps = 3
@@ -21,21 +22,51 @@ type QueuedFollowUpTrayProperties = Readonly<{
 }>
 
 function QueuedFollowUpContent({ followUp, next }: Readonly<{ followUp: QueuedFollowUp; next: boolean }>) {
-  const projected = projectSessionSkillSelections(followUp.text)
-  const skills =
-    followUp.skills ??
-    projected.selections.map(({ name, offset }) => ({
-      offset,
-      skill: { name, availability: 'unavailable' as const },
-    }))
+  const reviewComment = followUp.codeReview?.comments[0]
+  const source = reviewComment?.text ?? followUp.sourceText ?? followUp.text
+  const projected = projectSessionSkillSelections(source)
+  const fileProjected = projectSessionFileSelections(projected.text)
+  const adjustedSkillOffset = (offset: number) =>
+    offset -
+    fileProjected.selections
+      .filter((selection) => selection.offset < offset)
+      .reduce((sum, selection) => sum + selection.tokenLength, 0)
+  const skills = reviewComment
+    ? projected.selections.map(({ name, offset }) => ({
+        offset: adjustedSkillOffset(offset),
+        skill: followUp.skills?.find((mention) => mention.skill.name === name)?.skill ?? {
+          name,
+          availability: 'unavailable' as const,
+        },
+      }))
+    : (followUp.skills ??
+      projected.selections.map(({ name, offset }) => ({
+        offset: adjustedSkillOffset(offset),
+        skill: { name, availability: 'unavailable' as const },
+      })))
+  const files = reviewComment
+    ? fileProjected.selections.map(({ path, offset }) => ({
+        offset,
+        file: followUp.files?.find((mention) => mention.file.path === path)?.file ?? {
+          path,
+          kind: 'file' as const,
+          availability: 'unavailable' as const,
+        },
+      }))
+    : (followUp.files ??
+      fileProjected.selections.map(({ path, offset }) => ({
+        offset,
+        file: { path, kind: 'file' as const, availability: 'unavailable' as const },
+      })))
 
   return (
     <>
       <span className="block text-xs/4 font-medium text-content-muted-foreground">
         {next ? 'Next follow-up' : 'Follow-up'}
+        {reviewComment ? ` · ${reviewComment.reference.path}` : ''}
       </span>
       <span className="mt-0.5 line-clamp-2 block whitespace-pre-wrap break-words">
-        <SkillMentionText text={projected.text} skills={skills} />
+        <ReferenceMentionText text={fileProjected.text} skills={skills} files={files} />
       </span>
     </>
   )
