@@ -232,6 +232,7 @@ test('manual-update platforms open the matching GitHub Release instead of downlo
   const opened = await updater.openRelease()
 
   assert.equal(opened, true)
+  assert.equal(updater.getSnapshot().manualUpdateKind, 'debian')
   assert.equal(downloadCount, 0)
   assert.deepEqual(openedUrls, ['https://github.com/pi-workspace/railyard/releases/tag/v2.0.0-beta.2'])
 })

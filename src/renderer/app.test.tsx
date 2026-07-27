@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { afterEach, test } from 'node:test'
 import { act, cleanup, render, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import type { ApplicationUpdateSnapshot } from '@/src/application-update'
 import type { WorkspacesSnapshot } from '@/src/application-state'
 import { sessionId, type SessionId } from '@/src/domain/session'
 import type { Workstream, WorkstreamsSnapshot } from '@/src/domain/workstream'
@@ -87,9 +88,25 @@ function deferred<Value>() {
 
 function createBridge(
   overrides: Partial<PiWorkspaceBridge['workstreams']> = {},
-  applicationStateOverrides: Partial<PiWorkspaceBridge['applicationState']> = {}
+  applicationStateOverrides: Partial<PiWorkspaceBridge['applicationState']> = {},
+  applicationUpdateOverrides: Partial<PiWorkspaceBridge['applicationUpdate']> = {}
 ): PiWorkspaceBridge {
+  const applicationUpdateSnapshot: ApplicationUpdateSnapshot = {
+    currentVersion: '2.0.0-beta.1',
+    updateMethod: 'unavailable',
+    status: 'unavailable',
+  }
+
   return {
+    applicationUpdate: {
+      getSnapshot: async () => applicationUpdateSnapshot,
+      check: async () => applicationUpdateSnapshot,
+      download: async () => applicationUpdateSnapshot,
+      restartToUpdate: async () => 'not-ready',
+      openRelease: async () => false,
+      subscribe: () => () => {},
+      ...applicationUpdateOverrides,
+    },
     applicationState: {
       getStartup: async () => ({ status: 'ready' }),
       getWorkspaces: async () => workspaces,
@@ -183,6 +200,177 @@ test('updates theme immediately from global Settings', async () => {
   await user.click(view.getByRole('radio', { name: 'One' }))
 
   await waitFor(() => assert.deepEqual(updates, [{ theme: 'one' }]))
+})
+
+test('shows the installed version and update check in Settings', async () => {
+  const user = userEvent.setup({ document: browser.document as unknown as Document })
+  const view = renderApp(createBridge())
+
+  await view.findByText('Ship Workspace A')
+  await user.click(view.getByRole('button', { name: 'Settings' }))
+  await user.click(view.getByRole('button', { name: 'Updates' }))
+
+  assert.ok(view.getByText('2.0.0-beta.1'))
+  assert.ok(view.getByRole('button', { name: 'Check for updates' }))
+})
+
+test('checks for an update and offers a macOS download when a newer release is available', async () => {
+  let checkCount = 0
+  const currentSnapshot: ApplicationUpdateSnapshot = {
+    currentVersion: '2.0.0-beta.1',
+    updateMethod: 'self-install',
+    status: 'idle',
+  }
+  const availableSnapshot: ApplicationUpdateSnapshot = {
+    ...currentSnapshot,
+    status: 'available',
+    availableVersion: '2.0.0-beta.2',
+    releaseUrl: 'https://github.com/pi-workspace/railyard/releases/tag/v2.0.0-beta.2',
+  }
+  const user = userEvent.setup({ document: browser.document as unknown as Document })
+  const view = renderApp(
+    createBridge(
+      {},
+      {},
+      {
+        getSnapshot: async () => currentSnapshot,
+        check: async () => {
+          checkCount += 1
+          return availableSnapshot
+        },
+      }
+    )
+  )
+
+  await view.findByText('Ship Workspace A')
+  await user.click(view.getByRole('button', { name: 'Settings' }))
+  await user.click(view.getByRole('button', { name: 'Updates' }))
+  await user.click(await view.findByRole('button', { name: 'Check for updates' }))
+
+  assert.equal(checkCount, 1)
+  assert.ok(await view.findByText('Version 2.0.0-beta.2 is available.'))
+  assert.ok(view.getByRole('button', { name: 'Download update' }))
+})
+
+test('shows progress while a macOS update downloads', async () => {
+  let updateListener: Parameters<PiWorkspaceBridge['applicationUpdate']['subscribe']>[0] = () => {}
+  const availableSnapshot: ApplicationUpdateSnapshot = {
+    currentVersion: '2.0.0-beta.1',
+    updateMethod: 'self-install',
+    status: 'available',
+    availableVersion: '2.0.0-beta.2',
+  }
+  const downloadingSnapshot: ApplicationUpdateSnapshot = {
+    ...availableSnapshot,
+    status: 'downloading',
+    progress: { percent: 42, transferred: 420, total: 1_000, bytesPerSecond: 100 },
+  }
+  const user = userEvent.setup({ document: browser.document as unknown as Document })
+  const view = renderApp(
+    createBridge(
+      {},
+      {},
+      {
+        getSnapshot: async () => availableSnapshot,
+        download: async () => {
+          updateListener(downloadingSnapshot)
+          return downloadingSnapshot
+        },
+        subscribe: (listener) => {
+          updateListener = listener
+          return () => {}
+        },
+      }
+    )
+  )
+
+  await view.findByText('Ship Workspace A')
+  await user.click(view.getByRole('button', { name: 'Settings' }))
+  await user.click(view.getByRole('button', { name: 'Updates' }))
+  await user.click(await view.findByRole('button', { name: 'Download update' }))
+
+  const progress = await view.findByRole('progressbar', { name: 'Update download' })
+  assert.equal(progress.getAttribute('aria-valuenow'), '42')
+})
+
+test('keeps a ready update open when an Agent Run blocks restart', async () => {
+  const readySnapshot: ApplicationUpdateSnapshot = {
+    currentVersion: '2.0.0-beta.1',
+    updateMethod: 'self-install',
+    status: 'ready',
+    availableVersion: '2.0.0-beta.2',
+  }
+  const user = userEvent.setup({ document: browser.document as unknown as Document })
+  const view = renderApp(
+    createBridge(
+      {},
+      {},
+      {
+        getSnapshot: async () => readySnapshot,
+        restartToUpdate: async () => 'blocked-active-run',
+      }
+    )
+  )
+
+  await view.findByText('Ship Workspace A')
+  await user.click(view.getByRole('button', { name: 'Settings' }))
+  await user.click(view.getByRole('button', { name: 'Updates' }))
+  await user.click(await view.findByRole('button', { name: 'Restart to update' }))
+
+  assert.ok(await view.findByText('Wait for every Agent Run to finish, then choose Restart to update again.'))
+  assert.ok(view.getByRole('button', { name: 'Restart to update' }))
+})
+
+test('shows checksum instructions and opens the release for a manual Windows update', async () => {
+  let openCount = 0
+  const availableSnapshot: ApplicationUpdateSnapshot = {
+    currentVersion: '2.0.0-beta.1',
+    updateMethod: 'manual',
+    manualUpdateKind: 'windows',
+    status: 'available',
+    availableVersion: '2.0.0-beta.2',
+    releaseUrl: 'https://github.com/pi-workspace/railyard/releases/tag/v2.0.0-beta.2',
+  }
+  const user = userEvent.setup({ document: browser.document as unknown as Document })
+  const view = renderApp(
+    createBridge(
+      {},
+      {},
+      {
+        getSnapshot: async () => availableSnapshot,
+        openRelease: async () => {
+          openCount += 1
+          return true
+        },
+      }
+    )
+  )
+
+  await view.findByText('Ship Workspace A')
+  await user.click(view.getByRole('button', { name: 'Settings' }))
+  await user.click(view.getByRole('button', { name: 'Updates' }))
+
+  assert.ok(await view.findByText(/matching \.sha256 file/))
+  await user.click(view.getByRole('button', { name: 'Open GitHub Release' }))
+  assert.equal(openCount, 1)
+})
+
+test('shows an actionable update failure and allows another check', async () => {
+  const errorSnapshot: ApplicationUpdateSnapshot = {
+    currentVersion: '2.0.0-beta.1',
+    updateMethod: 'self-install',
+    status: 'error',
+    error: 'Railyard could not check for updates. Check your connection and try again.',
+  }
+  const user = userEvent.setup({ document: browser.document as unknown as Document })
+  const view = renderApp(createBridge({}, {}, { getSnapshot: async () => errorSnapshot }))
+
+  await view.findByText('Ship Workspace A')
+  await user.click(view.getByRole('button', { name: 'Settings' }))
+  await user.click(view.getByRole('button', { name: 'Updates' }))
+
+  assert.ok(await view.findByRole('alert'))
+  assert.ok(view.getByRole('button', { name: 'Check for updates' }))
 })
 
 test('closes Settings from its close button', async () => {

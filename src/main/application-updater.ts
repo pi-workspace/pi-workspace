@@ -57,9 +57,21 @@ function isRailyardReleaseUrl(value: string | undefined): value is string {
 
 export function createApplicationUpdater(options: ApplicationUpdaterOptions): ApplicationUpdater {
   const updateMethod = !options.isPackaged ? 'unavailable' : options.platform === 'darwin' ? 'self-install' : 'manual'
-  let snapshot: ApplicationUpdateSnapshot = {
+  const manualUpdateKind =
+    updateMethod !== 'manual'
+      ? undefined
+      : options.platform === 'win32'
+        ? 'windows'
+        : options.platform === 'linux'
+          ? 'debian'
+          : 'unsupported'
+  const updateIdentity = {
     currentVersion: options.currentVersion,
     updateMethod,
+    manualUpdateKind,
+  } as const
+  let snapshot: ApplicationUpdateSnapshot = {
+    ...updateIdentity,
     status: options.isPackaged ? 'idle' : 'unavailable',
   }
   const listeners = new Set<(snapshot: ApplicationUpdateSnapshot) => void>()
@@ -99,7 +111,7 @@ export function createApplicationUpdater(options: ApplicationUpdaterOptions): Ap
     async check() {
       if (!options.isPackaged) return snapshot
 
-      publish({ currentVersion: options.currentVersion, updateMethod, status: 'checking' })
+      publish({ ...updateIdentity, status: 'checking' })
 
       try {
         const release = await options.source.check()
@@ -109,18 +121,16 @@ export function createApplicationUpdater(options: ApplicationUpdaterOptions): Ap
             isSemanticVersion(release.version) &&
             compareSemanticVersions(release.version, options.currentVersion) > 0
             ? {
-                currentVersion: options.currentVersion,
-                updateMethod,
+                ...updateIdentity,
                 status: 'available',
                 availableVersion: release.version,
                 releaseUrl: release.releaseUrl,
               }
-            : { currentVersion: options.currentVersion, updateMethod, status: 'up-to-date' }
+            : { ...updateIdentity, status: 'up-to-date' }
         )
       } catch {
         publish({
-          currentVersion: options.currentVersion,
-          updateMethod,
+          ...updateIdentity,
           status: 'error',
           error: 'Railyard could not check for updates. Check your connection and try again.',
         })

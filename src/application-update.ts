@@ -4,6 +4,7 @@ export type ApplicationUpdateStatus =
 export type ApplicationUpdateSnapshot = Readonly<{
   currentVersion: string
   updateMethod: 'self-install' | 'manual' | 'unavailable'
+  manualUpdateKind?: 'windows' | 'debian' | 'unsupported'
   status: ApplicationUpdateStatus
   availableVersion?: string
   releaseUrl?: string
