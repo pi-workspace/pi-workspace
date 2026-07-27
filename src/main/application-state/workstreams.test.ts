@@ -21,8 +21,8 @@ type RepositoryInspector = (directoryPath: string) => Promise<InspectedGitReposi
 const { Database } = (await Function('return import("bun:sqlite")')()) as BunSqliteModule
 const bunSqlite: SqliteModule = {
   DatabaseSync: Database as unknown as SqliteModule['DatabaseSync'],
-  async backup() {
-    throw new Error('Backup is not exercised by the Bun test adapter.')
+  async backup(_source, destination) {
+    await writeFile(destination, 'SQLite backup')
   },
 }
 
@@ -93,24 +93,33 @@ async function createInterruptedSessionWorktreeFixture() {
   return { storageDirectory, repositoryPath, interrupted, repository, created }
 }
 
-test('reset preserves external Git and Pi Session artifacts without adopting them', async () => {
-  const { authority, storageDirectory, workspace } = await createFixture()
-  const repository = workspace.repositories[0]
-  assert.ok(repository)
-  const created = await authority.createWorkstream(workspace.id, { goal: 'Preserve external artifacts' })
-  const resolution = await authority.resolveOwnedSession(created.sessionId)
-  assert.ok(resolution)
-  const reset = await authority.reset()
+test(
+  'reset preserves external Git and Pi Session artifacts without adopting them',
+  { skip: process.platform === 'win32' ? 'Bun retains closed SQLite handles on Windows.' : false },
+  async () => {
+    const { authority, storageDirectory, workspace } = await createFixture()
+    const repository = workspace.repositories[0]
+    assert.ok(repository)
+    const created = await authority.createWorkstream(workspace.id, { goal: 'Preserve external artifacts' })
+    const resolution = await authority.resolveOwnedSession(created.sessionId)
+    assert.ok(resolution)
+    const reset = await authority.reset()
 
-  assert.deepEqual(reset, { status: 'first-launch' })
-  await Promise.all([access(repository.directoryPath), access(resolution.sessionPath)])
-  assert.deepEqual((await authority.getWorkspaces()).workspaces, [])
-  assert.equal(await authority.resolveOwnedSession(created.sessionId), undefined)
-  assert.equal((await initializeApplicationAuthority(storageDirectory, { sqlite: bunSqlite })).startup.status, 'ready')
-})
+    assert.deepEqual(reset, { status: 'first-launch' })
+    await Promise.all([access(repository.directoryPath), access(resolution.sessionPath)])
+    assert.deepEqual((await authority.getWorkspaces()).workspaces, [])
+    assert.equal(await authority.resolveOwnedSession(created.sessionId), undefined)
+    assert.equal(
+      (await initializeApplicationAuthority(storageDirectory, { sqlite: bunSqlite })).startup.status,
+      'ready'
+    )
+  }
+)
 
 test('reset creates a new application authority generation', async () => {
-  const { authority, storageDirectory } = await createFixture()
+  const storageDirectory = await mkdtemp(join(tmpdir(), 'pi-workspace-reset-generation-'))
+  temporaryDirectories.push(storageDirectory)
+  const authority = await initializeApplicationAuthority(storageDirectory, { sqlite: bunSqlite })
   const markerPath = join(storageDirectory, 'application-state.json')
   const before = JSON.parse(await readFile(markerPath, 'utf8')) as { generationId: string }
 
@@ -188,6 +197,49 @@ test('lazily creates a Repository worktree for an Implement Session', async () =
 
   assert.equal(prepared.workingPath, expectedPath)
   assert.equal(await readFile(join(expectedPath, 'tracked.txt'), 'utf8'), 'committed')
+})
+
+test('exposes only prepared writable Repository locations for Session changes', async () => {
+  const { authority, workspace } = await createFixture()
+  const repository = workspace.repositories[0]!
+  await commitRepositoryFile(repository.directoryPath, 'tracked.txt', 'committed', 'Initial commit')
+  const created = await authority.createWorkstream(workspace.id, { goal: 'Review isolated changes' })
+
+  assert.deepEqual(await authority.resolveSessionChangeRepositories(created.sessionId), [])
+
+  const prepared = await authority.prepareSessionRepository(created.sessionId, repository.id)
+
+  assert.deepEqual(await authority.resolveSessionChangeRepositories(created.sessionId), [
+    {
+      repositoryId: repository.id,
+      repositoryName: repository.name,
+      workingPath: prepared.workingPath,
+    },
+  ])
+})
+
+test('exposes the direct working location for Quick Session changes', async () => {
+  const { authority, workspace } = await createFixture()
+  const repository = workspace.repositories[0]!
+  const quick = await authority.createQuickSession(workspace.id, { repositoryId: repository.id })
+
+  assert.deepEqual(await authority.resolveSessionChangeRepositories(quick.sessionId), [
+    {
+      repositoryId: repository.id,
+      repositoryName: repository.name,
+      workingPath: repository.directoryPath,
+    },
+  ])
+})
+
+test('excludes Brainstorm Sessions from Session changes', async () => {
+  const { authority, workspace } = await createFixture()
+  const created = await authority.createWorkstream(workspace.id, { goal: 'Inspect without changes' })
+  const brainstorm = await authority.createWorkstreamSession(created.snapshot.workstreams[0]!.id, {
+    mode: 'brainstorm',
+  })
+
+  assert.deepEqual(await authority.resolveSessionChangeRepositories(brainstorm.sessionId), [])
 })
 
 test('restores a removed Implement Session worktree from its persisted branch', async () => {

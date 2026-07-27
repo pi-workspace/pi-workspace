@@ -12,6 +12,7 @@ import type {
 import { bundledReleaseNotes } from '@/src/release-notes'
 import { SessionArea } from '@/src/renderer/components/session-area'
 import { WorkstreamContextLayout, WorkstreamSelectionScreen } from '@/src/renderer/components/workstream-context'
+import type { SessionChangesSelection } from '@/src/renderer/components/session-changes'
 import { WorkspaceNavigation } from '@/src/renderer/components/workspace-navigation'
 import { WorkstreamNavigation } from '@/src/renderer/components/workstream-navigation'
 import { initialMainContentState, updateMainContent } from '@/src/renderer/main-content'
@@ -84,6 +85,10 @@ export function WorkspaceShell({ initialWorkspacesSnapshot, initialSessionDispla
     Readonly<{ sessionId: SessionId; request: number }> | undefined
   >()
   const [sessionTitleEditing, setSessionTitleEditing] = useState<SessionTitleEditing>()
+  const changesRequestNumber = useRef(0)
+  const [changesSelection, setChangesSelection] = useState<
+    (SessionChangesSelection & Readonly<{ sessionId: SessionId }>) | undefined
+  >()
 
   const selectedWorkspaceAuthorityToken = (): SelectedWorkspaceAuthorityToken => {
     const workspaceId = selectedWorkspaceIdRef.current
@@ -187,6 +192,7 @@ export function WorkspaceShell({ initialWorkspacesSnapshot, initialSessionDispla
   const workstreamLifecycles = new Map(workstreams.map((workstream) => [workstream.id, workstream.lifecycle]))
   const recentSessions = sessions.slice(-5).reverse()
   const visibleSessionIds = getVisibleSessionIds(sessionPinning, workstreamSelection.sessionId)
+  const activeSession = sessions.find((session) => session.id === workstreamSelection.sessionId)
   const visibleSessions = visibleSessionIds.flatMap((ownedSessionId) => {
     const ownedSession = sessions.find((candidate) => candidate.id === ownedSessionId)
     return ownedSession ? [ownedSession] : []
@@ -227,6 +233,12 @@ export function WorkspaceShell({ initialWorkspacesSnapshot, initialSessionDispla
     window.requestAnimationFrame(() => {
       setSessionRevealRequest({ sessionId, request })
     })
+  }
+
+  const openCurrentDiff = (sessionId: SessionId, repositoryId: string | undefined, path: string) => {
+    activateSession(sessionId)
+    changesRequestNumber.current += 1
+    setChangesSelection({ sessionId, repositoryId, path, request: changesRequestNumber.current })
   }
 
   const toggleSessionPin = (sessionId: SessionId) => {
@@ -441,6 +453,8 @@ export function WorkspaceShell({ initialWorkspacesSnapshot, initialSessionDispla
     >
       <WorkstreamContextLayout
         workstream={selectedWorkstream}
+        activeSession={activeSession}
+        changesSelection={changesSelection?.sessionId === activeSession?.id ? changesSelection : undefined}
         stateResource={workstreamKnowledgeResource}
         onShowWorkingLocation={(workstreamId, repositoryId) =>
           window.piWorkspace.workstreams.showWorkingLocation(workstreamId, repositoryId)
@@ -481,6 +495,7 @@ export function WorkspaceShell({ initialWorkspacesSnapshot, initialSessionDispla
             onToggleSessionPin={toggleSessionPin}
             acceptActionCard={window.piWorkspace.transcript.acceptActionCard}
             onStartImplementSession={(workstreamId) => createSession(workstreamId, { mode: 'implement' })}
+            onOpenCurrentDiff={openCurrentDiff}
           />
         ) : selectedWorkstream?.goal ? (
           <WorkstreamSelectionScreen workstream={selectedWorkstream} />

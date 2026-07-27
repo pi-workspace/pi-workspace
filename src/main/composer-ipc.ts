@@ -9,6 +9,8 @@ import type {
 } from '@/src/domain/workstream-knowledge-transitions'
 import {
   composerIpcChannels,
+  parseCodeReviewCommentCommand,
+  parseCodeReviewCommentRemovalRequest,
   parseQueuedFollowUpRemovalRequest,
   parseSessionCompactRequest,
   parseSessionMessageSubmission,
@@ -489,6 +491,15 @@ export async function createPiSessionRuntime(
     },
     getSkills: getAvailableSkills,
     getSkillPrompt,
+    getActivityRepositoryLocations() {
+      const repositories = managedPolicyGuard?.currentPolicy().repositories ?? []
+
+      return repositories.flatMap((repository) =>
+        repository.availability === 'available'
+          ? [{ repositoryId: repository.id, workingPath: repository.workingPath }]
+          : []
+      )
+    },
     loadRawOperation(toolCallId) {
       let input: unknown
       let result: unknown
@@ -688,6 +699,34 @@ export function initializeComposer(authority: ApplicationAuthority): void {
     return submission
       ? registry.submit(submission)
       : Promise.resolve({ status: 'rejected', reason: 'invalid-submission' })
+  })
+
+  handleTrustedIpc(composerIpcChannels.getCodeReviewDraft, (_event, value: unknown) => {
+    const request = parseSessionRunStopRequest(value)
+
+    return request ? registry.getCodeReviewDraft(request.sessionId) : Promise.reject(new Error('Invalid Session.'))
+  })
+
+  handleTrustedIpc(composerIpcChannels.saveCodeReviewComment, (_event, value: unknown) => {
+    const command = parseCodeReviewCommentCommand(value)
+
+    return command ? registry.saveCodeReviewComment(command) : Promise.reject(new Error('Invalid review comment.'))
+  })
+
+  handleTrustedIpc(composerIpcChannels.removeCodeReviewComment, (_event, value: unknown) => {
+    const request = parseCodeReviewCommentRemovalRequest(value)
+
+    return request
+      ? registry.removeCodeReviewComment(request.sessionId, request.commentId)
+      : Promise.reject(new Error('Invalid review comment.'))
+  })
+
+  handleTrustedIpc(composerIpcChannels.finishCodeReview, (_event, value: unknown) => {
+    const request = parseSessionRunStopRequest(value)
+
+    return request
+      ? registry.finishCodeReview(request.sessionId)
+      : Promise.resolve({ status: 'rejected' as const, reason: 'invalid-submission' as const })
   })
 
   handleTrustedIpc(composerIpcChannels.stop, (_event, value: unknown): Promise<SessionRunStopResult> => {

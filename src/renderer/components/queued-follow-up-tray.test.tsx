@@ -97,6 +97,46 @@ test('renders queued Skill tokens as Skill references', () => {
   assert.match(view.container.textContent ?? '', /Write the focused test\./)
 })
 
+test('summarizes a queued referenced follow-up by file and comment', () => {
+  const view = render(
+    <QueuedFollowUpTray
+      sessionId={id}
+      isWorking
+      queuedFollowUps={[
+        {
+          id: 'follow-up-1',
+          text: 'Formatted model context',
+          createdAt: 1,
+          codeReview: {
+            kind: 'follow-up',
+            comments: [
+              {
+                id: 'comment-1',
+                text: 'Keep this visible.',
+                createdAt: 1,
+                reference: {
+                  repositoryId: 'repository-1',
+                  repositoryName: 'Pi Workspace',
+                  path: 'src/session-changes.tsx',
+                  oldStart: 1,
+                  oldLines: 1,
+                  newStart: 1,
+                  newLines: 1,
+                  patch: '@@ -1 +1 @@\n-old\n+new',
+                },
+              },
+            ],
+          },
+        },
+      ]}
+    />,
+    { container: browser.document.body as unknown as HTMLElement }
+  )
+
+  assert.match(view.getByText(/Next follow-up/).textContent ?? '', /src\/session-changes.tsx/)
+  assert.ok(view.getByText('Keep this visible.'))
+})
+
 test('reveals only the next three queued follow-ups', async () => {
   const user = userEvent.setup({ document: browser.document as unknown as Document })
   const view = renderInBrowser(

@@ -1,5 +1,10 @@
 import { isAbsolute, normalize, relative, sep } from 'node:path'
-import type { ActivityArtifact, ToolExecution } from '@/src/session-timeline'
+import type { ActivityArtifact, ActivityMutationPreview, ToolExecution } from '@/src/session-timeline'
+
+export type ActivityRepositoryLocation = Readonly<{
+  repositoryId: string
+  workingPath: string
+}>
 
 const inspectedToolNames = new Set(['read', 'grep', 'find', 'ls', 'search'])
 const changedToolNames = new Set(['edit', 'write', 'apply_patch'])
@@ -40,17 +45,29 @@ export function deriveActivityArtifacts(
   execution: ToolExecution,
   result: unknown,
   runtimeDirectory: string,
-  isError: boolean
+  isError: boolean,
+  repositories: readonly ActivityRepositoryLocation[] = []
 ): readonly ActivityArtifact[] {
   const artifacts: ActivityArtifact[] = []
-  const path = normalizedRuntimePath(execution.input, runtimeDirectory)
+  const attributedPath = normalizedActivityPath(
+    execution.input,
+    runtimeDirectory,
+    repositories,
+    execution.toolName === 'apply_patch' ? firstPatchPath(execution.input) : undefined
+  )
+  const path = attributedPath?.path
 
   if (!isError && path && inspectedToolNames.has(execution.toolName)) {
     artifacts.push({ type: 'inspected-file', path })
   }
 
   if (!isError && path && changedToolNames.has(execution.toolName)) {
-    artifacts.push({ type: 'file-change', path, ...patchCounts(result) })
+    artifacts.push({
+      type: 'file-change',
+      path,
+      ...(attributedPath?.repositoryId ? { repositoryId: attributedPath.repositoryId } : {}),
+      ...patchCounts(result),
+    })
   }
 
   const command = stringProperty(execution.input, 'command')
@@ -71,6 +88,39 @@ export function deriveActivityArtifacts(
   return artifacts
 }
 
+export function deriveMutationPreview(
+  execution: ToolExecution,
+  result: unknown,
+  runtimeDirectory: string,
+  repositories: readonly ActivityRepositoryLocation[] = []
+): ActivityMutationPreview | undefined {
+  if (execution.status !== 'completed' || !changedToolNames.has(execution.toolName)) return undefined
+
+  const attributedPath = normalizedActivityPath(
+    execution.input,
+    runtimeDirectory,
+    repositories,
+    execution.toolName === 'apply_patch' ? firstPatchPath(execution.input) : undefined
+  )
+  if (!attributedPath) return undefined
+
+  const content =
+    execution.toolName === 'write'
+      ? stringProperty(execution.input, 'content')
+      : stringProperty(objectProperty(result, 'details'), 'patch')
+  if (content === undefined) return undefined
+
+  const limit = 100_000
+  const truncated = content.length > limit
+
+  return {
+    kind: execution.toolName === 'write' ? 'code' : 'diff',
+    ...attributedPath,
+    content: truncated ? `${content.slice(0, limit)}\n…` : content,
+    truncated,
+  }
+}
+
 export function mergeActivityArtifacts(
   current: readonly ActivityArtifact[],
   additions: readonly ActivityArtifact[]
@@ -87,21 +137,46 @@ export function mergeActivityArtifacts(
 export function countArtifactFiles(artifacts: readonly ActivityArtifact[]): number {
   return new Set(
     artifacts.flatMap((artifact) =>
-      artifact.type === 'inspected-file' || artifact.type === 'file-change' ? [artifact.path] : []
+      artifact.type === 'inspected-file'
+        ? [artifact.path]
+        : artifact.type === 'file-change'
+          ? [`${artifact.repositoryId ?? 'session'}:${artifact.path}`]
+          : []
     )
   ).size
 }
 
 function normalizedRuntimePath(input: unknown, runtimeDirectory: string): string | undefined {
-  const path = suppliedPath(input)
+  return normalizedPath(suppliedPath(input), runtimeDirectory)
+}
 
+function normalizedActivityPath(
+  input: unknown,
+  runtimeDirectory: string,
+  repositories: readonly ActivityRepositoryLocation[],
+  suppliedActivityPath?: string
+): Readonly<{ path: string; repositoryId?: string }> | undefined {
+  const path = suppliedActivityPath ?? suppliedPath(input)
   if (!path) return undefined
 
-  const runtimePath = isAbsolute(path) ? relative(runtimeDirectory, path) : normalize(path)
+  if (isAbsolute(path)) {
+    for (const repository of repositories) {
+      const repositoryPath = normalizedPath(path, repository.workingPath)
+      if (repositoryPath) return { path: repositoryPath, repositoryId: repository.repositoryId }
+    }
+  }
 
-  if (runtimePath === '..' || runtimePath.startsWith(`..${sep}`) || isAbsolute(runtimePath)) return undefined
+  const runtimePath = normalizedPath(path, runtimeDirectory)
+  return runtimePath ? { path: runtimePath } : undefined
+}
 
-  return runtimePath.split(sep).join('/')
+function normalizedPath(path: string | undefined, rootPath: string): string | undefined {
+  if (!path) return undefined
+
+  const relativePath = isAbsolute(path) ? relative(rootPath, path) : normalize(path)
+  if (relativePath === '..' || relativePath.startsWith(`..${sep}`) || isAbsolute(relativePath)) return undefined
+
+  return relativePath.split(sep).join('/')
 }
 
 function suppliedPath(input: unknown): string | undefined {
@@ -140,7 +215,10 @@ function classifyValidation(command: string): string | undefined {
 }
 
 function artifactKey(artifact: ActivityArtifact): string {
-  if (artifact.type === 'inspected-file' || artifact.type === 'file-change') return `${artifact.type}:${artifact.path}`
+  if (artifact.type === 'inspected-file') return `${artifact.type}:${artifact.path}`
+  if (artifact.type === 'file-change') {
+    return `${artifact.type}:${artifact.repositoryId ?? 'session'}:${artifact.path}`
+  }
   if (artifact.type === 'command') return `${artifact.type}:${artifact.command}`
   return `${artifact.type}:${artifact.label}`
 }

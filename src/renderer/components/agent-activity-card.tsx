@@ -1,11 +1,13 @@
 import { Button } from '@/components/ui-kit/button'
-import { ChevronDown, CircleCheck, CircleSlash2, CircleX, LoaderCircle } from 'lucide-react'
+import { ChevronDown, ChevronRight, CircleCheck, CircleSlash2, CircleX, ExternalLink, LoaderCircle } from 'lucide-react'
 import { useState } from 'react'
 import type { AgentActivity, AgentActivityDetails, ActivityArtifact } from '@/src/session-timeline'
+import { DiffView } from './diff-view'
 
 type AgentActivityCardProperties = Readonly<{
   activity: AgentActivity
   loadDetails: () => Promise<AgentActivityDetails | undefined>
+  onOpenCurrentDiff?: (repositoryId: string | undefined, path: string) => void
 }>
 
 const statusPresentation = {
@@ -16,12 +18,31 @@ const statusPresentation = {
   blocked: { label: 'Blocked', Icon: CircleSlash2, className: 'text-activity-blocked' },
 } as const
 
-export function AgentActivityCard({ activity, loadDetails }: AgentActivityCardProperties) {
+export function AgentActivityCard({
+  activity,
+  loadDetails,
+  onOpenCurrentDiff = () => {},
+}: AgentActivityCardProperties) {
   const [details, setDetails] = useState<AgentActivityDetails>()
   const [detailState, setDetailState] = useState<'idle' | 'loading' | 'failed'>('idle')
   const [operationsExpanded, setOperationsExpanded] = useState(false)
+  const [expandedPreviewKey, setExpandedPreviewKey] = useState<string>()
   const presentation = statusPresentation[activity.status]
   const sections = artifactSections(activity.artifacts)
+
+  const ensureDetails = async () => {
+    if (detailState !== 'idle' || details) return
+
+    setDetailState('loading')
+
+    try {
+      const loaded = await loadDetails()
+      if (loaded) setDetails(loaded)
+      setDetailState(loaded ? 'idle' : 'failed')
+    } catch {
+      setDetailState('failed')
+    }
+  }
 
   const toggleOperations = async () => {
     if (operationsExpanded) {
@@ -32,19 +53,7 @@ export function AgentActivityCard({ activity, loadDetails }: AgentActivityCardPr
 
     setOperationsExpanded(true)
 
-    if (detailState !== 'idle' || details) return
-
-    setDetailState('loading')
-
-    try {
-      const loaded = await loadDetails()
-
-      if (loaded) setDetails(loaded)
-
-      setDetailState(loaded ? 'idle' : 'failed')
-    } catch {
-      setDetailState('failed')
-    }
+    await ensureDetails()
   }
 
   return (
@@ -79,18 +88,75 @@ export function AgentActivityCard({ activity, loadDetails }: AgentActivityCardPr
           <section key={section.title}>
             <h3 className="text-xs/5 font-semibold text-content-foreground">{section.title}</h3>
             <ul className="mt-1 space-y-1 text-xs/5 text-content-muted-foreground">
-              {section.items.map((item) => (
-                <li key={item.key} className="flex items-center gap-1.5">
-                  {item.status === 'completed' && (
-                    <CircleCheck aria-hidden="true" className="size-3.5 shrink-0 text-activity-completed" />
-                  )}
-                  {item.status === 'failed' && (
-                    <CircleX aria-hidden="true" className="size-3.5 shrink-0 text-activity-failed" />
-                  )}
-                  <span>{item.label}</span>
-                  {item.status && <span className="sr-only">{item.status}</span>}
-                </li>
-              ))}
+              {section.items.map((item) => {
+                const preview = details?.operations.find(
+                  (operation) =>
+                    operation.preview !== undefined &&
+                    operation.preview.path === item.path &&
+                    operation.preview.repositoryId === item.repositoryId
+                )?.preview
+                const expanded = expandedPreviewKey === item.key
+
+                return (
+                  <li key={item.key}>
+                    {item.path ? (
+                      <>
+                        <button
+                          aria-expanded={expanded}
+                          className="flex w-full min-w-0 items-center gap-1.5 rounded px-1 py-0.5 text-left hover:bg-content-interaction focus-visible:outline-2 focus-visible:outline-focus-ring"
+                          onClick={() => {
+                            setExpandedPreviewKey(expanded ? undefined : item.key)
+                            if (!expanded) void ensureDetails()
+                          }}
+                          type="button"
+                        >
+                          <ChevronRight
+                            aria-hidden="true"
+                            className={`size-3.5 shrink-0 ${expanded ? 'rotate-90' : ''}`}
+                          />
+                          <span className="min-w-0 flex-1 truncate" title={item.label}>
+                            {item.label}
+                          </span>
+                        </button>
+                        {expanded && (
+                          <div className="mt-2 space-y-2 pl-5">
+                            {detailState === 'loading' ? (
+                              <p>Loading operation-time preview…</p>
+                            ) : preview ? (
+                              <>
+                                <p>Operation-time {preview.kind === 'diff' ? 'diff' : 'snapshot'}</p>
+                                <DiffView
+                                  content={preview.content}
+                                  kind={preview.kind}
+                                  label={`Operation-time preview for ${preview.path}`}
+                                />
+                                {preview.truncated && <p>The operation-time preview was truncated.</p>}
+                                <Button plain onClick={() => onOpenCurrentDiff(preview.repositoryId, preview.path)}>
+                                  <ExternalLink aria-hidden="true" data-slot="icon" />
+                                  Open current diff
+                                </Button>
+                              </>
+                            ) : (
+                              <p>Operation-time preview unavailable.</p>
+                            )}
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <div className="flex items-center gap-1.5">
+                        {item.status === 'completed' && (
+                          <CircleCheck aria-hidden="true" className="size-3.5 shrink-0 text-activity-completed" />
+                        )}
+                        {item.status === 'failed' && (
+                          <CircleX aria-hidden="true" className="size-3.5 shrink-0 text-activity-failed" />
+                        )}
+                        <span>{item.label}</span>
+                        {item.status && <span className="sr-only">{item.status}</span>}
+                      </div>
+                    )}
+                  </li>
+                )
+              })}
             </ul>
           </section>
         ))}
@@ -167,7 +233,13 @@ export function AgentActivityCard({ activity, loadDetails }: AgentActivityCardPr
 
 function artifactSections(artifacts: readonly ActivityArtifact[]): readonly {
   title: string
-  items: readonly { key: string; label: string; status?: 'completed' | 'failed' }[]
+  items: readonly {
+    key: string
+    label: string
+    path?: string
+    repositoryId?: string
+    status?: 'completed' | 'failed'
+  }[]
 }[] {
   const changed = artifacts.flatMap((artifact) => {
     if (artifact.type !== 'file-change') return []
@@ -177,7 +249,14 @@ function artifactSections(artifacts: readonly ActivityArtifact[]): readonly {
         ? ''
         : ` (+${artifact.additions} −${artifact.deletions})`
 
-    return [{ key: `changed-${artifact.path}`, label: `${artifact.path}${counts}` }]
+    return [
+      {
+        key: `changed-${artifact.repositoryId ?? 'session'}-${artifact.path}`,
+        label: `${artifact.path}${counts}`,
+        path: artifact.path,
+        repositoryId: artifact.repositoryId,
+      },
+    ]
   })
 
   const validation = artifacts.flatMap((artifact) =>

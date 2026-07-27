@@ -4,8 +4,14 @@ import type {
   SessionMessageSubmissionResult,
   SessionContextCompactionResult,
   SessionRunStopResult,
+  SessionCodeReviewCommentCommand,
 } from '@/src/composer'
 import type { ManagedSessionRuntimePolicy } from '@/src/domain/managed-session'
+import {
+  formatSessionCodeReviewText,
+  parseSessionCodeReview,
+  type SessionCodeReviewDraft,
+} from '@/src/session-code-review'
 import type { SessionId } from '@/src/domain/session'
 import type { SessionActionCardToolInput } from '@/src/session-action-cards'
 import {
@@ -13,11 +19,13 @@ import {
   replaceSessionSkillTokens,
   type SessionSkill,
   type SessionSkillMention,
+  type SessionSkillSelection,
 } from '@/src/session-skills'
 import type { ActivityLayerRecord, AgentRunDiagnosticKind } from '@/src/main/activity-records'
 import {
   countArtifactFiles,
   deriveActivityArtifacts,
+  deriveMutationPreview,
   deriveOperationInputPreview,
   mergeActivityArtifacts,
 } from '@/src/main/activity-artifacts'
@@ -58,6 +66,7 @@ import {
   type SessionRuntimeTimeline,
 } from './pi-session-runtime-transcript'
 import { createSessionRuntimeConfiguration } from './pi-session-runtime-configuration'
+import { createSessionRuntimeCodeReviews } from './pi-session-runtime-code-review'
 
 type PiPromptOptions = Readonly<{
   streamingBehavior?: 'steer' | 'followUp'
@@ -75,6 +84,7 @@ export interface PiSessionRuntime {
   loadHistory?(): PiSessionRuntimeHistory
   appendActivityRecord?(record: ActivityLayerRecord): void
   loadRawOperation?(toolCallId: string): Readonly<{ input: unknown; result?: unknown }> | undefined
+  getActivityRepositoryLocations?(): readonly Readonly<{ repositoryId: string; workingPath: string }>[]
   getSkills?(): readonly SessionSkill[]
   getSkillPrompt?(name: string): string | undefined
   getContextUsage?(): SessionContextUsage | undefined
@@ -149,6 +159,10 @@ export interface PiSessionRuntimeRegistry {
     reconcileAfterRun?: () => Promise<boolean>
   ): void
   submit(submission: SessionMessageSubmission): Promise<SessionMessageSubmissionResult>
+  getCodeReviewDraft(sessionId: SessionId): Promise<SessionCodeReviewDraft>
+  saveCodeReviewComment(command: SessionCodeReviewCommentCommand): Promise<SessionCodeReviewDraft>
+  removeCodeReviewComment(sessionId: SessionId, commentId: string): Promise<SessionCodeReviewDraft>
+  finishCodeReview(sessionId: SessionId): Promise<SessionMessageSubmissionResult>
   stop(sessionId: SessionId): Promise<SessionRunStopResult>
   compact(sessionId: SessionId): Promise<SessionContextCompactionResult>
   removeQueuedFollowUp(sessionId: SessionId, followUpId: string): Promise<boolean>
@@ -182,6 +196,44 @@ export const maximumConcurrentAgentRuns = 10
 /** Preserves normal follow-up use while bounding queued future provider work per Session. */
 export const maximumPendingSessionFollowUps = 3
 
+type ProjectedSessionSubmission = Readonly<{
+  text: string
+  selections: readonly SessionSkillSelection[]
+}>
+
+function projectSessionSubmissionSkills(submission: SessionMessageSubmission): ProjectedSessionSubmission {
+  if (!submission.codeReview) return projectSessionSkillSelections(submission.text)
+
+  const selections: SessionSkillSelection[] = []
+  const text = formatSessionCodeReviewText(submission.codeReview, (commentText, outputOffset) => {
+    const projected = projectSessionSkillSelections(commentText)
+    selections.push(
+      ...projected.selections.map((selection) => ({ ...selection, offset: outputOffset + selection.offset }))
+    )
+
+    return projected.text
+  })
+
+  return { text, selections }
+}
+
+function replaceSessionSubmissionSkills(
+  submission: SessionMessageSubmission,
+  replacement: (name: string) => string | undefined
+): string | undefined {
+  if (!submission.codeReview) return replaceSessionSkillTokens(submission.text, replacement)
+
+  let valid = true
+  const text = formatSessionCodeReviewText(submission.codeReview, (commentText) => {
+    const replaced = replaceSessionSkillTokens(commentText, replacement)
+    if (replaced === undefined) valid = false
+
+    return replaced ?? ''
+  })
+
+  return valid ? text : undefined
+}
+
 export function createPiSessionRuntimeRegistry({
   findSession,
   canSubmit = () => true,
@@ -201,6 +253,11 @@ export function createPiSessionRuntimeRegistry({
   const activationGate = createSessionRuntimeActivationGate()
   const activeAgentRunReservations = new Set<SessionId>()
   const queuedFollowUpQueue = createQueuedFollowUpQueue()
+  const codeReviews = createSessionRuntimeCodeReviews({
+    createId,
+    now,
+    persist: (sessionId, record) => persistActivityRecord(getTimeline(sessionId), record),
+  })
   const submissionQueuesBySessionId = new Map<SessionId, Promise<void>>()
   const sessionReconciliationBySessionId = new Map<SessionId, () => Promise<boolean>>()
   const noProgressTimeoutsBySessionId = new Map<SessionId, ReturnType<typeof setTimeout>>()
@@ -287,7 +344,12 @@ export function createPiSessionRuntimeRegistry({
 
     if (!followUp) return
 
-    const result = await submit({ sessionId, text: followUp.text, delivery: 'follow-up' })
+    const result = await submit({
+      sessionId,
+      text: followUp.text,
+      delivery: 'follow-up',
+      codeReview: followUp.codeReview,
+    })
 
     if (result.status === 'accepted' && result.delivery !== 'follow-up') {
       if (!removeQueuedFollowUp(sessionId, followUp.id)) {
@@ -884,7 +946,13 @@ export function createPiSessionRuntimeRegistry({
 
       const artifacts = mergeActivityArtifacts(
         owner.activity.artifacts,
-        deriveActivityArtifacts(operation.execution, event.result, timeline.runtimeDirectory ?? '', event.isError)
+        deriveActivityArtifacts(
+          operation.execution,
+          event.result,
+          timeline.runtimeDirectory ?? '',
+          event.isError,
+          timeline.getActivityRepositoryLocations?.()
+        )
       )
 
       replaceActivity(timeline, {
@@ -1034,12 +1102,14 @@ export function createPiSessionRuntimeRegistry({
     timeline.runtimeDirectory = runtimeDirectory
     timeline.persist = runtime.appendActivityRecord?.bind(runtime)
     timeline.loadRawOperation = runtime.loadRawOperation?.bind(runtime)
+    timeline.getActivityRepositoryLocations = runtime.getActivityRepositoryLocations?.bind(runtime)
     // The attaching runtime is authoritative for the Model's context window;
     // context_usage events keep it current from here.
     timeline.contextUsage = runtime.getContextUsage?.()
     const history = runtime.loadHistory?.()
     hydrateTimeline(timeline, history)
     hydrateQueuedFollowUps(sessionId, history)
+    codeReviews.hydrate(sessionId, history?.activityRecords ?? [])
 
     const unsubscribes = [runtime.subscribe((event) => handleRuntimeEvent(sessionId, event))]
     return { runtime, runtimeKey, unsubscribes }
@@ -1062,7 +1132,8 @@ export function createPiSessionRuntimeRegistry({
     messageId: string,
     text: string,
     skills?: readonly SessionSkillMention[],
-    delivery?: 'steer'
+    delivery?: 'steer',
+    codeReview?: SessionMessageSubmission['codeReview']
   ): void {
     const timeline = getTimeline(sessionId)
     const message: SessionTranscriptMessage = {
@@ -1071,6 +1142,7 @@ export function createPiSessionRuntimeRegistry({
       text,
       skills,
       delivery,
+      codeReview,
       state: 'complete',
       revision: timeline.revision + 1,
     }
@@ -1082,7 +1154,7 @@ export function createPiSessionRuntimeRegistry({
     submission: SessionMessageSubmission,
     runtime: PiSessionRuntime
   ): SessionMessageSubmissionResult {
-    const projected = projectSessionSkillSelections(submission.text)
+    const projected = projectSessionSubmissionSkills(submission)
     const availableSkills = runtime.getSkills?.() ?? []
     const skillsAvailable = projected.selections.every((selection) =>
       availableSkills.some((skill) => skill.name === selection.name)
@@ -1091,7 +1163,7 @@ export function createPiSessionRuntimeRegistry({
     if (!skillsAvailable) return { status: 'rejected', reason: 'skill-unavailable' }
 
     try {
-      if (replaceSessionSkillTokens(submission.text, (name) => runtime.getSkillPrompt?.(name)) === undefined) {
+      if (replaceSessionSubmissionSkills(submission, (name) => runtime.getSkillPrompt?.(name)) === undefined) {
         return { status: 'rejected', reason: 'skill-unavailable' }
       }
     } catch {
@@ -1113,6 +1185,7 @@ export function createPiSessionRuntimeRegistry({
       id: createId(),
       text: submission.text,
       skills: skills.length > 0 ? skills : undefined,
+      codeReview: submission.codeReview,
       createdAt: now(),
     }
     const persisted = persistActivityRecord(getTimeline(submission.sessionId), {
@@ -1134,7 +1207,7 @@ export function createPiSessionRuntimeRegistry({
     runtime: PiSessionRuntime,
     authorize: () => boolean | Promise<boolean>
   ): Promise<SessionMessageSubmissionResult> {
-    const projected = projectSessionSkillSelections(submission.text)
+    const projected = projectSessionSubmissionSkills(submission)
     const availableSkills = runtime.getSkills?.() ?? []
     const skills = projected.selections.flatMap((selection): SessionSkillMention[] => {
       const available = availableSkills.find((skill) => skill.name === selection.name)
@@ -1148,7 +1221,7 @@ export function createPiSessionRuntimeRegistry({
 
     let promptText: string | undefined
     try {
-      promptText = replaceSessionSkillTokens(submission.text, (name) => runtime.getSkillPrompt?.(name))
+      promptText = replaceSessionSubmissionSkills(submission, (name) => runtime.getSkillPrompt?.(name))
     } catch {
       return { status: 'rejected', reason: 'unexpected' }
     }
@@ -1190,6 +1263,7 @@ export function createPiSessionRuntimeRegistry({
               role: 'user',
               text: projected.text,
               skills: skillMentions,
+              codeReview: submission.codeReview,
               delivery: acceptedDelivery === 'steer' ? 'steer' : undefined,
               timestamp,
             }
@@ -1215,8 +1289,19 @@ export function createPiSessionRuntimeRegistry({
                 messageId,
                 projected.text,
                 skillMentions,
-                acceptedDelivery === 'steer' ? 'steer' : undefined
+                acceptedDelivery === 'steer' ? 'steer' : undefined,
+                submission.codeReview
               )
+            }
+
+            if (submission.codeReview) {
+              persistActivityRecord(timeline, {
+                version: 1,
+                type: 'code-review-message',
+                review: submission.codeReview,
+                text: projected.text,
+                acceptedAt: timestamp,
+              })
             }
 
             if (acceptedDelivery === 'steer' || acceptedDelivery === 'action') {
@@ -1400,6 +1485,10 @@ export function createPiSessionRuntimeRegistry({
   }
 
   async function submitImmediately(submission: SessionMessageSubmission): Promise<SessionMessageSubmissionResult> {
+    if (submission.codeReview && submission.delivery !== 'follow-up') {
+      return { status: 'rejected', reason: 'invalid-submission' }
+    }
+
     let runtime: PiSessionRuntime | undefined
     let leaseAcquired = false
     let runCapacityReserved = false
@@ -1517,6 +1606,41 @@ export function createPiSessionRuntimeRegistry({
       }
     },
     submit,
+    async getCodeReviewDraft(sessionId) {
+      await getRuntime(sessionId)
+      return codeReviews.get(sessionId)
+    },
+    async saveCodeReviewComment(command) {
+      await getRuntime(command.sessionId)
+      return codeReviews.save(command)
+    },
+    async removeCodeReviewComment(sessionId, commentId) {
+      await getRuntime(sessionId)
+      return codeReviews.remove(sessionId, commentId)
+    },
+    async finishCodeReview(sessionId) {
+      await getRuntime(sessionId)
+      const draft = codeReviews.get(sessionId)
+      if (draft.comments.length === 0) return { status: 'rejected', reason: 'invalid-submission' }
+
+      const codeReview = parseSessionCodeReview({ kind: 'review', comments: draft.comments })
+      if (!codeReview) return { status: 'rejected', reason: 'invalid-submission' }
+
+      const result = await submit({
+        sessionId,
+        text: formatSessionCodeReviewText(codeReview),
+        delivery: 'follow-up',
+        codeReview,
+      })
+
+      if (result.status === 'accepted') {
+        codeReviews.clear(
+          sessionId,
+          draft.comments.map(({ id }) => id)
+        )
+      }
+      return result
+    },
     stop,
     compact,
     async removeQueuedFollowUp(sessionId, followUpId) {
@@ -1569,6 +1693,12 @@ export function createPiSessionRuntimeRegistry({
           const input = safeDetailText(raw?.input ?? execution.input)
           const rawResult = raw?.result ?? result
           const output = rawResult === undefined ? undefined : safeDetailText(rawResult)
+          const preview = deriveMutationPreview(
+            { ...execution, input: raw?.input ?? execution.input },
+            rawResult,
+            timeline.runtimeDirectory ?? '',
+            timeline.getActivityRepositoryLocations?.()
+          )
 
           return {
             toolCallId: execution.toolCallId,
@@ -1577,7 +1707,8 @@ export function createPiSessionRuntimeRegistry({
             inputPreview: execution.inputPreview,
             input: input.text,
             output: output?.text,
-            truncated: input.truncated || (output?.truncated ?? false),
+            preview,
+            truncated: input.truncated || (output?.truncated ?? false) || (preview?.truncated ?? false),
           }
         }),
       }
@@ -1620,6 +1751,7 @@ export function createPiSessionRuntimeRegistry({
       activeAgentRunReservations.clear()
       submissionQueuesBySessionId.clear()
       queuedFollowUpQueue.clear()
+      codeReviews.dispose()
     },
   }
 }

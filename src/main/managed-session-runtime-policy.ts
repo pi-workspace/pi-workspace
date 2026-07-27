@@ -10,6 +10,7 @@ export type ManagedSessionRuntimePolicyGuardOptions = Readonly<{
 export interface ManagedSessionRuntimePolicyGuard {
   validate(): Promise<ManagedSessionRuntimePolicy>
   prepareRepository(repositoryId: string): Promise<PreparedSessionRepository>
+  currentPolicy(): ManagedSessionRuntimePolicy
 }
 
 export function createManagedSessionRuntimePolicyGuard(
@@ -52,7 +53,7 @@ export function createManagedSessionRuntimePolicyGuard(
     return prepared
   }
 
-  return { validate, prepareRepository }
+  return { validate, prepareRepository, currentPolicy: () => activePolicy }
 }
 
 async function requireCurrentPolicyIdentity(
