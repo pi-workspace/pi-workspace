@@ -182,29 +182,23 @@ export function WorkspaceNavigation({
         </SidebarHeader>
 
         <SidebarBody>{children}</SidebarBody>
-        <SidebarFooter className="shrink-0">
-          <div className="flex items-stretch rounded-lg border border-sidebar-border">
-            <button
-              type="button"
-              className="flex min-w-0 flex-1 items-center gap-3 rounded-l-lg px-2 py-2 text-left hover:bg-sidebar-interaction focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
-              onClick={onOpenChangelog}
-            >
-              <img alt="" className="size-7 shrink-0 dark:hidden" src="./railyard-symbol-light.svg" />
-              <img alt="" className="hidden size-7 shrink-0 dark:block" src="./railyard-symbol-dark.svg" />
-              <span className="min-w-0">
-                <span className="block truncate text-sm/5 font-medium text-sidebar-foreground">Railyard</span>
-                <span className="block truncate text-xs/5 text-sidebar-muted-foreground">
-                  v{applicationVersion} · Release notes
-                </span>
-              </span>
-            </button>
+        <SidebarFooter className="shrink-0 border-t-0!">
+          <div className="flex items-center justify-between gap-3">
             <Button
               plain
               aria-label="Settings"
-              className="shrink-0 self-stretch rounded-l-none! rounded-r-lg! border-0! border-l! border-sidebar-border! px-3! py-2! text-sidebar-foreground [--btn-icon:var(--theme-sidebar-muted-foreground)] data-hover:bg-sidebar-interaction data-hover:[--btn-icon:var(--theme-sidebar-foreground)]"
+              className="size-9! shrink-0 items-center! p-0! text-sidebar-foreground [--btn-icon:var(--theme-sidebar-muted-foreground)] data-hover:bg-sidebar-interaction data-hover:[--btn-icon:var(--theme-sidebar-foreground)]"
               onClick={() => setSettingsOpen(true)}
             >
               <Settings aria-hidden="true" data-slot="icon" />
+            </Button>
+            <Button
+              plain
+              aria-label={`Release notes for version ${applicationVersion}`}
+              className="min-w-0 px-2! py-1.5! font-mono text-xs/5! font-medium! text-sidebar-muted-foreground data-hover:bg-sidebar-interaction data-hover:text-sidebar-foreground"
+              onClick={onOpenChangelog}
+            >
+              <span className="truncate">v{applicationVersion}</span>
             </Button>
           </div>
         </SidebarFooter>

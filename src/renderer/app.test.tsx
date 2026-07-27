@@ -1,7 +1,7 @@
 import { browser } from '@/src/renderer/test-dom'
 import assert from 'node:assert/strict'
 import { afterEach, test } from 'node:test'
-import { act, cleanup, render, waitFor } from '@testing-library/react'
+import { act, cleanup, render, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { WorkspacesSnapshot } from '@/src/application-state'
 import { sessionId, type SessionId } from '@/src/domain/session'
@@ -148,6 +148,7 @@ function createBridge(
       renameSession: async () => {
         throw new Error('Not implemented in this test.')
       },
+      subscribe: () => () => {},
       ...overrides,
     },
   } as unknown as PiWorkspaceBridge
@@ -361,6 +362,72 @@ test('selects and reveals a newly created Session from the returned snapshot', a
   await waitFor(() =>
     assert.equal(browser.document.activeElement?.getAttribute('aria-label'), 'Message for New Session')
   )
+})
+
+test('reveals a forked Session with the selected message restored as its draft', async () => {
+  const forkedSessionId = sessionId('forked-session')
+  const updatedWorkstream: Workstream = {
+    ...workspaceAWorkstream,
+    sessions: [
+      ...workspaceAWorkstream.sessions,
+      {
+        ...workspaceAWorkstream.sessions[0]!,
+        id: forkedSessionId,
+        title: 'Fork of Session A',
+      },
+    ],
+  }
+  const bridge = createBridge({
+    getSessionForkPoints: async () => [{ entryId: 'aaaa0001', text: 'Try another approach', position: 1, total: 1 }],
+    forkSession: async () => ({
+      status: 'available',
+      sessionId: forkedSessionId,
+      snapshot: snapshot([updatedWorkstream], 2),
+      draft: 'Try another approach',
+    }),
+  })
+  const user = userEvent.setup({ document: browser.document as unknown as Document })
+  const view = renderApp(bridge)
+
+  await view.findByText('Ship Workspace A')
+  await user.click(view.getByRole('button', { name: 'Session A Implement' }))
+  const sessionPane = (await view.findByRole('heading', { name: 'Session A' })).closest('section')
+  assert.ok(sessionPane)
+  await user.click(within(sessionPane).getByRole('button', { name: 'Session A options' }))
+  await user.click(await view.findByRole('menuitem', { name: 'Fork Session…' }))
+  await view.findByText('Try another approach', { exact: true })
+  await user.click(view.getByRole('button', { name: 'Fork Session' }))
+
+  await waitFor(() => assert.ok(view.getByRole('heading', { name: 'Fork of Session A' })))
+  const composer = view.getByLabelText('Message for Fork of Session A')
+  await waitFor(() => assert.equal(composer.textContent, 'Try another approach'))
+})
+
+test('applies an agent-authored Session description published for the selected Workspace', async () => {
+  let publishSnapshot: (snapshot: WorkstreamsSnapshot) => void = () => {}
+  const describedWorkstream: Workstream = {
+    ...workspaceAWorkstream,
+    sessions: [
+      {
+        ...workspaceAWorkstream.sessions[0]!,
+        description: 'Tracing how Session metadata reaches the sidebar.',
+      },
+    ],
+  }
+  const view = renderApp(
+    createBridge({
+      subscribe(listener) {
+        publishSnapshot = listener
+
+        return () => {}
+      },
+    })
+  )
+  await view.findByText('Ship Workspace A')
+
+  act(() => publishSnapshot(snapshot([describedWorkstream], 2)))
+
+  assert.ok(view.getByText('Tracing how Session metadata reaches the sidebar.'))
 })
 
 test('ignores an older mutation response within the selected Workspace', async () => {

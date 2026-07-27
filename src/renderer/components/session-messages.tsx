@@ -1,9 +1,12 @@
-import { FoldHorizontal, LoaderCircle } from 'lucide-react'
+import { FoldHorizontal, GitFork, LoaderCircle } from 'lucide-react'
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui-kit/button'
 import type { SessionId } from '@/src/domain/session'
 import type { SessionActionCard } from '@/src/session-action-cards'
+import type { SessionCodeReview, SessionCodeReviewComment } from '@/src/session-code-review'
+import { projectSessionSkillSelections, type SessionSkillMention } from '@/src/session-skills'
 import { AgentActivityCard } from '@/src/renderer/components/agent-activity-card'
+import { DiffView } from '@/src/renderer/components/diff-view'
 import { ReferenceMentionText } from '@/src/renderer/components/reference-mention-text'
 import { SkillMentionText } from '@/src/renderer/components/skill-mention-text'
 import type { AgentActivity, ContextCompaction } from '@/src/session-timeline'
@@ -17,11 +20,13 @@ type SessionMessagesProperties = Readonly<{
   timelineAnnouncement?: string
   timelineError?: string
   onReloadTimeline?: () => void
+  onForkFromMessage?: (position: number) => void
   onActionCard?: (card: SessionActionCard, option?: 'draft' | 'ready') => Promise<boolean>
+  onOpenCurrentDiff?: (repositoryId: string | undefined, path: string) => void
 }>
 
 type TranscriptEntry =
-  | Readonly<{ type: 'message'; key: string; message: SessionTranscriptMessage }>
+  | Readonly<{ type: 'message'; key: string; message: SessionTranscriptMessage; userPosition?: number }>
   | Readonly<{ type: 'activity'; key: string; activity: AgentActivity }>
   | Readonly<{ type: 'compaction'; key: string; compaction: ContextCompaction }>
 
@@ -38,23 +43,36 @@ export function SessionMessages({
   timelineAnnouncement,
   timelineError,
   onReloadTimeline,
+  onForkFromMessage,
   onActionCard = async () => false,
+  onOpenCurrentDiff = () => {},
 }: SessionMessagesProperties) {
   const isLoading = !canonicalTranscript
   const loadError = Boolean(timelineError)
   const reload = onReloadTimeline ?? (() => {})
   const revision = canonicalTranscript?.revision ?? 0
-  const transcript = useMemo<readonly TranscriptEntry[]>(
-    () =>
-      canonicalTranscript?.entries.map((entry) =>
-        entry.type === 'activity'
-          ? { type: 'activity', key: `activity-${entry.activity.id}`, activity: entry.activity }
-          : entry.type === 'compaction'
-            ? { type: 'compaction', key: `compaction-${entry.compaction.id}`, compaction: entry.compaction }
-            : { type: 'message', key: `message-${entry.message.id}`, message: entry.message }
-      ) ?? [],
-    [canonicalTranscript]
-  )
+  const transcript = useMemo<readonly TranscriptEntry[]>(() => {
+    let userPosition = 0
+
+    return (
+      canonicalTranscript?.entries.map((entry) => {
+        if (entry.type === 'activity') {
+          return { type: 'activity' as const, key: `activity-${entry.activity.id}`, activity: entry.activity }
+        }
+        if (entry.type === 'compaction') {
+          return { type: 'compaction' as const, key: `compaction-${entry.compaction.id}`, compaction: entry.compaction }
+        }
+
+        const position = entry.message.role === 'user' ? ++userPosition : undefined
+        return {
+          type: 'message' as const,
+          key: `message-${entry.message.id}`,
+          message: entry.message,
+          userPosition: position,
+        }
+      }) ?? []
+    )
+  }, [canonicalTranscript])
   const runFailureReason = canonicalTranscript?.runFailureReason
   const [pendingExternalUrl, setPendingExternalUrl] = useState<string>()
   const [externalLinkError, setExternalLinkError] = useState(false)
@@ -112,6 +130,8 @@ export function SessionMessages({
                   key={entry.key}
                   message={entry.message}
                   isWorking={isWorking}
+                  userPosition={entry.userPosition}
+                  onForkFromMessage={onForkFromMessage}
                   onOpenExternalLink={requestExternalLink}
                 />
               ) : entry.type === 'compaction' ? (
@@ -125,6 +145,7 @@ export function SessionMessages({
                   key={entry.key}
                   activity={entry.activity}
                   loadDetails={() => window.piWorkspace.transcript.loadActivityDetails(sessionId, entry.activity.id)}
+                  onOpenCurrentDiff={onOpenCurrentDiff}
                 />
               )
             )}
@@ -416,18 +437,24 @@ function useTranscriptScroll({
 function SessionMessageRow({
   message,
   isWorking,
+  userPosition,
+  onForkFromMessage,
   onOpenExternalLink,
 }: Readonly<{
   message: SessionTranscriptMessage
   isWorking: boolean
+  userPosition?: number
+  onForkFromMessage?: (position: number) => void
   onOpenExternalLink: (url: string) => void
 }>) {
   if (message.role === 'user') {
+    if (message.codeReview) return <CodeReviewMessageCard review={message.codeReview} skills={message.skills ?? []} />
+
     const steering = message.delivery === 'steer'
 
     return (
       <article
-        className={`ml-auto w-fit max-w-[80%] rounded-xl border px-3 py-2 text-sm/6 ${
+        className={`group/message relative ml-auto w-fit max-w-[80%] rounded-xl border px-3 py-2 text-sm/6 ${
           steering
             ? `border-content-border bg-content-subtle-background text-content-foreground opacity-80${
                 isWorking ? ' motion-safe:animate-pulse' : ''
@@ -443,6 +470,17 @@ function SessionMessageRow({
             <SkillMentionText text={message.text} skills={message.skills ?? []} />
           )}
         </p>
+        {onForkFromMessage && userPosition !== undefined && message.state === 'complete' && !isWorking && (
+          <button
+            type="button"
+            aria-label={`Fork from “${message.text.slice(0, 40) || 'this message'}”`}
+            title="Fork from here"
+            className="absolute top-1/2 right-full z-10 mr-2 -translate-y-1/2 rounded-sm p-1.5 text-content-muted-foreground opacity-0 transition-opacity motion-reduce:transition-none hover:bg-session-interaction hover:text-content-foreground focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring group-hover/message:opacity-100 group-focus-within/message:opacity-100"
+            onClick={() => onForkFromMessage(userPosition)}
+          >
+            <GitFork aria-hidden="true" className="size-3.5" />
+          </button>
+        )}
       </article>
     )
   }
@@ -459,6 +497,101 @@ function SessionMessageRow({
       </Suspense>
     </article>
   )
+}
+
+function CodeReviewMessageCard({
+  review,
+  skills,
+}: Readonly<{ review: SessionCodeReview; skills: readonly SessionSkillMention[] }>) {
+  const files = new Map<string, { repositoryName: string; path: string; comments: SessionCodeReviewComment[] }>()
+
+  review.comments.forEach((comment) => {
+    const reference = comment.reference
+    const key = `${reference.repositoryId}\0${reference.path}`
+    const file = files.get(key) ?? {
+      repositoryName: reference.repositoryName,
+      path: reference.path,
+      comments: [],
+    }
+    file.comments.push(comment)
+    files.set(key, file)
+  })
+
+  return (
+    <article className="ml-auto w-full max-w-[90%] overflow-hidden rounded-xl border border-session-message-person-border bg-session-message-person-background text-session-message-person-foreground">
+      <header className="border-b border-session-message-person-border px-4 py-3">
+        <p className="text-xs/4 font-medium text-content-muted-foreground">
+          {review.kind === 'review' ? 'Finished review' : 'Referenced follow-up'}
+        </p>
+        <p className="mt-0.5 text-sm/5 font-medium">
+          {review.comments.length} {review.comments.length === 1 ? 'comment' : 'comments'} across {files.size}{' '}
+          {files.size === 1 ? 'file' : 'files'}
+        </p>
+      </header>
+      <div className="divide-y divide-session-message-person-border">
+        {[...files.values()].map((file) => (
+          <details key={`${file.repositoryName}-${file.path}`} open={review.kind === 'follow-up'}>
+            <summary className="cursor-pointer list-none px-4 py-2.5 text-xs/5 font-medium outline-none hover:bg-session-interaction focus-visible:ring-2 focus-visible:ring-focus-ring">
+              <span className="block truncate">{file.path}</span>
+              <span className="block truncate font-normal text-content-muted-foreground">
+                {file.repositoryName} · {file.comments.length} {file.comments.length === 1 ? 'comment' : 'comments'}
+              </span>
+            </summary>
+            <div className="space-y-3 border-t border-session-message-person-border px-3 py-3">
+              {file.comments.map((comment) => (
+                <div className="space-y-2" key={comment.id}>
+                  <p className="text-[10px]/4 font-medium uppercase tracking-wide text-content-muted-foreground">
+                    {codeReferenceRange(comment)}
+                  </p>
+                  <p className="whitespace-pre-wrap break-words text-sm/6">
+                    <ReviewCommentText comment={comment} skills={skills} />
+                  </p>
+                  {comment.reference.truncated && (
+                    <p className="text-[10px]/4 text-content-muted-foreground">Referenced diff was truncated.</p>
+                  )}
+                  <details>
+                    <summary className="w-fit cursor-pointer rounded text-xs/5 font-medium text-content-muted-foreground outline-none hover:text-content-foreground focus-visible:ring-2 focus-visible:ring-focus-ring">
+                      View referenced diff
+                    </summary>
+                    <div className="mt-2">
+                      <DiffView content={comment.reference.patch} label={`Referenced diff for ${file.path}`} />
+                    </div>
+                  </details>
+                </div>
+              ))}
+            </div>
+          </details>
+        ))}
+      </div>
+    </article>
+  )
+}
+
+function ReviewCommentText({
+  comment,
+  skills,
+}: Readonly<{ comment: SessionCodeReviewComment; skills: readonly SessionSkillMention[] }>) {
+  const projected = projectSessionSkillSelections(comment.text)
+  const mentions = projected.selections.map(({ name, offset }) => ({
+    offset,
+    skill: skills.find((mention) => mention.skill.name === name)?.skill ?? {
+      name,
+      availability: 'unavailable' as const,
+    },
+  }))
+
+  return <SkillMentionText text={projected.text} skills={mentions} />
+}
+
+function codeReferenceRange(comment: SessionCodeReviewComment): string {
+  const reference = comment.reference
+  if (reference.newLines > 0) {
+    const end = reference.newStart + reference.newLines - 1
+    return `Lines +${reference.newStart}${end === reference.newStart ? '' : `–${end}`}`
+  }
+
+  const end = reference.oldStart + Math.max(1, reference.oldLines) - 1
+  return `Lines -${reference.oldStart}${end === reference.oldStart ? '' : `–${end}`}`
 }
 
 function SessionCompactionSummary({

@@ -5,8 +5,11 @@ import { applicationStateIpcChannels } from '@/src/application-state-ipc'
 import type { ComposerBridge, SessionMessageSubmissionResult, SessionRunStopResult } from '@/src/composer'
 import type { PiWorkspaceBridge } from '@/src/pi-workspace'
 import { composerIpcChannels } from '@/src/composer-ipc'
+import type { WorkstreamsSnapshot } from '@/src/domain/workstream'
 import type { SessionSkillsBridge } from '@/src/session-skills'
 import { sessionSkillsIpcChannels } from '@/src/session-skills-ipc'
+import type { SessionChangesBridge, SessionChangesSnapshot, SessionFileDiff } from '@/src/session-changes'
+import { sessionChangesIpcChannels } from '@/src/session-changes-ipc'
 import type { SessionFilesBridge } from '@/src/session-files'
 import { sessionFilesIpcChannels } from '@/src/session-files-ipc'
 import type {
@@ -17,7 +20,7 @@ import type {
 } from '@/src/session-configuration'
 import { sessionConfigurationIpcChannels } from '@/src/session-configuration-ipc'
 import type { SettingsBridge, SettingsSnapshot, SettingsUpdate } from '@/src/settings'
-import type { WorkstreamsBridge, WorkstreamCreationOutcome } from '@/src/workstreams'
+import type { SessionForkOutcome, WorkstreamsBridge, WorkstreamCreationOutcome } from '@/src/workstreams'
 import { workstreamsIpcChannels } from '@/src/workstreams-ipc'
 import type { WorkstreamKnowledgeBridge } from '@/src/workstream-knowledge-ipc'
 import type { WorkstreamKnowledge } from '@/src/domain/workstream-knowledge-transitions'
@@ -122,6 +125,15 @@ const workstreamsBridge: WorkstreamsBridge = {
       ...options,
     }) as Promise<WorkstreamCreationOutcome>
   },
+  getSessionForkPoints(sessionId) {
+    return ipcRenderer.invoke(workstreamsIpcChannels.getSessionForkPoints, { sessionId })
+  },
+  forkSession(sessionId, options) {
+    return ipcRenderer.invoke(workstreamsIpcChannels.forkSession, {
+      sessionId,
+      ...options,
+    }) as Promise<SessionForkOutcome>
+  },
   setLifecycle(workstreamId, lifecycle) {
     return ipcRenderer.invoke(workstreamsIpcChannels.setLifecycle, { workstreamId, lifecycle })
   },
@@ -130,6 +142,13 @@ const workstreamsBridge: WorkstreamsBridge = {
   },
   showWorkingLocation(workstreamId, repositoryId) {
     return ipcRenderer.invoke(workstreamsIpcChannels.showWorkingLocation, { workstreamId, repositoryId })
+  },
+  subscribe(listener) {
+    const handleChange = (_event: Electron.IpcRendererEvent, snapshot: WorkstreamsSnapshot) => listener(snapshot)
+
+    ipcRenderer.on(workstreamsIpcChannels.changed, handleChange)
+
+    return () => ipcRenderer.removeListener(workstreamsIpcChannels.changed, handleChange)
   },
 }
 
@@ -156,6 +175,18 @@ const composerBridge: ComposerBridge = {
   submit(submission) {
     return ipcRenderer.invoke(composerIpcChannels.submit, submission) as Promise<SessionMessageSubmissionResult>
   },
+  getCodeReviewDraft(sessionId) {
+    return ipcRenderer.invoke(composerIpcChannels.getCodeReviewDraft, { sessionId })
+  },
+  saveCodeReviewComment(command) {
+    return ipcRenderer.invoke(composerIpcChannels.saveCodeReviewComment, command)
+  },
+  removeCodeReviewComment(sessionId, commentId) {
+    return ipcRenderer.invoke(composerIpcChannels.removeCodeReviewComment, { sessionId, commentId })
+  },
+  finishCodeReview(sessionId) {
+    return ipcRenderer.invoke(composerIpcChannels.finishCodeReview, { sessionId })
+  },
   stop(sessionId) {
     return ipcRenderer.invoke(composerIpcChannels.stop, { sessionId }) as Promise<SessionRunStopResult>
   },
@@ -176,6 +207,28 @@ const sessionSkillsBridge: SessionSkillsBridge = {
 const sessionFilesBridge: SessionFilesBridge = {
   getAvailable(sessionId, query) {
     return ipcRenderer.invoke(sessionFilesIpcChannels.getAvailable, { sessionId, query })
+  },
+}
+
+const sessionChangesBridge: SessionChangesBridge = {
+  getSnapshot(sessionId) {
+    return ipcRenderer.invoke(sessionChangesIpcChannels.getSnapshot, { sessionId }) as Promise<SessionChangesSnapshot>
+  },
+  loadFileDiff(sessionId, repositoryId, path, view) {
+    return ipcRenderer.invoke(sessionChangesIpcChannels.loadFileDiff, {
+      sessionId,
+      repositoryId,
+      path,
+      view,
+    }) as Promise<SessionFileDiff>
+  },
+  setFileStaged(sessionId, repositoryId, path, staged) {
+    return ipcRenderer.invoke(sessionChangesIpcChannels.setFileStaged, {
+      sessionId,
+      repositoryId,
+      path,
+      staged,
+    }) as Promise<SessionChangesSnapshot>
   },
 }
 
@@ -251,6 +304,7 @@ const piWorkspaceBridge: PiWorkspaceBridge = {
   composer: composerBridge,
   sessionSkills: sessionSkillsBridge,
   sessionFiles: sessionFilesBridge,
+  sessionChanges: sessionChangesBridge,
   sessionConfiguration: sessionConfigurationBridge,
   transcript: sessionTranscriptBridge,
   settings: settingsBridge,

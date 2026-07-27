@@ -15,6 +15,8 @@ import type {
 } from '@/src/domain/workstream-knowledge-transitions'
 import {
   composerIpcChannels,
+  parseCodeReviewCommentCommand,
+  parseCodeReviewCommentRemovalRequest,
   parseQueuedFollowUpRemovalRequest,
   parseSessionCompactRequest,
   parseSessionMessageSubmission,
@@ -67,15 +69,20 @@ import {
   sessionTranscriptIpcChannels,
 } from '@/src/session-transcript-ipc'
 import { agentActivityKinds, type ConversationEntry } from '@/src/session-timeline'
+import { workstreamsIpcChannels } from '@/src/workstreams-ipc'
 
 let composerRegistry: PiSessionRuntimeRegistry | undefined
 
 const minimumModelTurnNoProgressTimeoutMs = 30 * 60 * 1_000
 
 type PiSessionRuntimeOptions =
-  | Readonly<{ kind: 'default' }>
+  | Readonly<{
+      kind: 'default'
+      setSessionDescription: (description: string) => Promise<void>
+    }>
   | Readonly<{
       kind: 'managed'
+      setSessionDescription: (description: string) => Promise<void>
       policy: ManagedSessionRuntimePolicy
       resolvePolicy: () => Promise<ManagedSessionRuntimePolicy | undefined>
       getWorkstreamKnowledge: () => Promise<unknown>
@@ -90,7 +97,7 @@ type PiSessionRuntimeOptions =
 export async function createPiSessionRuntime(
   directoryPath: string,
   sessionManager: SessionManager,
-  options: PiSessionRuntimeOptions = { kind: 'default' }
+  options: PiSessionRuntimeOptions
 ): Promise<PiSessionRuntime> {
   const [{ createAgentSession, defineTool, stripFrontmatter }, { Type }] = await Promise.all([
     import('@earendil-works/pi-coding-agent'),
@@ -164,6 +171,27 @@ export async function createPiSessionRuntime(
       )
 
       return { content: [{ type: 'text' as const, text: 'Activity completed.' }], details: {} }
+    },
+  })
+
+  const setSessionDescription = defineTool({
+    name: 'set_session_description',
+    label: 'Set Session description',
+    description: 'Set the short description shown for this Session in Railyard navigation.',
+    promptSnippet: 'Summarize the current Session focus for Railyard navigation',
+    promptGuidelines: [
+      'Use set_session_description near the start of a Session and again when its focus materially changes. Write one or two concise sentences about the current goal, not a generic status update.',
+    ],
+    parameters: Type.Object({
+      description: Type.String({
+        minLength: 1,
+        description: 'One or two concise sentences describing the current Session focus',
+      }),
+    }),
+    async execute(_toolCallId, input) {
+      await options.setSessionDescription(input.description)
+
+      return { content: [{ type: 'text' as const, text: 'Session description updated.' }], details: {} }
     },
   })
 
@@ -280,7 +308,7 @@ export async function createPiSessionRuntime(
           }),
         ]
       : []
-  const customTools = [startActivity, completeActivity, suggestAction, ...managedTools]
+  const customTools = [startActivity, completeActivity, setSessionDescription, suggestAction, ...managedTools]
   const managedServices =
     options.kind === 'managed'
       ? await createManagedSessionServices(
@@ -485,6 +513,15 @@ export async function createPiSessionRuntime(
     async getFileContext(path) {
       return renderSessionFileContext(await sessionFileRoots(), path)
     },
+    getActivityRepositoryLocations() {
+      const repositories = managedPolicyGuard?.currentPolicy().repositories ?? []
+
+      return repositories.flatMap((repository) =>
+        repository.availability === 'available'
+          ? [{ repositoryId: repository.id, workingPath: repository.workingPath }]
+          : []
+      )
+    },
     loadRawOperation(toolCallId) {
       let input: unknown
       let result: unknown
@@ -644,14 +681,21 @@ export function initializeComposer(authority: ApplicationAuthority): void {
       await authority.settleSessionCompactionLease(id)
     },
     reconcileAfterRun: (id) => authority.settleSessionRunLease(id),
-    createSession: async ({ directoryPath, sessionPath, managedPolicy }) => {
+    createSession: async ({ directoryPath, sessionPath, managedPolicy }, ownedSessionId) => {
       const { SessionManager } = await import('@earendil-works/pi-coding-agent')
       const sessionManager = SessionManager.open(sessionPath, undefined, directoryPath)
+      const setSessionDescription = async (description: string) => {
+        const snapshot = await authority.setSessionDescription(ownedSessionId, description)
+        broadcastToTrustedRenderers(workstreamsIpcChannels.changed, snapshot)
+      }
 
-      if (!managedPolicy) return createPiSessionRuntime(directoryPath, sessionManager)
+      if (!managedPolicy) {
+        return createPiSessionRuntime(directoryPath, sessionManager, { kind: 'default', setSessionDescription })
+      }
 
       return createPiSessionRuntime(directoryPath, sessionManager, {
         kind: 'managed',
+        setSessionDescription,
         policy: managedPolicy,
         resolvePolicy: async () => (await authority.resolveOwnedSession(managedPolicy.sessionId))?.managedPolicy,
         getWorkstreamKnowledge: () => authority.getWorkstreamKnowledge(managedPolicy.workstreamId),
@@ -677,6 +721,34 @@ export function initializeComposer(authority: ApplicationAuthority): void {
     return submission
       ? registry.submit(submission)
       : Promise.resolve({ status: 'rejected', reason: 'invalid-submission' })
+  })
+
+  handleTrustedIpc(composerIpcChannels.getCodeReviewDraft, (_event, value: unknown) => {
+    const request = parseSessionRunStopRequest(value)
+
+    return request ? registry.getCodeReviewDraft(request.sessionId) : Promise.reject(new Error('Invalid Session.'))
+  })
+
+  handleTrustedIpc(composerIpcChannels.saveCodeReviewComment, (_event, value: unknown) => {
+    const command = parseCodeReviewCommentCommand(value)
+
+    return command ? registry.saveCodeReviewComment(command) : Promise.reject(new Error('Invalid review comment.'))
+  })
+
+  handleTrustedIpc(composerIpcChannels.removeCodeReviewComment, (_event, value: unknown) => {
+    const request = parseCodeReviewCommentRemovalRequest(value)
+
+    return request
+      ? registry.removeCodeReviewComment(request.sessionId, request.commentId)
+      : Promise.reject(new Error('Invalid review comment.'))
+  })
+
+  handleTrustedIpc(composerIpcChannels.finishCodeReview, (_event, value: unknown) => {
+    const request = parseSessionRunStopRequest(value)
+
+    return request
+      ? registry.finishCodeReview(request.sessionId)
+      : Promise.resolve({ status: 'rejected' as const, reason: 'invalid-submission' as const })
   })
 
   handleTrustedIpc(composerIpcChannels.stop, (_event, value: unknown): Promise<SessionRunStopResult> => {

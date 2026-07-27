@@ -237,6 +237,29 @@ test('replaces a working Quick Session mode icon with a spinner', () => {
   assert.match(markup, /Pi is working/)
 })
 
+test('shows an agent-authored description instead of Repository context', () => {
+  const describedQuickWorkstream = {
+    ...unavailableQuickWorkstream,
+    sessions: [
+      {
+        ...unavailableQuickWorkstream.sessions[0]!,
+        description: 'Comparing roomier Session summaries in the sidebar.',
+        availability: 'available' as const,
+      },
+    ],
+  }
+  const view = renderInBrowser({
+    activeSessionId: sessionId('quick-session'),
+    workstreams: [describedQuickWorkstream],
+  })
+
+  const description = view.getByText('Comparing roomier Session summaries in the sidebar.')
+  const sessionButton = description.closest('button')
+
+  assert.ok(sessionButton)
+  assert.doesNotMatch(sessionButton.textContent ?? '', /Repository A/)
+})
+
 test('quietly identifies a Quick Session that uses a worktree', () => {
   const markup = renderToStaticMarkup(
     createNavigation({
@@ -461,13 +484,26 @@ test('disables unavailable Quick Session activation', () => {
   assert.ok((view.getByRole('button', { name: /Quick Session Repository A/ }) as HTMLButtonElement).disabled)
 })
 
-test('disables pinning an unavailable Quick Session', () => {
-  const view = renderInBrowser({ workstreams: [unavailableQuickWorkstream] })
+test('moves Quick Session pinning into its options menu', async () => {
+  const toggledSessions: string[] = []
+  const user = createUser()
+  const availableQuickWorkstream = {
+    ...unavailableQuickWorkstream,
+    sessions: [{ ...unavailableQuickWorkstream.sessions[0]!, availability: 'available' as const }],
+  }
+  const view = renderInBrowser({
+    workstreams: [availableQuickWorkstream],
+    onToggleSessionPin: (id) => toggledSessions.push(id),
+  })
 
-  assert.ok((view.getByRole('button', { name: 'Pin Quick Session' }) as HTMLButtonElement).disabled)
+  assert.equal(view.queryByRole('button', { name: 'Pin Quick Session' }), null)
+  await user.click(view.getByRole('button', { name: 'Quick Session in Repository A options' }))
+  await user.click(view.getByRole('menuitem', { name: 'Pin Session' }))
+
+  assert.deepEqual(toggledSessions, [sessionId('quick-session')])
 })
 
-test('allows an unavailable pinned Quick Session to be unpinned', async () => {
+test('allows an unavailable pinned Quick Session to be unpinned from its options menu', async () => {
   const toggledSessions: string[] = []
   const user = createUser()
   const view = renderInBrowser({
@@ -476,7 +512,8 @@ test('allows an unavailable pinned Quick Session to be unpinned', async () => {
     onToggleSessionPin: (id) => toggledSessions.push(id),
   })
 
-  await user.click(view.getByRole('button', { name: 'Unpin Quick Session' }))
+  await user.click(view.getByRole('button', { name: 'Quick Session in Repository A options' }))
+  await user.click(view.getByRole('menuitem', { name: 'Unpin Session' }))
 
   assert.deepEqual(toggledSessions, [sessionId('quick-session')])
 })
@@ -493,13 +530,19 @@ test('disables unavailable managed Session activation', () => {
   assert.ok((view.getByRole('button', { name: /Map current contracts Brainstorm/ }) as HTMLButtonElement).disabled)
 })
 
-test('disables pinning an unavailable managed Session', () => {
-  const view = renderInBrowser({ workstreams: [unavailableManagedWorkstream] })
+test('moves managed Session pinning into its options menu', async () => {
+  const toggledSessions: string[] = []
+  const user = createUser()
+  const view = renderInBrowser({ onToggleSessionPin: (id) => toggledSessions.push(id) })
 
-  assert.ok((view.getByRole('button', { name: 'Pin Map current contracts' }) as HTMLButtonElement).disabled)
+  assert.equal(view.queryByRole('button', { name: 'Pin Map current contracts' }), null)
+  await user.click(view.getByRole('button', { name: 'Map current contracts options' }))
+  await user.click(view.getByRole('menuitem', { name: 'Pin Session' }))
+
+  assert.deepEqual(toggledSessions, [sessionId('session-a')])
 })
 
-test('allows an unavailable pinned Session to be unpinned', async () => {
+test('allows an unavailable pinned Session to be unpinned from its options menu', async () => {
   const toggledSessions: string[] = []
   const user = createUser()
   const view = renderInBrowser({
@@ -507,10 +550,10 @@ test('allows an unavailable pinned Session to be unpinned', async () => {
     workstreams: [unavailableManagedWorkstream],
     onToggleSessionPin: (id) => toggledSessions.push(id),
   })
-  const unpinButton = view.getByRole('button', { name: 'Unpin Map current contracts' }) as HTMLButtonElement
 
-  assert.equal(unpinButton.disabled, false)
-  await user.click(unpinButton)
+  await user.click(view.getByRole('button', { name: 'Map current contracts options' }))
+  await user.click(view.getByRole('menuitem', { name: 'Unpin Session' }))
+
   assert.deepEqual(toggledSessions, [sessionId('session-a')])
 })
 

@@ -77,6 +77,78 @@ test('renders duplicate message text in canonical entry order', () => {
   assert.equal(view.getAllByText('Same text', { exact: true }).length, 2)
 })
 
+test('offers to fork from each completed user message by its canonical position', async () => {
+  const requestedPositions: number[] = []
+  const view = render(
+    <SessionMessages
+      sessionId={id}
+      isWorking={false}
+      onForkFromMessage={(position) => requestedPositions.push(position)}
+      transcript={transcript([
+        { type: 'message', message: { id: 'user-1', role: 'user', text: 'First', state: 'complete', revision: 1 } },
+        {
+          type: 'message',
+          message: { id: 'assistant-1', role: 'assistant', text: 'Response', state: 'complete', revision: 1 },
+        },
+        { type: 'message', message: { id: 'user-2', role: 'user', text: 'Second', state: 'complete', revision: 1 } },
+      ])}
+    />,
+    { container: browser.document.body as unknown as HTMLElement }
+  )
+
+  await view.getByRole('button', { name: 'Fork from “Second”' }).click()
+
+  assert.deepEqual(requestedPositions, [2])
+})
+
+test('renders a finished code review as a grouped transcript card', async () => {
+  const user = userEvent.setup({ document: browser.document as unknown as Document })
+  const view = render(
+    <SessionMessages
+      sessionId={id}
+      isWorking={false}
+      transcript={transcript([
+        {
+          type: 'message',
+          message: {
+            id: 'review-1',
+            role: 'user',
+            text: 'Formatted model context',
+            codeReview: {
+              kind: 'review',
+              comments: [
+                {
+                  id: 'comment-1',
+                  text: 'Keep the previous diff visible.',
+                  createdAt: 1,
+                  reference: {
+                    repositoryId: 'repository-1',
+                    repositoryName: 'Pi Workspace',
+                    path: 'src/session-changes.tsx',
+                    oldStart: 10,
+                    oldLines: 2,
+                    newStart: 10,
+                    newLines: 3,
+                    patch: '@@ -10,2 +10,3 @@\n-old\n+new',
+                  },
+                },
+              ],
+            },
+            state: 'complete',
+            revision: 1,
+          },
+        },
+      ])}
+    />,
+    { container: browser.document.body as unknown as HTMLElement }
+  )
+
+  assert.ok(view.getByText('Finished review'))
+  await user.click(view.getByText('src/session-changes.tsx'))
+  assert.ok(view.getByText('Keep the previous diff visible.'))
+  assert.ok(view.getByText('Lines +10–12'))
+})
+
 test('renders an invoked Skill inline with the user-authored transcript message', () => {
   const view = render(
     <SessionMessages

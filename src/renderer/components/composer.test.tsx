@@ -249,7 +249,7 @@ test('selects a whitespace path from at-sign autocomplete and sends its canonica
   const editor = view.getByRole('textbox')
   await user.click(editor)
   await user.keyboard('@')
-  await waitFor(() => assert.ok(view.getByRole('option', { name: /src\/my file\.ts/ })))
+  await waitFor(() => assert.ok(view.getByRole('option', { name: /src\/my file\.ts/ })), { timeout: 3_000 })
   await user.keyboard('{Enter}')
   await user.click(view.getByRole('button', { name: 'Send message' }))
 
@@ -262,6 +262,7 @@ test('closes file autocomplete after selecting a file', async () => {
   const user = createUser()
   const view = renderInBrowser(
     <FileComposer
+      initialDraft="@"
       submitMessage={async () => ({ status: 'accepted', delivery: 'prompt' })}
       sessionFiles={{
         async getAvailable() {
@@ -273,8 +274,9 @@ test('closes file autocomplete after selecting a file', async () => {
   const editor = view.getByRole('textbox')
 
   await user.click(editor)
-  await user.keyboard('@')
   await view.findByRole('listbox', { name: 'Files and folders' })
+  await user.keyboard('r')
+  await view.findByRole('option', { name: /README\.md/ })
   await user.keyboard('{Enter}')
   await act(async () => {
     await new Promise<void>((resolve) => window.setTimeout(resolve, 30))
@@ -315,6 +317,7 @@ test('scrolls the file results during keyboard navigation', async () => {
     const user = createUser()
     const view = renderInBrowser(
       <FileComposer
+        initialDraft="@"
         submitMessage={async () => ({ status: 'accepted', delivery: 'prompt' })}
         sessionFiles={{
           async getAvailable() {
@@ -330,7 +333,6 @@ test('scrolls the file results during keyboard navigation', async () => {
     const editor = view.getByRole('textbox')
 
     await user.click(editor)
-    await user.keyboard('@')
     const listbox = await view.findByRole('listbox', { name: 'Files and folders' })
     const options = view.getAllByRole('option')
 

@@ -21,6 +21,7 @@ type OwnedSessionProperties = Readonly<{
   id: SessionId
   workstreamId: string
   title: string
+  description?: string
   availability: SessionAvailability
 }>
 
@@ -72,6 +73,18 @@ export type WorktreeLocationPreview = Readonly<{
 export type WorktreeLocationsPreview = Readonly<{
   workstreamId: string
   repositories: readonly WorktreeLocationPreview[]
+}>
+
+export type SessionForkPoint = Readonly<{
+  entryId: string
+  text: string
+  position: number
+  total: number
+}>
+
+export type ForkSessionOptions = Readonly<{
+  entryId: string
+  title: string
 }>
 
 export type CreateWorkstreamOptions = Readonly<{

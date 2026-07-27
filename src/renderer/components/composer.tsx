@@ -304,10 +304,10 @@ export function Composer({
   }, [session.id, sessionConfiguration])
 
   return (
-    <div className="composer-tray shrink-0 border-t border-content-border p-3">
+    <div className="composer-tray relative z-10 shrink-0 px-4 pt-3 pb-4">
       <div
         aria-busy={agentRunDisabled ? 'true' : undefined}
-        className="group flex min-h-[52px] flex-col rounded-xl bg-composer-background"
+        className="composer-surface group flex min-h-[52px] flex-col rounded-xl border border-composer-border bg-composer-background"
         onClick={onActivate}
       >
         <ComposerEditor

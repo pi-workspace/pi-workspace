@@ -5,6 +5,8 @@ import {
   parseCreateQuickSessionRequest,
   parseCreateSessionRequest,
   parseCreateWorkstreamRequest,
+  parseForkSessionRequest,
+  parseSessionForkPointsRequest,
   parsePreviewWorktreeLocationsRequest,
   parseRenameOwnedSessionRequest,
   parseShowWorkingLocationRequest,
@@ -97,6 +99,23 @@ test('parses a request to show one recorded working location', () => {
     workstreamId: 'workstream-a',
     repositoryId: 'repository-a',
   })
+})
+
+test('parses a request for Session fork points', () => {
+  assert.deepEqual(parseSessionForkPointsRequest({ sessionId: 'session-a' }), {
+    sessionId: sessionId('session-a'),
+  })
+})
+
+test('parses an owned Session fork', () => {
+  assert.deepEqual(parseForkSessionRequest({ sessionId: 'session-a', entryId: 'aaaa0001', title: 'Alternative' }), {
+    sessionId: sessionId('session-a'),
+    options: { entryId: 'aaaa0001', title: 'Alternative' },
+  })
+})
+
+test('rejects a Session fork without a valid entry', () => {
+  assert.equal(parseForkSessionRequest({ sessionId: 'session-a', entryId: '', title: 'Alternative' }), undefined)
 })
 
 test('parses an owned Session rename', () => {
