@@ -21,7 +21,8 @@ type SessionMessagesProperties = Readonly<{
   timelineError?: string
   onReloadTimeline?: () => void
   onForkFromMessage?: (position: number) => void
-  onActionCard?: (card: SessionActionCard, option?: 'draft' | 'ready') => Promise<boolean>
+  onActionCard?: (card: SessionActionCard) => Promise<boolean>
+  onDismissActionCard?: (card: SessionActionCard) => Promise<boolean>
   onOpenCurrentDiff?: (repositoryId: string | undefined, path: string) => void
 }>
 
@@ -45,6 +46,7 @@ export function SessionMessages({
   onReloadTimeline,
   onForkFromMessage,
   onActionCard = async () => false,
+  onDismissActionCard = async () => false,
   onOpenCurrentDiff = () => {},
 }: SessionMessagesProperties) {
   const isLoading = !canonicalTranscript
@@ -153,7 +155,12 @@ export function SessionMessages({
             canonicalTranscript?.actionCards
               ?.filter((card) => card.status === 'available')
               .map((card) => (
-                <SessionActionCardView key={card.id} card={card} onAction={(option) => onActionCard(card, option)} />
+                <SessionActionCardView
+                  key={card.id}
+                  card={card}
+                  onAction={() => onActionCard(card)}
+                  onDismiss={() => onDismissActionCard(card)}
+                />
               ))}
           {isCompacting && <SessionActivityIndicator label="Pi is compacting this Session…" />}
           {!isLoading && runFailureReason ? (
@@ -212,17 +219,35 @@ export function SessionMessages({
 function SessionActionCardView({
   card,
   onAction,
-}: Readonly<{ card: SessionActionCard; onAction: (option?: 'draft' | 'ready') => Promise<boolean> }>) {
-  const [state, setState] = useState<'idle' | 'working' | 'complete' | 'failed'>('idle')
-  const runAction = async (option?: 'draft' | 'ready') => {
-    setState('working')
+  onDismiss,
+}: Readonly<{
+  card: SessionActionCard
+  onAction: () => Promise<boolean>
+  onDismiss: () => Promise<boolean>
+}>) {
+  const [actionState, setActionState] = useState<'idle' | 'working' | 'complete' | 'failed'>('idle')
+  const [dismissState, setDismissState] = useState<'idle' | 'working' | 'dismissed' | 'failed'>('idle')
+  const disabled = actionState === 'working' || actionState === 'complete' || dismissState === 'working'
+  const runAction = async () => {
+    setActionState('working')
 
     try {
-      setState((await onAction(option)) ? 'complete' : 'failed')
+      setActionState((await onAction()) ? 'complete' : 'failed')
     } catch {
-      setState('failed')
+      setActionState('failed')
     }
   }
+  const dismiss = async () => {
+    setDismissState('working')
+
+    try {
+      setDismissState((await onDismiss()) ? 'dismissed' : 'failed')
+    } catch {
+      setDismissState('failed')
+    }
+  }
+
+  if (dismissState === 'dismissed') return null
 
   return (
     <aside
@@ -232,42 +257,36 @@ function SessionActionCardView({
       <p className="text-xs/5 font-medium text-content-muted-foreground">Suggested by Pi</p>
       <h2 className="mt-1 text-sm/5 font-medium text-content-foreground">{card.title}</h2>
       <p className="mt-1 text-sm/5 text-content-muted-foreground">{card.description}</p>
-      {card.kind === 'start-implement-session' ? (
-        <>
-          <Button
-            className="mt-3"
-            disabled={state === 'working' || state === 'complete'}
-            onClick={() => void runAction()}
-          >
-            {state === 'working'
+      <div className="mt-3 flex flex-wrap gap-2">
+        {card.kind === 'start-implement-session' ? (
+          <Button disabled={disabled} onClick={() => void runAction()}>
+            {actionState === 'working'
               ? 'Starting…'
-              : state === 'complete'
+              : actionState === 'complete'
                 ? 'Implement Session started'
                 : 'Start Implement Session'}
           </Button>
-          {state === 'failed' ? (
-            <p className="mt-2 text-sm/5 text-activity-failed">Could not start this action.</p>
-          ) : null}
-        </>
-      ) : (
-        <div className="mt-3 flex flex-wrap gap-2">
-          <Button disabled={state === 'working' || state === 'complete'} onClick={() => void runAction('draft')}>
-            {state === 'working'
+        ) : (
+          <Button disabled={disabled} onClick={() => void runAction()}>
+            {actionState === 'working'
               ? 'Preparing pull request…'
-              : state === 'complete'
+              : actionState === 'complete'
                 ? 'Pull request request sent'
                 : 'Prepare draft pull request'}
           </Button>
-          <Button
-            outline
-            disabled={state === 'working' || state === 'complete'}
-            onClick={() => void runAction('ready')}
-          >
-            Prepare pull request
-          </Button>
-          {state === 'failed' ? <p className="text-sm/5 text-activity-failed">Could not start this request.</p> : null}
-        </div>
-      )}
+        )}
+        <Button outline disabled={disabled} onClick={() => void dismiss()}>
+          {dismissState === 'working' ? 'Dismissing…' : 'Not now'}
+        </Button>
+      </div>
+      {actionState === 'failed' ? (
+        <p className="mt-2 text-sm/5 text-activity-failed">
+          {card.kind === 'start-implement-session' ? 'Could not start this action.' : 'Could not start this request.'}
+        </p>
+      ) : null}
+      {dismissState === 'failed' ? (
+        <p className="mt-2 text-sm/5 text-activity-failed">Could not dismiss this suggestion.</p>
+      ) : null}
     </aside>
   )
 }

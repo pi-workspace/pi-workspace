@@ -52,7 +52,7 @@ import {
 } from '@/src/main/pi-session-runtimes'
 import { canCompactSessionHistory } from '@/src/main/pi-session-compaction'
 import { classifyPersistedAgentState } from '@/src/main/pi-session-history'
-import { createManagedSessionServices } from '@/src/main/managed-session-resources'
+import { createDefaultSessionServices, createManagedSessionServices } from '@/src/main/managed-session-resources'
 import { managedSessionFileRoots } from '@/src/main/managed-session-file-roots'
 import { createManagedSessionRuntimePolicyGuard } from '@/src/main/managed-session-runtime-policy'
 import {
@@ -63,7 +63,7 @@ import {
 import { broadcastToTrustedRenderers, handleTrustedIpc } from '@/src/main/trusted-ipc'
 import { isAllowedExternalUrl } from '@/src/session-transcript'
 import {
-  parseActionCardAcceptanceRequest,
+  parseActionCardStatusRequest,
   parseSessionTranscriptRequest,
   parseTranscriptActivityDetailsRequest,
   sessionTranscriptIpcChannels,
@@ -309,20 +309,20 @@ export async function createPiSessionRuntime(
         ]
       : []
   const customTools = [startActivity, completeActivity, setSessionDescription, suggestAction, ...managedTools]
-  const managedServices =
+  const sessionServices =
     options.kind === 'managed'
       ? await createManagedSessionServices(
           directoryPath,
           options.policy,
           managedSessionMethodology(options.policy.mode)
         )
-      : undefined
+      : await createDefaultSessionServices(directoryPath)
   const { session } = await createAgentSession({
     cwd: directoryPath,
     sessionManager,
     customTools,
-    resourceLoader: managedServices?.resourceLoader,
-    settingsManager: managedServices?.settingsManager,
+    resourceLoader: sessionServices.resourceLoader,
+    settingsManager: sessionServices.settingsManager,
   })
   const getAvailableSkillResources = () =>
     session.settingsManager.getEnableSkillCommands()
@@ -798,10 +798,18 @@ export function initializeComposer(authority: ApplicationAuthority): void {
   })
 
   handleTrustedIpc(sessionTranscriptIpcChannels.acceptActionCard, (_event, value: unknown) => {
-    const request = parseActionCardAcceptanceRequest(value)
+    const request = parseActionCardStatusRequest(value)
 
     return request
       ? registry.acceptActionCard(sessionId(request.sessionId), request.actionCardId)
+      : Promise.resolve(false)
+  })
+
+  handleTrustedIpc(sessionTranscriptIpcChannels.dismissActionCard, (_event, value: unknown) => {
+    const request = parseActionCardStatusRequest(value)
+
+    return request
+      ? registry.dismissActionCard(sessionId(request.sessionId), request.actionCardId)
       : Promise.resolve(false)
   })
 
