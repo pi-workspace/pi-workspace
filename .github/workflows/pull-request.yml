@@ -43,4 +43,4 @@ jobs:
 
       - name: Run Windows quality checks
         if: matrix.os == 'windows-2025'
-        run: bun run format:check && bun run lint && bun run typecheck && bun run test
+        run: bun run format:check && bun run lint && bun run typecheck && bun test --max-concurrency=1 --timeout=15000 --preload ./src/renderer/test-dom.ts

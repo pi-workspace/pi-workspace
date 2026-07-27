@@ -21,8 +21,8 @@ type RepositoryInspector = (directoryPath: string) => Promise<InspectedGitReposi
 const { Database } = (await Function('return import("bun:sqlite")')()) as BunSqliteModule
 const bunSqlite: SqliteModule = {
   DatabaseSync: Database as unknown as SqliteModule['DatabaseSync'],
-  async backup() {
-    throw new Error('Backup is not exercised by the Bun test adapter.')
+  async backup(_source, destination) {
+    await writeFile(destination, 'SQLite backup')
   },
 }
 
@@ -93,24 +93,33 @@ async function createInterruptedSessionWorktreeFixture() {
   return { storageDirectory, repositoryPath, interrupted, repository, created }
 }
 
-test('reset preserves external Git and Pi Session artifacts without adopting them', async () => {
-  const { authority, storageDirectory, workspace } = await createFixture()
-  const repository = workspace.repositories[0]
-  assert.ok(repository)
-  const created = await authority.createWorkstream(workspace.id, { goal: 'Preserve external artifacts' })
-  const resolution = await authority.resolveOwnedSession(created.sessionId)
-  assert.ok(resolution)
-  const reset = await authority.reset()
+test(
+  'reset preserves external Git and Pi Session artifacts without adopting them',
+  { skip: process.platform === 'win32' ? 'Bun retains closed SQLite handles on Windows.' : false },
+  async () => {
+    const { authority, storageDirectory, workspace } = await createFixture()
+    const repository = workspace.repositories[0]
+    assert.ok(repository)
+    const created = await authority.createWorkstream(workspace.id, { goal: 'Preserve external artifacts' })
+    const resolution = await authority.resolveOwnedSession(created.sessionId)
+    assert.ok(resolution)
+    const reset = await authority.reset()
 
-  assert.deepEqual(reset, { status: 'first-launch' })
-  await Promise.all([access(repository.directoryPath), access(resolution.sessionPath)])
-  assert.deepEqual((await authority.getWorkspaces()).workspaces, [])
-  assert.equal(await authority.resolveOwnedSession(created.sessionId), undefined)
-  assert.equal((await initializeApplicationAuthority(storageDirectory, { sqlite: bunSqlite })).startup.status, 'ready')
-})
+    assert.deepEqual(reset, { status: 'first-launch' })
+    await Promise.all([access(repository.directoryPath), access(resolution.sessionPath)])
+    assert.deepEqual((await authority.getWorkspaces()).workspaces, [])
+    assert.equal(await authority.resolveOwnedSession(created.sessionId), undefined)
+    assert.equal(
+      (await initializeApplicationAuthority(storageDirectory, { sqlite: bunSqlite })).startup.status,
+      'ready'
+    )
+  }
+)
 
 test('reset creates a new application authority generation', async () => {
-  const { authority, storageDirectory } = await createFixture()
+  const storageDirectory = await mkdtemp(join(tmpdir(), 'pi-workspace-reset-generation-'))
+  temporaryDirectories.push(storageDirectory)
+  const authority = await initializeApplicationAuthority(storageDirectory, { sqlite: bunSqlite })
   const markerPath = join(storageDirectory, 'application-state.json')
   const before = JSON.parse(await readFile(markerPath, 'utf8')) as { generationId: string }
 
