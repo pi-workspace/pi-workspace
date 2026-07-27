@@ -84,6 +84,22 @@ test('rejects malformed queued follow-up records', () => {
     }),
     false
   )
+  assert.equal(
+    isActivityLayerRecord({
+      version: 1,
+      type: 'queued-follow-up',
+      followUp: { id: 'follow-up-1', text: 'Continue.', files: 'invalid', createdAt: 1 },
+    }),
+    false
+  )
+  assert.equal(
+    isActivityLayerRecord({
+      version: 1,
+      type: 'queued-follow-up',
+      followUp: { id: 'follow-up-1', text: 'Continue.', sourceText: 1, createdAt: 1 },
+    }),
+    false
+  )
   assert.equal(isActivityLayerRecord({ version: 1, type: 'queued-follow-up-removed', followUpId: '' }), false)
 })
 
@@ -99,6 +115,13 @@ test('accepts queued follow-up records', () => {
           {
             offset: 0,
             skill: { name: 'tdd', description: 'Develop test first.', availability: 'available' },
+          },
+        ],
+        sourceText: 'Continue after this response.',
+        files: [
+          {
+            offset: 28,
+            file: { path: 'src/app.ts', kind: 'file', availability: 'available' },
           },
         ],
         createdAt: 1,

@@ -97,6 +97,114 @@ test('persists an accepted action card across a runtime restart', async () => {
   assert.equal((await restartedRegistry.getTranscript(id)).actionCards?.[0]?.status, 'accepted')
 })
 
+test('persists a dismissed action card across a runtime restart', async () => {
+  let emit: (event: Parameters<Parameters<PiSessionRuntime['subscribe']>[0]>[0]) => void = () => {}
+  const records: import('@/src/main/activity-records').ActivityLayerRecord[] = []
+  const runtime: PiSessionRuntime = {
+    isStreaming: false,
+    async prompt() {},
+    subscribe(listener) {
+      emit = listener
+      return () => {}
+    },
+    loadHistory() {
+      return { conversations: [], activityRecords: records, finalState: 'completed' }
+    },
+    appendActivityRecord(record) {
+      records.push(record)
+    },
+    dispose() {},
+  }
+  const id = sessionId('dismissed-action-card-session')
+  const registry = createPiSessionRuntimeRegistry({
+    findSession: () => ({ directoryPath: '/tmp', sessionPath: '/tmp/session.jsonl' }),
+    createSession: async () => runtime,
+  })
+
+  await registry.getTranscript(id)
+  emit({
+    type: 'action_card_created',
+    input: {
+      kind: 'prepare-pull-request',
+      title: 'Prepare the pull request',
+      description: 'The changes are ready for review.',
+    },
+    createdAt: 1,
+  })
+
+  const created = (await registry.getTranscript(id)).actionCards?.[0]
+  assert.ok(created)
+  assert.equal(await registry.dismissActionCard(id, created.id), true)
+  assert.equal(await registry.dismissActionCard(id, created.id), false)
+  assert.equal((await registry.getTranscript(id)).actionCards?.[0]?.status, 'dismissed')
+
+  const restartedRegistry = createPiSessionRuntimeRegistry({
+    findSession: () => ({ directoryPath: '/tmp', sessionPath: '/tmp/session.jsonl' }),
+    createSession: async () => runtime,
+  })
+
+  assert.equal((await restartedRegistry.getTranscript(id)).actionCards?.[0]?.status, 'dismissed')
+})
+
+test('rejects a tagged submission when file reference lookup fails', async () => {
+  const runtime: PiSessionRuntime = {
+    isStreaming: false,
+    async prompt() {
+      assert.fail('A rejected file reference must not prompt the Agent.')
+    },
+    subscribe() {
+      return () => {}
+    },
+    async getFileReference() {
+      throw new Error('The managed Session policy is stale.')
+    },
+    dispose() {},
+  }
+  const registry = createPiSessionRuntimeRegistry({
+    findSession: () => ({ directoryPath: '/tmp', sessionPath: '/tmp/session.jsonl' }),
+    createSession: async () => runtime,
+  })
+
+  assert.deepEqual(
+    await registry.submit({ sessionId: sessionId('file-lookup-session'), text: '@src/app.ts', delivery: 'steer' }),
+    { status: 'rejected', reason: 'unexpected' }
+  )
+})
+
+test('keeps file source metadata within the file context budget', async () => {
+  const prompts: string[] = []
+  const runtime: PiSessionRuntime = {
+    isStreaming: false,
+    async prompt(text) {
+      prompts.push(text)
+    },
+    subscribe() {
+      return () => {}
+    },
+    async getFileReference() {
+      return { path: 'src/app.ts', kind: 'file', availability: 'available' }
+    },
+    async getFileContext() {
+      return '## Referenced file: `src/app.ts`\\n\\n```ts\\nexport {}\\n```'
+    },
+    dispose() {},
+  }
+  const registry = createPiSessionRuntimeRegistry({
+    findSession: () => ({ directoryPath: '/tmp', sessionPath: '/tmp/session.jsonl' }),
+    createSession: async () => runtime,
+  })
+
+  assert.deepEqual(
+    await registry.submit({
+      sessionId: sessionId('file-source-budget-session'),
+      text: `@src/app.ts ${'a'.repeat(75_000)}`,
+      delivery: 'steer',
+    }),
+    { status: 'rejected', reason: 'preflight-rejected' }
+  )
+  assert.deepEqual(prompts, [])
+})
+
 test('persists an unfinished code-review comment across a runtime restart', async () => {
   const records: import('@/src/main/activity-records').ActivityLayerRecord[] = []
   const runtime: PiSessionRuntime = {
@@ -929,6 +1037,66 @@ test('expands Skills from review comments without interpreting immutable patch t
   assert.deepEqual(result, { status: 'accepted', delivery: 'prompt' })
   assert.match(promptedText, /\+Run \/skill:missing before merging\./)
   assert.match(promptedText, /<tdd> Check this documentation change\./)
+})
+
+test('expands files from review comments without interpreting immutable patch text', async () => {
+  let promptedText = ''
+  const referencedPaths: string[] = []
+  const runtime: PiSessionRuntime = {
+    isStreaming: false,
+    async prompt(text, options) {
+      promptedText = text
+      options.preflightResult(true)
+    },
+    async getFileReference(path) {
+      referencedPaths.push(path)
+      return { path, kind: 'file', availability: 'available' }
+    },
+    async getFileContext(path) {
+      return `<file:${path}>`
+    },
+    subscribe() {
+      return () => {}
+    },
+    dispose() {},
+  }
+  const registry = createPiSessionRuntimeRegistry({
+    findSession: () => ({ directoryPath: '/tmp', sessionPath: '/tmp/session.jsonl' }),
+    createSession: async () => runtime,
+  })
+  const id = sessionId('review-file-session')
+  const codeReview: SessionCodeReview = {
+    kind: 'follow-up',
+    comments: [
+      {
+        id: 'comment-1',
+        text: '@src/app.ts Check this implementation.',
+        createdAt: 1,
+        reference: {
+          repositoryId: 'repository-1',
+          repositoryName: 'Pi Workspace',
+          path: 'docs.md',
+          oldStart: 1,
+          oldLines: 1,
+          newStart: 1,
+          newLines: 1,
+          patch: '@@ -1 +1 @@\n-Old documentation.\n @docs.md remains literal.',
+        },
+      },
+    ],
+  }
+
+  const result = await registry.submit({
+    sessionId: id,
+    text: formatSessionCodeReviewText(codeReview),
+    delivery: 'follow-up',
+    codeReview,
+  })
+
+  assert.deepEqual(result, { status: 'accepted', delivery: 'prompt' })
+  assert.deepEqual(referencedPaths, ['src/app.ts'])
+  assert.match(promptedText, / @docs\.md remains literal\./)
+  assert.match(promptedText, /<file:src\/app\.ts> Check this implementation\./)
 })
 
 test('rejects a selected Skill that is unavailable to the Session runtime', async () => {

@@ -330,7 +330,7 @@ const workstreamScenario: DemoScenario = {
     },
     [implementationSessionId]: {
       sessionId: implementationSessionId,
-      revision: 6,
+      revision: 7,
       isWorking: false,
       contextUsage: demoContextUsage(0.5),
       runs: [
@@ -341,6 +341,17 @@ const workstreamScenario: DemoScenario = {
           activityIds: ['inspect-save-pipeline', 'implement-offline-editing', 'validate-offline-editing'],
           startedAt: implementationRunStartedAt,
           completedAt: implementationRunStartedAt + 438_000,
+        },
+      ],
+      actionCards: [
+        {
+          id: 'prepare-offline-pull-request',
+          sessionId: implementationSessionId,
+          kind: 'prepare-pull-request',
+          title: 'Prepare the pull request',
+          description: 'The offline editing changes are ready for review.',
+          status: 'available',
+          createdAt: implementationRunStartedAt + 438_000,
         },
       ],
       entries: [

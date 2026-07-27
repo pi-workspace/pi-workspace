@@ -2,6 +2,23 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { getDemoScenario, getDemoScenarioPresentation } from './demo-scenarios'
 
+test('provides a pull-request action card in the workstream scenario', () => {
+  const scenario = getDemoScenario('workstream')
+  const transcript = scenario.transcriptsBySessionId['offline-implementation']
+
+  assert.deepEqual(transcript?.actionCards, [
+    {
+      id: 'prepare-offline-pull-request',
+      sessionId: 'offline-implementation',
+      kind: 'prepare-pull-request',
+      title: 'Prepare the pull request',
+      description: 'The offline editing changes are ready for review.',
+      status: 'available',
+      createdAt: Date.UTC(2026, 6, 15, 10, 22, 18),
+    },
+  ])
+})
+
 test('provides an active Session with transcript-visible steering and queued follow-ups', () => {
   const scenario = getDemoScenario('queued-messages')
   const transcript = scenario.transcriptsBySessionId['queued-messages']

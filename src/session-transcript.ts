@@ -3,6 +3,7 @@ import type { QueuedFollowUp } from '@/src/queued-follow-up'
 import type { SessionSkillMention } from '@/src/session-skills'
 import type { SessionActionCard } from '@/src/session-action-cards'
 import type { SessionCodeReview } from '@/src/session-code-review'
+import type { SessionFileMention } from '@/src/session-files'
 
 const allowedExternalUrlProtocols = new Set(['http:', 'https:', 'mailto:'])
 export const maximumExternalUrlLength = 8_192
@@ -29,6 +30,7 @@ export type SessionTranscriptMessage = Readonly<{
   role: 'user' | 'assistant'
   text: string
   skills?: readonly SessionSkillMention[]
+  files?: readonly SessionFileMention[]
   codeReview?: SessionCodeReview
   delivery?: 'steer'
   state: 'complete' | 'streaming'
@@ -73,6 +75,7 @@ export interface SessionTranscriptBridge {
   getWorkingStateSnapshots(): Promise<readonly SessionWorkingStateSnapshot[]>
   loadActivityDetails(sessionId: SessionId, activityId: string): Promise<AgentActivityDetails | undefined>
   acceptActionCard(sessionId: SessionId, actionCardId: string): Promise<boolean>
+  dismissActionCard(sessionId: SessionId, actionCardId: string): Promise<boolean>
   openExternalLink(url: string): Promise<void>
   subscribe(listener: (mutation: SessionTranscriptMutation) => void): () => void
 }

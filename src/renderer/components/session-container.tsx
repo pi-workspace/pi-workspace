@@ -1,13 +1,22 @@
-import { useId, useLayoutEffect, useRef } from 'react'
-import { LockKeyhole, Pencil, TriangleAlert } from 'lucide-react'
+import { useId, useLayoutEffect, useRef, useState } from 'react'
+import { Ellipsis, GitFork, LockKeyhole, Pencil, TriangleAlert } from 'lucide-react'
+import { Dropdown, DropdownButton, DropdownItem, DropdownLabel, DropdownMenu } from '@/components/ui-kit/dropdown'
 import type { ComposerBridge } from '@/src/composer'
-import type { OwnedSession, WorkstreamLifecycle } from '@/src/domain/workstream'
+import type {
+  ForkSessionOptions,
+  OwnedSession,
+  SessionForkPoint,
+  WorkstreamLifecycle,
+  WorkstreamWorkingLocation,
+} from '@/src/domain/workstream'
 import type { SessionConfigurationBridge } from '@/src/session-configuration'
 import type { SessionSkillsBridge } from '@/src/session-skills'
 import type { SessionActionCard } from '@/src/session-action-cards'
+import type { SessionFilesBridge } from '@/src/session-files'
 import type { SessionTranscriptBridge } from '@/src/session-transcript'
 import { Composer } from '@/src/renderer/components/composer'
 import { QueuedFollowUpTray } from '@/src/renderer/components/queued-follow-up-tray'
+import { SessionForkDialog } from '@/src/renderer/components/session-fork-dialog'
 import { SessionMessages } from '@/src/renderer/components/session-messages'
 import { SessionPinButton } from '@/src/renderer/components/session-pin-button'
 import { SessionTitleEditor } from '@/src/renderer/components/session-title-editor'
@@ -17,6 +26,7 @@ import { useSessionTranscript } from '@/src/renderer/session-transcript-state'
 type SessionContainerProperties = {
   session: OwnedSession
   workstreamLifecycle: WorkstreamLifecycle
+  workingLocation?: WorkstreamWorkingLocation
   active: boolean
   draft: string
   composerFocusRequest?: number
@@ -34,8 +44,12 @@ type SessionContainerProperties = {
   resumeQueuedFollowUps?: NonNullable<ComposerBridge['resumeQueuedFollowUps']>
   sessionConfiguration?: SessionConfigurationBridge
   sessionSkills?: SessionSkillsBridge
+  sessionFiles?: SessionFilesBridge
+  getForkPoints?: () => Promise<readonly SessionForkPoint[]>
+  forkSession?: (options: ForkSessionOptions) => Promise<void>
   onTogglePin: () => void
   acceptActionCard?: SessionTranscriptBridge['acceptActionCard']
+  dismissActionCard?: SessionTranscriptBridge['dismissActionCard']
   onStartImplementSession?: (workstreamId: string) => Promise<void>
   onOpenCurrentDiff?: (repositoryId: string | undefined, path: string) => void
 }
@@ -43,6 +57,7 @@ type SessionContainerProperties = {
 export function SessionContainer({
   session,
   workstreamLifecycle,
+  workingLocation = 'current-checkouts',
   active,
   draft,
   composerFocusRequest,
@@ -60,14 +75,19 @@ export function SessionContainer({
   resumeQueuedFollowUps,
   sessionConfiguration,
   sessionSkills,
+  sessionFiles,
+  getForkPoints,
+  forkSession,
   onTogglePin,
   acceptActionCard = async () => false,
+  dismissActionCard = async () => false,
   onStartImplementSession = async () => {},
   onOpenCurrentDiff = () => {},
 }: SessionContainerProperties) {
   const headingId = useId()
   const transcriptContainerRef = useRef<HTMLDivElement>(null)
   const composerLayerRef = useRef<HTMLDivElement>(null)
+  const [forkPosition, setForkPosition] = useState<number | 'latest'>()
   const transcriptState = useSessionTranscript(session.id)
   const isWorking = transcriptState.snapshot?.isWorking ?? false
   const unavailability = getSessionUnavailability(session)
@@ -154,12 +174,30 @@ export function SessionContainer({
             </button>
           </>
         )}
+        {getForkPoints && forkSession && !unavailability && workstreamLifecycle === 'active' && (
+          <Dropdown>
+            <DropdownButton
+              as="button"
+              aria-label={`${session.title} options`}
+              className="ml-auto shrink-0 rounded-sm p-1.5 text-session-pin hover:bg-session-interaction focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <Ellipsis aria-hidden="true" className="size-4" />
+            </DropdownButton>
+            <DropdownMenu anchor="bottom end">
+              <DropdownItem disabled={isWorking} onClick={() => setForkPosition('latest')}>
+                <GitFork aria-hidden="true" data-slot="icon" />
+                <DropdownLabel>Fork Session…</DropdownLabel>
+              </DropdownItem>
+            </DropdownMenu>
+          </Dropdown>
+        )}
         <SessionPinButton
           sessionName={session.title}
           pinned={pinned}
           disabled={Boolean(unavailability) && !pinned}
           onToggle={onTogglePin}
-          className="ml-auto shrink-0"
+          className={`${getForkPoints && forkSession && !unavailability && workstreamLifecycle === 'active' ? '' : 'ml-auto'} shrink-0`}
         />
       </header>
 
@@ -172,8 +210,13 @@ export function SessionContainer({
           timelineAnnouncement={transcriptState.announcement}
           timelineError={transcriptState.error}
           onReloadTimeline={transcriptState.reload}
+          onForkFromMessage={
+            getForkPoints && forkSession && workstreamLifecycle === 'active' && !unavailability
+              ? (position) => setForkPosition(position)
+              : undefined
+          }
           onOpenCurrentDiff={onOpenCurrentDiff}
-          onActionCard={async (card: SessionActionCard, option) => {
+          onActionCard={async (card: SessionActionCard) => {
             if (card.kind === 'start-implement-session') {
               await onStartImplementSession(session.workstreamId)
               return acceptActionCard(session.id, card.id)
@@ -182,14 +225,12 @@ export function SessionContainer({
             const result = await submitMessage({
               sessionId: session.id,
               delivery: 'action',
-              text:
-                option === 'ready'
-                  ? 'Create a pull request for the completed work. Review the current changes, validation results, and branch status, then prepare a clear title and description for my approval.'
-                  : 'Create a draft pull request for the completed work. Review the current changes, validation results, and branch status, then prepare a clear title and description for my approval.',
+              text: 'Create a draft pull request for the completed work. Review the current changes, validation results, and branch status, then prepare a clear title and description for my approval.',
             })
 
             return result.status === 'accepted' && (await acceptActionCard(session.id, card.id))
           }}
+          onDismissActionCard={(card) => dismissActionCard(session.id, card.id)}
         />
         <div ref={composerLayerRef} className="session-composer-layer absolute inset-x-0 bottom-0 z-10">
           {!composerUnavailable && transcriptState.snapshot?.queuedFollowUps && (
@@ -236,9 +277,21 @@ export function SessionContainer({
               stopRun={stopRun}
               sessionConfiguration={sessionConfiguration}
               sessionSkills={sessionSkills}
+              sessionFiles={sessionFiles}
             />
           )}
         </div>
+        {getForkPoints && forkSession && forkPosition !== undefined && (
+          <SessionForkDialog
+            open
+            session={session}
+            initialPosition={forkPosition === 'latest' ? undefined : forkPosition}
+            workingLocation={workingLocation}
+            getForkPoints={getForkPoints}
+            onFork={forkSession}
+            onClose={() => setForkPosition(undefined)}
+          />
+        )}
       </div>
     </section>
   )

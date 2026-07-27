@@ -4,6 +4,7 @@ import {
   type CreateQuickSessionOptions,
   type CreateSessionOptions,
   type CreateWorkstreamOptions,
+  type ForkSessionOptions,
 } from '@/src/domain/workstream'
 
 export const workstreamsIpcChannels = {
@@ -12,6 +13,8 @@ export const workstreamsIpcChannels = {
   createWorkstream: 'workstreams:create-workstream',
   createQuickSession: 'workstreams:create-quick-session',
   createSession: 'workstreams:create-session',
+  getSessionForkPoints: 'workstreams:get-session-fork-points',
+  forkSession: 'workstreams:fork-session',
   setLifecycle: 'workstreams:set-lifecycle',
   renameSession: 'workstreams:rename-session',
   showWorkingLocation: 'workstreams:show-working-location',
@@ -97,6 +100,28 @@ export function parseCreateSessionRequest(
   }
 
   return { workstreamId, options: title === undefined ? { mode } : { mode, title } }
+}
+
+export function parseSessionForkPointsRequest(value: unknown): Readonly<{ sessionId: SessionId }> | undefined {
+  if (typeof value !== 'object' || value === null) return undefined
+
+  const id = (value as { sessionId?: unknown }).sessionId
+
+  return isSessionId(id) ? { sessionId: id } : undefined
+}
+
+export function parseForkSessionRequest(
+  value: unknown
+): Readonly<{ sessionId: SessionId; options: ForkSessionOptions }> | undefined {
+  if (typeof value !== 'object' || value === null) return undefined
+
+  const id = (value as { sessionId?: unknown }).sessionId
+  const entryId = (value as { entryId?: unknown }).entryId
+  const title = (value as { title?: unknown }).title
+
+  return isSessionId(id) && typeof entryId === 'string' && /^[a-f0-9]{8}$/i.test(entryId) && typeof title === 'string'
+    ? { sessionId: id, options: { entryId, title } }
+    : undefined
 }
 
 export function parseWorkstreamLifecycleRequest(

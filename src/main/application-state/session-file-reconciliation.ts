@@ -1,5 +1,9 @@
 import type { SessionId } from '@/src/domain/session'
-import { type PiSessionCreationIntent, type PiSessionFileStore } from '@/src/main/pi-session-files'
+import {
+  type PiSessionCreationIntent,
+  type PiSessionFileStore,
+  type PiSessionForkIntent,
+} from '@/src/main/pi-session-files'
 import type { SqliteDatabase } from './sqlite'
 
 type SessionFileReconciliationOptions = Readonly<{
@@ -21,11 +25,16 @@ export function createSessionFileReconciliation({
   ): Promise<SessionCreationStatus | undefined> {
     const intents = database
       .prepare(
-        `SELECT id, session_id, pi_session_id, directory_path, session_path
-           FROM external_side_effect_intents
-          WHERE kind = 'create-pi-session-file' AND status = 'pending'
-            AND (? IS NULL OR session_id = ?)
-          ORDER BY id`
+        `SELECT intent.id, intent.kind, intent.session_id, intent.pi_session_id, intent.directory_path,
+                intent.session_path, session.title, session.mode, session.forked_from_entry_id,
+                workstream.working_location, parent.expected_jsonl_path AS parent_session_path
+           FROM external_side_effect_intents intent
+           JOIN sessions session ON session.id = intent.session_id
+           JOIN workstreams workstream ON workstream.id = session.workstream_id
+           LEFT JOIN sessions parent ON parent.id = session.parent_session_id
+          WHERE intent.kind IN ('create-pi-session-file', 'fork-pi-session-file') AND intent.status = 'pending'
+            AND (? IS NULL OR intent.session_id = ?)
+          ORDER BY intent.id`
       )
       .all(targetSessionId ?? null, targetSessionId ?? null)
     let targetStatus: SessionCreationStatus | undefined
@@ -39,7 +48,34 @@ export function createSessionFileReconciliation({
       }
 
       try {
-        const outcome = await sessionFiles.create(intent)
+        let outcome
+
+        if (row.kind === 'fork-pi-session-file') {
+          if (
+            typeof row.parent_session_path !== 'string' ||
+            typeof row.forked_from_entry_id !== 'string' ||
+            typeof row.title !== 'string'
+          ) {
+            throw new Error('The persisted Session fork intent is malformed.')
+          }
+
+          const contextMessage =
+            row.mode === 'implement'
+              ? 'This is a forked Implement Session. Earlier Session worktree paths in the copied history are reference only. Call workspace_overview and prepare_repository before modifying a Repository in this Session.'
+              : row.mode === 'default' && row.working_location === 'worktrees'
+                ? 'This is a forked Quick Session with a new dedicated worktree. Earlier working paths in the copied history are reference only.'
+                : undefined
+          const forkIntent: PiSessionForkIntent = {
+            ...intent,
+            sourceSessionPath: row.parent_session_path,
+            sourceEntryId: row.forked_from_entry_id,
+            title: row.title,
+            ...(contextMessage ? { contextMessage } : {}),
+          }
+          outcome = await sessionFiles.fork(forkIntent)
+        } else {
+          outcome = await sessionFiles.create(intent)
+        }
 
         if (outcome.status === 'available' && !(await sessionFiles.resolve(intent))) {
           throw new Error('The created Pi Session file did not match its persisted intent.')

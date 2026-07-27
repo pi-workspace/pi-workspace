@@ -10,6 +10,8 @@ import type { SessionSkillsBridge } from '@/src/session-skills'
 import { sessionSkillsIpcChannels } from '@/src/session-skills-ipc'
 import type { SessionChangesBridge, SessionChangesSnapshot, SessionFileDiff } from '@/src/session-changes'
 import { sessionChangesIpcChannels } from '@/src/session-changes-ipc'
+import type { SessionFilesBridge } from '@/src/session-files'
+import { sessionFilesIpcChannels } from '@/src/session-files-ipc'
 import type {
   SessionConfigurationBridge,
   SessionConfigurationCommandResult,
@@ -18,7 +20,7 @@ import type {
 } from '@/src/session-configuration'
 import { sessionConfigurationIpcChannels } from '@/src/session-configuration-ipc'
 import type { SettingsBridge, SettingsSnapshot, SettingsUpdate } from '@/src/settings'
-import type { WorkstreamsBridge, WorkstreamCreationOutcome } from '@/src/workstreams'
+import type { SessionForkOutcome, WorkstreamsBridge, WorkstreamCreationOutcome } from '@/src/workstreams'
 import { workstreamsIpcChannels } from '@/src/workstreams-ipc'
 import type { WorkstreamKnowledgeBridge } from '@/src/workstream-knowledge-ipc'
 import type { WorkstreamKnowledge } from '@/src/domain/workstream-knowledge-transitions'
@@ -123,6 +125,15 @@ const workstreamsBridge: WorkstreamsBridge = {
       ...options,
     }) as Promise<WorkstreamCreationOutcome>
   },
+  getSessionForkPoints(sessionId) {
+    return ipcRenderer.invoke(workstreamsIpcChannels.getSessionForkPoints, { sessionId })
+  },
+  forkSession(sessionId, options) {
+    return ipcRenderer.invoke(workstreamsIpcChannels.forkSession, {
+      sessionId,
+      ...options,
+    }) as Promise<SessionForkOutcome>
+  },
   setLifecycle(workstreamId, lifecycle) {
     return ipcRenderer.invoke(workstreamsIpcChannels.setLifecycle, { workstreamId, lifecycle })
   },
@@ -190,6 +201,12 @@ const composerBridge: ComposerBridge = {
 const sessionSkillsBridge: SessionSkillsBridge = {
   getAvailable(sessionId) {
     return ipcRenderer.invoke(sessionSkillsIpcChannels.getAvailable, { sessionId })
+  },
+}
+
+const sessionFilesBridge: SessionFilesBridge = {
+  getAvailable(sessionId, query) {
+    return ipcRenderer.invoke(sessionFilesIpcChannels.getAvailable, { sessionId, query })
   },
 }
 
@@ -271,6 +288,12 @@ const sessionTranscriptBridge: SessionTranscriptBridge = {
       actionCardId,
     }) as Promise<boolean>
   },
+  dismissActionCard(sessionId, actionCardId) {
+    return ipcRenderer.invoke(sessionTranscriptIpcChannels.dismissActionCard, {
+      sessionId,
+      actionCardId,
+    }) as Promise<boolean>
+  },
   openExternalLink(url) {
     return ipcRenderer.invoke(sessionTranscriptIpcChannels.openExternalLink, url) as Promise<void>
   },
@@ -286,6 +309,7 @@ const piWorkspaceBridge: PiWorkspaceBridge = {
   applicationState: applicationStateBridge,
   composer: composerBridge,
   sessionSkills: sessionSkillsBridge,
+  sessionFiles: sessionFilesBridge,
   sessionChanges: sessionChangesBridge,
   sessionConfiguration: sessionConfigurationBridge,
   transcript: sessionTranscriptBridge,

@@ -77,6 +77,30 @@ test('renders duplicate message text in canonical entry order', () => {
   assert.equal(view.getAllByText('Same text', { exact: true }).length, 2)
 })
 
+test('offers to fork from each completed user message by its canonical position', async () => {
+  const requestedPositions: number[] = []
+  const view = render(
+    <SessionMessages
+      sessionId={id}
+      isWorking={false}
+      onForkFromMessage={(position) => requestedPositions.push(position)}
+      transcript={transcript([
+        { type: 'message', message: { id: 'user-1', role: 'user', text: 'First', state: 'complete', revision: 1 } },
+        {
+          type: 'message',
+          message: { id: 'assistant-1', role: 'assistant', text: 'Response', state: 'complete', revision: 1 },
+        },
+        { type: 'message', message: { id: 'user-2', role: 'user', text: 'Second', state: 'complete', revision: 1 } },
+      ])}
+    />,
+    { container: browser.document.body as unknown as HTMLElement }
+  )
+
+  await view.getByRole('button', { name: 'Fork from “Second”' }).click()
+
+  assert.deepEqual(requestedPositions, [2])
+})
+
 test('renders a finished code review as a grouped transcript card', async () => {
   const user = userEvent.setup({ document: browser.document as unknown as Document })
   const view = render(
@@ -239,6 +263,68 @@ test('hides an accepted action card', () => {
   )
 
   assert.equal(view.queryByText('Start implementation', { exact: true }), null)
+})
+
+test('offers only draft preparation for a pull-request action card', () => {
+  const view = render(
+    <SessionMessages
+      sessionId={id}
+      isWorking={false}
+      transcript={{
+        ...transcript([]),
+        actionCards: [
+          {
+            id: 'card-1',
+            sessionId: id,
+            kind: 'prepare-pull-request',
+            title: 'Prepare the pull request',
+            description: 'The changes are ready for review.',
+            status: 'available',
+            createdAt: 1,
+          },
+        ],
+      }}
+    />,
+    { container: browser.document.body as unknown as HTMLElement }
+  )
+
+  assert.ok(view.getByRole('button', { name: 'Prepare draft pull request' }))
+  assert.equal(view.queryByRole('button', { name: 'Prepare pull request' }), null)
+})
+
+test('allows dismissing an available action card for later', async () => {
+  let dismissedCardId: string | undefined
+  const user = userEvent.setup({ document: browser.document as unknown as Document })
+  const view = render(
+    <SessionMessages
+      sessionId={id}
+      isWorking={false}
+      transcript={{
+        ...transcript([]),
+        actionCards: [
+          {
+            id: 'card-1',
+            sessionId: id,
+            kind: 'prepare-pull-request',
+            title: 'Prepare the pull request',
+            description: 'The changes are ready for review.',
+            status: 'available',
+            createdAt: 1,
+          },
+        ],
+      }}
+      onDismissActionCard={async (card) => {
+        dismissedCardId = card.id
+        return true
+      }}
+    />,
+    { container: browser.document.body as unknown as HTMLElement }
+  )
+
+  await user.click(view.getByRole('button', { name: 'Not now' }))
+
+  assert.equal(dismissedCardId, 'card-1')
+  assert.equal(view.queryByText('Prepare the pull request', { exact: true }), null)
 })
 
 test('allows retrying an action after its request fails', async () => {

@@ -9,6 +9,7 @@ import { sessionId, type Session, type SessionId } from '@/src/domain/session'
 import type { OwnedSession } from '@/src/domain/workstream'
 import type { SessionConfigurationBridge, SessionConfigurationSnapshot } from '@/src/session-configuration'
 import type { SessionSkillsBridge } from '@/src/session-skills'
+import type { SessionFilesBridge } from '@/src/session-files'
 import { Composer } from './composer'
 import { SessionArea } from './session-area'
 
@@ -88,6 +89,30 @@ function DelayedDraftPublicationComposer({ submitMessage }: { submitMessage: Com
         }}
       />
     </>
+  )
+}
+
+function FileComposer({
+  initialDraft = '',
+  submitMessage,
+  sessionFiles,
+}: {
+  initialDraft?: string
+  submitMessage: ComposerBridge['submit']
+  sessionFiles: SessionFilesBridge
+}) {
+  const [draft, setDraft] = useState(initialDraft)
+
+  return (
+    <Composer
+      session={session}
+      draft={draft}
+      isWorking={false}
+      onActivate={() => {}}
+      onDraftChange={setDraft}
+      submitMessage={submitMessage}
+      sessionFiles={sessionFiles}
+    />
   )
 }
 
@@ -202,6 +227,132 @@ test('Enter submits the exact draft to the owning Session once', async () => {
   await user.keyboard('{Enter}')
 
   assert.deepEqual(submissions, [{ sessionId: session.id, text: 'Keep  internal spaces', delivery: 'steer' }])
+})
+
+test('selects a whitespace path from at-sign autocomplete and sends its canonical tag', async () => {
+  const submissions: Parameters<ComposerBridge['submit']>[0][] = []
+  const user = createUser()
+  const view = renderInBrowser(
+    <FileComposer
+      submitMessage={async (submission) => {
+        submissions.push(submission)
+        return { status: 'accepted', delivery: 'prompt' }
+      }}
+      sessionFiles={{
+        async getAvailable() {
+          return [{ path: 'src/my file.ts', name: 'my file.ts', kind: 'file' }]
+        },
+      }}
+    />
+  )
+
+  const editor = view.getByRole('textbox')
+  await user.click(editor)
+  await user.keyboard('@')
+  await waitFor(() => assert.ok(view.getByRole('option', { name: /src\/my file\.ts/ })), { timeout: 3_000 })
+  await user.keyboard('{Enter}')
+  await user.click(view.getByRole('button', { name: 'Send message' }))
+
+  await waitFor(() =>
+    assert.deepEqual(submissions, [{ sessionId: session.id, text: '@@"src/my file.ts"', delivery: 'steer' }])
+  )
+})
+
+test('closes file autocomplete after selecting a file', async () => {
+  const user = createUser()
+  const view = renderInBrowser(
+    <FileComposer
+      initialDraft="@"
+      submitMessage={async () => ({ status: 'accepted', delivery: 'prompt' })}
+      sessionFiles={{
+        async getAvailable() {
+          return [{ path: 'README.md', name: 'README.md', kind: 'file' }]
+        },
+      }}
+    />
+  )
+  const editor = view.getByRole('textbox')
+
+  await user.click(editor)
+  await view.findByRole('listbox', { name: 'Files and folders' })
+  await user.keyboard('r')
+  await view.findByRole('option', { name: /README\.md/ })
+  await user.keyboard('{Enter}')
+  await act(async () => {
+    await new Promise<void>((resolve) => window.setTimeout(resolve, 30))
+  })
+
+  assert.equal(Boolean(view.queryByRole('listbox', { name: 'Files and folders' })), false)
+})
+
+test('keeps the caret after an inserted file reference', async () => {
+  const user = createUser()
+  const view = renderInBrowser(
+    <FileComposer
+      initialDraft="Review "
+      submitMessage={async () => ({ status: 'accepted', delivery: 'prompt' })}
+      sessionFiles={{
+        async getAvailable() {
+          return [{ path: 'README.md', name: 'README.md', kind: 'file' }]
+        },
+      }}
+    />
+  )
+  const editor = view.getByRole('textbox')
+
+  await user.click(editor)
+  await user.keyboard('@README')
+  await user.keyboard('{Enter}')
+  await user.click(editor)
+  await user.keyboard(' next')
+
+  assert.equal(composerText(editor), 'Review @README.md next')
+})
+
+test('scrolls the file results during keyboard navigation', async () => {
+  const originalScrollIntoView = HTMLElement.prototype.scrollIntoView
+  HTMLElement.prototype.scrollIntoView = () => {}
+
+  try {
+    const user = createUser()
+    const view = renderInBrowser(
+      <FileComposer
+        initialDraft="@"
+        submitMessage={async () => ({ status: 'accepted', delivery: 'prompt' })}
+        sessionFiles={{
+          async getAvailable() {
+            return Array.from({ length: 12 }, (_, index) => ({
+              path: `src/file-${index + 1}.ts`,
+              name: `file-${index + 1}.ts`,
+              kind: 'file' as const,
+            }))
+          },
+        }}
+      />
+    )
+    const editor = view.getByRole('textbox')
+
+    await user.click(editor)
+    const listbox = await view.findByRole('listbox', { name: 'Files and folders' })
+    const options = view.getAllByRole('option')
+
+    Object.defineProperties(listbox, {
+      clientHeight: { configurable: true, value: 120 },
+      scrollTop: { configurable: true, value: 0, writable: true },
+    })
+    options.forEach((option, index) => {
+      Object.defineProperties(option, {
+        offsetHeight: { configurable: true, value: 40 },
+        offsetTop: { configurable: true, value: index * 40 },
+      })
+    })
+
+    await user.keyboard('{ArrowDown}{ArrowDown}{ArrowDown}{ArrowDown}')
+
+    await waitFor(() => assert.ok(listbox.scrollTop > 0))
+  } finally {
+    HTMLElement.prototype.scrollIntoView = originalScrollIntoView
+  }
 })
 
 test('selects a Skill from autocomplete and sends it without prompt text', async () => {

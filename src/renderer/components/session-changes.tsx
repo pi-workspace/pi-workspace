@@ -824,12 +824,14 @@ function DiffMiniComposer({
       <ComposerEditor
         ref={editorHandle}
         availableSkills={availableSkills}
+        availableFiles={[]}
         describedBy={descriptionId}
         draft={draft}
         label={label}
         readOnly={pending || submitting}
         onChange={setDraft}
         onFocus={() => {}}
+        onFileQuery={() => {}}
         onSubmit={() => void submit()}
       />
       <div className="flex items-center justify-end gap-1.5 border-t border-composer-border px-2.5 py-2">

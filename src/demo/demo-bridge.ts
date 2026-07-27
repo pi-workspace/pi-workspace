@@ -249,6 +249,14 @@ export function createDemoBridge(scenarioName?: string): PiWorkspaceBridge {
         ]
       },
     },
+    sessionFiles: {
+      async getAvailable() {
+        return [
+          { path: 'src/main/composer-ipc.ts', name: 'composer-ipc.ts', kind: 'file' as const },
+          { path: 'src/renderer/components', name: 'components', kind: 'folder' as const },
+        ]
+      },
+    },
     sessionChanges: {
       async getSnapshot(sessionId) {
         const session = workstreamsSnapshot.workstreams
@@ -350,6 +358,28 @@ export function createDemoBridge(scenarioName?: string): PiWorkspaceBridge {
       },
       async acceptActionCard() {
         return false
+      },
+      async dismissActionCard(sessionId, actionCardId) {
+        const transcript = transcriptSnapshot(sessionId)
+        const card = transcript.actionCards?.find(
+          (candidate) => candidate.id === actionCardId && candidate.status === 'available'
+        )
+        if (!card) return false
+
+        const snapshot = {
+          ...transcript,
+          revision: transcript.revision + 1,
+          actionCards: transcript.actionCards?.map((candidate) =>
+            candidate.id === actionCardId ? { ...candidate, status: 'dismissed' as const } : candidate
+          ),
+        }
+        transcriptsBySessionId[sessionId] = snapshot
+
+        for (const listener of transcriptListeners) {
+          listener({ sessionId, revision: snapshot.revision, snapshot })
+        }
+
+        return true
       },
       async openExternalLink() {},
       subscribe(listener) {
@@ -490,6 +520,71 @@ export function createDemoBridge(scenarioName?: string): PiWorkspaceBridge {
         }
 
         return { status: 'available', sessionId: createdSessionId, snapshot: workstreamsSnapshot }
+      },
+      async getSessionForkPoints(sourceSessionId) {
+        const userMessages = (transcriptsBySessionId[sourceSessionId]?.entries ?? []).flatMap((entry) =>
+          entry.type === 'message' && entry.message.role === 'user' ? [entry.message] : []
+        )
+
+        return userMessages.map((message, index) => ({
+          entryId: message.id,
+          text: message.text,
+          position: index + 1,
+          total: userMessages.length,
+        }))
+      },
+      async forkSession(sourceSessionId, options) {
+        const owner = workstreamsSnapshot.workstreams.find((workstream) =>
+          workstream.sessions.some((session) => session.id === sourceSessionId)
+        )
+        const source = owner?.sessions.find((session) => session.id === sourceSessionId)
+        const point = (await this.getSessionForkPoints(sourceSessionId)).find(
+          (candidate) => candidate.entryId === options.entryId
+        )
+        if (!owner || !source || !point) throw new TypeError('Select a user message from the Session history.')
+
+        createdSessionNumber += 1
+        const createdSessionId = sessionId(`forked-session-${createdSessionNumber}`)
+        const target = { ...source, id: createdSessionId, title: options.title.trim() }
+
+        if (source.mode === 'default') {
+          const workstreamId = `forked-quick-workstream-${createdSessionNumber}`
+          workstreamsSnapshot = {
+            revision: workstreamsSnapshot.revision + 1,
+            workstreams: [
+              ...workstreamsSnapshot.workstreams,
+              { ...owner, id: workstreamId, sessions: [{ ...target, workstreamId }] },
+            ],
+          }
+        } else {
+          workstreamsSnapshot = {
+            revision: workstreamsSnapshot.revision + 1,
+            workstreams: workstreamsSnapshot.workstreams.map((workstream) =>
+              workstream.id === owner.id ? { ...workstream, sessions: [...workstream.sessions, target] } : workstream
+            ),
+          }
+        }
+
+        const sourceTranscript = transcriptsBySessionId[sourceSessionId]
+        if (sourceTranscript) {
+          let userPosition = 0
+          transcriptsBySessionId[createdSessionId] = {
+            ...sourceTranscript,
+            sessionId: createdSessionId,
+            entries: sourceTranscript.entries.filter((entry) => {
+              if (entry.type !== 'message' || entry.message.role !== 'user') return userPosition < point.position
+              userPosition += 1
+              return userPosition < point.position
+            }),
+          }
+        }
+
+        return {
+          status: 'available',
+          sessionId: createdSessionId,
+          snapshot: workstreamsSnapshot,
+          draft: point.text,
+        }
       },
       async setLifecycle(workstreamId, lifecycle) {
         workstreamsSnapshot = {

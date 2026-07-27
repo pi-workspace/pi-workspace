@@ -7,6 +7,7 @@ import type {
   CreateQuickSessionOptions,
   CreateSessionOptions,
   CreateWorkstreamOptions,
+  ForkSessionOptions,
   WorkstreamsSnapshot,
 } from '@/src/domain/workstream'
 import { bundledReleaseNotes } from '@/src/release-notes'
@@ -190,6 +191,9 @@ export function WorkspaceShell({ initialWorkspacesSnapshot, initialSessionDispla
     sessions.map((session) => session.id)
   )
   const workstreamLifecycles = new Map(workstreams.map((workstream) => [workstream.id, workstream.lifecycle]))
+  const workstreamWorkingLocations = new Map(
+    workstreams.map((workstream) => [workstream.id, workstream.workingLocation])
+  )
   const recentSessions = sessions.slice(-5).reverse()
   const visibleSessionIds = getVisibleSessionIds(sessionPinning, workstreamSelection.sessionId)
   const activeSession = sessions.find((session) => session.id === workstreamSelection.sessionId)
@@ -354,6 +358,16 @@ export function WorkspaceShell({ initialWorkspacesSnapshot, initialSessionDispla
     }
   }
 
+  const forkSession = async (sourceSessionId: SessionId, options: ForkSessionOptions) => {
+    const authorityToken = selectedWorkspaceAuthorityToken()
+    const outcome = await window.piWorkspace.workstreams.forkSession(sourceSessionId, options)
+
+    if (!applyWorkstreamsSnapshot(authorityToken, outcome.snapshot)) return
+
+    draftsRef.current.set(outcome.sessionId, outcome.draft)
+    revealCreatedSession(outcome.snapshot, outcome.sessionId)
+  }
+
   const setWorkstreamLifecycle = async (workstreamId: string, lifecycle: 'active' | 'archived') => {
     const authorityToken = selectedWorkspaceAuthorityToken()
     const snapshot = await window.piWorkspace.workstreams.setLifecycle(workstreamId, lifecycle)
@@ -471,6 +485,7 @@ export function WorkspaceShell({ initialWorkspacesSnapshot, initialSessionDispla
           <SessionArea
             sessions={visibleSessions}
             workstreamLifecycles={workstreamLifecycles}
+            workstreamWorkingLocations={workstreamWorkingLocations}
             activeSessionId={workstreamSelection.sessionId}
             revealRequest={sessionRevealRequest}
             composerFocusRequest={composerFocusRequest}
@@ -492,8 +507,12 @@ export function WorkspaceShell({ initialWorkspacesSnapshot, initialSessionDispla
             resumeQueuedFollowUps={resumeQueuedFollowUps}
             sessionConfiguration={window.piWorkspace.sessionConfiguration}
             sessionSkills={window.piWorkspace.sessionSkills}
+            sessionFiles={window.piWorkspace.sessionFiles}
+            getSessionForkPoints={(sessionId) => window.piWorkspace.workstreams.getSessionForkPoints(sessionId)}
+            forkSession={forkSession}
             onToggleSessionPin={toggleSessionPin}
             acceptActionCard={window.piWorkspace.transcript.acceptActionCard}
+            dismissActionCard={window.piWorkspace.transcript.dismissActionCard}
             onStartImplementSession={(workstreamId) => createSession(workstreamId, { mode: 'implement' })}
             onOpenCurrentDiff={openCurrentDiff}
           />
