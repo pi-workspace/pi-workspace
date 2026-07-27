@@ -20,6 +20,33 @@ export function isSemanticVersion(version: string): boolean {
 
 export const bundledReleaseNotes: readonly ReleaseNote[] = [
   {
+    version: '2.0.0-beta.1',
+    releaseDate: '2026-07-27',
+    summary:
+      'This beta gives each Workstream a clearer Repository boundary and puts branching, review, and delivery controls directly in every Session.',
+    changes: {
+      new: [
+        'Compact eligible Session context on demand and revisit the retained summary in the Session transcript.',
+        'Act on or dismiss a suggested next step to prepare a draft pull request after completing changes.',
+        'See automatically maintained descriptions of each Session’s current focus in the sidebar.',
+        'Review Session Repository changes in expandable diffs, stage whole files, add hunk comments or follow-ups, and revisit operation-time code previews from Agent Activities.',
+        'Fork a Session from any completed user message while preserving the original Session and carrying its earlier history into an independent Session.',
+        'Reference scoped files and folders with @ in Composer to include their current context in messages and follow-ups.',
+      ],
+      improved: [
+        'Workstreams now select their own Repositories and share the goal and Repository context across mode-free Sessions; Brainstorm and Implement modes and the Workstream Knowledge panel have been removed.',
+        'Workstream Sessions now use current checkouts by default, show each Repository’s live branch and working location beneath Composer, and let you explicitly create an isolated Session Worktree.',
+        'Sessions load faster as their histories grow, and Composer stays responsive without losing current edits.',
+        'Repository work now receives a final pass of relevant locally runnable CI and GitHub Actions before completion.',
+        'Sidebar controls are simpler, and Composer now floats above the transcript on a translucent surface.',
+      ],
+      fixed: [
+        'Linux app stores now show Railyard’s package description without stray replacement characters.',
+        'Agent Activities can now start and complete after Workspace Repository access changes.',
+      ],
+    },
+  },
+  {
     version: '1.0.0-beta.1',
     releaseDate: '2026-07-25',
     summary: 'This beta establishes the foundation for Railyard’s next stage of development.',
