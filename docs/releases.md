@@ -7,11 +7,14 @@ Railyard beta releases are manually started from GitHub Actions. The workflow re
 
 - The beta supports Debian 12 and Debian 13 on x86_64 (`amd64` in Debian package names), macOS 12 or later on Apple
   silicon and Intel through one universal application, and Windows 11 on x64.
-- Each release provides a Debian package, a universal macOS DMG, a Windows x64 installer, a SHA-256 checksum for each
-  installable artifact, and an SPDX JSON software bill of materials (SBOM) generated from each packaged application.
+- Each release provides a Debian package, a universal macOS DMG, a Windows x64 installer, a signed and notarized
+  universal macOS ZIP update payload, the matching `beta-mac.yml` update metadata, SHA-256 checksums for every package
+  and updater payload, and an SPDX JSON software bill of materials (SBOM) generated from each packaged application.
   AppImage, Windows 10, and other CPU architectures are not supported.
-- The macOS DMG is Developer ID signed, notarized by Apple, and stapled before publication. The Windows installer is
-  not code signed. Neither distribution uses an app store and updates are manual.
+- The macOS DMG and ZIP contain the same Developer ID signed, notarized, and stapled application. After the first
+  updater-enabled release is installed manually, packaged macOS builds can download the authenticated ZIP and install
+  it only through **Restart to update**. The unsigned Windows installer and Debian package remain manual downloads;
+  Railyard never executes either automatically.
 - Beta versions use semantic prerelease versions such as `0.1.0-beta.1`.
 - The core version follows semantic versioning relative to the previous release: major for incompatible changes, minor
   for backward-compatible new functionality, and patch for backward-compatible fixes.
@@ -22,9 +25,10 @@ Railyard beta releases are manually started from GitHub Actions. The workflow re
 - The manual workflow must run from the default branch. It creates the `v<package-version>` tag and matching GitHub
   prerelease only after source checks, packaging, and Debian, macOS, and Windows verification pass.
 - A version can be released only once. The workflow stops if its tag already exists.
-- Debian packages and beta Git tags are not separately signed. Every installable artifact has a SHA-256 checksum and
-  an SPDX JSON SBOM generated from the unpacked packaged application. The release workflow adds a keyless GitHub
-  artifact attestation for every package, checksum, and SBOM, binding each to its source commit and workflow.
+- Debian packages and beta Git tags are not separately signed. Every installable artifact and updater payload has a
+  SHA-256 checksum, and every packaged application has an SPDX JSON SBOM. The release workflow adds a keyless GitHub
+  artifact attestation for every package, updater payload, update metadata file, checksum, and SBOM, binding each to
+  its source commit and workflow.
 
 ## Configure macOS signing and notarization
 
@@ -45,6 +49,13 @@ Create a **Developer ID Application** certificate in the Apple Developer portal,
 Use an App Store Connect API key with notarization permission. On Linux, a certificate signing request and `.p12` can
 be created with OpenSSL; the Apple Developer portal and App Store Connect are browser-based. Never commit a
 certificate, private key, `.p12`, or `.p8` file. The workflow fails before packaging if any required secret is absent.
+
+## Bootstrap in-app updates
+
+The first release containing the updater must be installed manually from GitHub Releases because earlier Railyard
+builds cannot discover or install it. Release notes for that version must call out this one-time manual step. Once it
+is installed, later signed and notarized macOS releases can use the in-app flow; Windows and Debian updates remain
+manual until their packages have an authenticated installation path.
 
 ## Prepare a release
 
@@ -70,18 +81,19 @@ gh workflow run release-beta.yml --ref main
 ```
 
 The workflow installs from `bun.lock`, validates the release contract, runs the quality gate, creates the Debian,
-macOS, and Windows packages, checksums, and SBOMs from their unpacked applications, then verifies the Debian package
-on Debian 12 and 13, the signed and notarized macOS DMG, and Windows installer installation, launch, and removal. It
-creates keyless build-provenance attestations for every release asset before creating the version tag and GitHub
-prerelease.
+macOS, and Windows packages, macOS updater payload and metadata, checksums, and SBOMs from their unpacked applications,
+then verifies the Debian package on Debian 12 and 13, the signed and notarized applications in both macOS artifacts,
+and Windows installer installation, launch, and removal. It creates keyless build-provenance attestations for every
+release asset before creating the version tag and GitHub prerelease.
 
 ## Verify release provenance
 
-Download a release's packages, checksums, and SBOMs, then verify every downloaded asset against this repository:
+Download a release's packages, updater payload and metadata, checksums, and SBOMs, then verify every downloaded asset
+against this repository:
 
 ```sh
-for artifact in railyard-*; do
-  gh attestation verify "$artifact" --repo pi-workspace/pi-workspace
+for artifact in railyard-* beta-mac.yml; do
+  gh attestation verify "$artifact" --repo pi-workspace/railyard
 done
 ```
 
@@ -103,14 +115,22 @@ each supported platform:
 7. If the release promises compatibility with the previous beta's application data, upgrade and verify that exact
    compatibility claim. Otherwise, confirm the Release Note states the compatibility limitation before sharing the
    prerelease.
-8. Uninstall Railyard and confirm its launcher is removed.
+8. In **Settings** → **Updates**, confirm the installed version is correct and a check against the published release
+   reports no downgrade or duplicate update.
+9. Uninstall Railyard and confirm its launcher is removed.
 
 On macOS, launch the application from `/Applications` after dragging it from the mounted DMG. Confirm macOS shows the
-expected Railyard icon and does not show an unidentified-developer warning.
+expected Railyard icon and does not show an unidentified-developer warning. For every release after the updater
+bootstrap release, install the previous beta, check for the candidate, confirm download progress, finish every active
+Agent Run, choose **Restart to update**, and verify the candidate version launches.
 
 On Windows 11 x64, use a local Git Repository whose path has a drive letter and spaces. Confirm Git is available on
 `PATH`, Railyard detects the Pi provider configuration created by `pi` and `/login`, Quick Sessions work from both
-the current checkout and a dedicated worktree, and Workstream Sessions can run a shell command.
+the current checkout and a dedicated worktree, and Workstream Sessions can run a shell command. Check for the candidate
+from the previous beta and confirm Railyard opens its GitHub Release without downloading or executing the installer.
+
+On Debian 12 and 13, check for the candidate from the previous beta and confirm Railyard opens its GitHub Release,
+shows the checksum and package-install instructions, and does not download, elevate, or execute the package.
 
 ## Revoke a compromised release
 
@@ -122,15 +142,15 @@ replaced or reused. If a published release or release credential may be compromi
    restoring publishing.
 3. Prefix the GitHub Release title with **[REVOKED]** and put a prominent warning and incident link at the beginning
    of its notes.
-4. Delete the downloadable packages, checksums, and SBOMs from the compromised release while retaining the release
-   page and tag as an audit record.
+4. Delete the downloadable packages, updater payload and metadata, checksums, and SBOMs from the compromised release
+   while retaining the release page and tag as an audit record.
 5. Determine the affected source, workflow, dependencies, credentials, and release assets. Publish a security
    advisory or repository announcement that identifies the revoked version, impact, removal time, and recommended
    user action.
 6. Prepare and publish a new version through the normal release workflow. Never reuse the revoked version or tag.
 
 Checksums hosted with a compromised release cannot establish publisher authenticity. Verify each downloaded artifact
-with `gh attestation verify "$artifact" --repo pi-workspace/pi-workspace` and include that command in incident
+with `gh attestation verify "$artifact" --repo pi-workspace/railyard` and include that command in incident
 communications.
 
 ## Roll back a release

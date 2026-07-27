@@ -6,10 +6,10 @@
   "packageManager": "bun@1.3.14",
   "repository": {
     "type": "git",
-    "url": "https://github.com/pi-workspace/pi-workspace.git"
+    "url": "https://github.com/pi-workspace/railyard.git"
   },
   "bugs": {
-    "url": "https://github.com/pi-workspace/pi-workspace/issues"
+    "url": "https://github.com/pi-workspace/railyard/issues"
   },
   "keywords": [
     "electron",
@@ -21,7 +21,7 @@
   "description": "A local desktop app for working with Pi across Git repositories and long-running goals. Plan, implement, and pick up where you left off.",
   "desktopName": "railyard.desktop",
   "author": "Railyard contributors",
-  "homepage": "https://github.com/pi-workspace/pi-workspace",
+  "homepage": "https://github.com/pi-workspace/railyard",
   "type": "module",
   "main": "dist/main/index.js",
   "scripts": {
@@ -36,7 +36,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "package:linux": "bun run build && electron-builder --linux deb --x64 --publish never",
-    "package:mac": "bun run build && electron-builder --mac dmg --universal --publish never",
+    "package:mac": "bun run build && electron-builder --mac --universal --publish never",
     "package:win": "bun run build && electron-builder --win nsis --x64 --publish never",
     "release:notes": "bun run scripts/release-note-markdown.ts",
     "release:validate": "bun run scripts/validate-release.ts && bun run scripts/validate-packaging-dependencies.mjs",
@@ -49,6 +49,14 @@
     "asar": true,
     "directories": {
       "output": "release"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "pi-workspace",
+      "repo": "railyard",
+      "releaseType": "prerelease",
+      "channel": "beta",
+      "publishAutoUpdate": false
     },
     "files": [
       "dist/**/*",
@@ -80,10 +88,24 @@
       "icon": "assets/icons/railyard.icns",
       "minimumSystemVersion": "12.0",
       "notarize": true,
+      "publish": {
+        "provider": "github",
+        "owner": "pi-workspace",
+        "repo": "railyard",
+        "releaseType": "prerelease",
+        "channel": "beta",
+        "publishAutoUpdate": true
+      },
       "x64ArchFiles": "{Contents/Resources/app.asar.unpacked/node_modules/@earendil-works/pi-tui/native/darwin/prebuilds/**/darwin-modifiers.node,Contents/Resources/app.asar.unpacked/node_modules/@mariozechner/clipboard-darwin-arm64/clipboard.darwin-arm64.node,Contents/Resources/app.asar.unpacked/node_modules/@mariozechner/clipboard-darwin-x64/clipboard.darwin-x64.node}",
       "target": [
         {
           "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        },
+        {
+          "target": "zip",
           "arch": [
             "universal"
           ]

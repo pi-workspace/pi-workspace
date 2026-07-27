@@ -127,8 +127,9 @@ export function ApplicationUpdateSettings() {
         <div className="mt-5 rounded-lg border border-content-border px-5 py-4 text-sm/6 text-content-muted-foreground">
           {snapshot.manualUpdateKind === 'windows' && (
             <p>
-              Download the Windows installer and matching .sha256 file. Verify the checksum with the PowerShell steps,
-              then run the installer yourself.
+              Download the Windows installer and matching .sha256 file. In PowerShell, compare{' '}
+              <code className="font-mono text-content-foreground">Get-FileHash -Algorithm SHA256</code> for the
+              installer with the first value in the checksum file, then run the installer yourself.
             </p>
           )}
           {snapshot.manualUpdateKind === 'debian' && (
