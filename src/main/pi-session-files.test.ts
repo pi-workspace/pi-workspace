@@ -3,6 +3,7 @@ import { access, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, test } from 'node:test'
+import { SessionManager } from '@earendil-works/pi-coding-agent'
 import { createPiSessionFileStore } from './pi-session-files'
 
 const temporaryDirectories: string[] = []
@@ -25,6 +26,172 @@ async function createStore() {
 
   return { storageDirectory, store: await createPiSessionFileStore(storageDirectory) }
 }
+
+test('forks history before a selected user message into a new app-owned Session', async () => {
+  const { store } = await createStore()
+  const sourceIntent = store.intent('source-session')
+  const targetIntent = store.intent('forked-session')
+  const timestamp = new Date().toISOString()
+  const usage = {
+    input: 1,
+    output: 1,
+    cacheRead: 0,
+    cacheWrite: 0,
+    totalTokens: 2,
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+  }
+  await writeFile(
+    sourceIntent.sessionPath,
+    [
+      { type: 'session', version: 3, id: 'source-session', timestamp, cwd: sourceIntent.directoryPath },
+      {
+        type: 'message',
+        id: 'aaaa0001',
+        parentId: null,
+        timestamp,
+        message: { role: 'user', content: 'Original request', timestamp: Date.now() },
+      },
+      {
+        type: 'message',
+        id: 'bbbb0002',
+        parentId: 'aaaa0001',
+        timestamp,
+        message: {
+          role: 'assistant',
+          content: [{ type: 'text', text: 'Original response' }],
+          api: 'openai-responses',
+          provider: 'openai',
+          model: 'test-model',
+          usage,
+          stopReason: 'stop',
+          timestamp: Date.now(),
+        },
+      },
+      {
+        type: 'message',
+        id: 'cccc0003',
+        parentId: 'bbbb0002',
+        timestamp,
+        message: { role: 'user', content: 'Try another approach', timestamp: Date.now() },
+      },
+    ]
+      .map((entry) => JSON.stringify(entry))
+      .join('\n') + '\n',
+    'utf8'
+  )
+
+  const outcome = await store.fork({
+    ...targetIntent,
+    sourceSessionPath: sourceIntent.sessionPath,
+    sourceEntryId: 'cccc0003',
+    title: 'Fork of original',
+  })
+
+  assert.deepEqual(outcome, { status: 'available' })
+  const entries = (await readFile(targetIntent.sessionPath, 'utf8'))
+    .trim()
+    .split('\n')
+    .map((line) => JSON.parse(line) as Record<string, unknown>)
+  assert.deepEqual(entries[0], {
+    type: 'session',
+    version: 3,
+    id: 'forked-session',
+    timestamp: entries[0]?.timestamp,
+    cwd: targetIntent.directoryPath,
+    parentSession: sourceIntent.sessionPath,
+  })
+  assert.deepEqual(
+    entries.flatMap((entry) =>
+      entry.type === 'message' ? [(entry.message as { role: string; content: unknown }).content] : []
+    ),
+    ['Original request', [{ type: 'text', text: 'Original response' }]]
+  )
+  assert.equal(entries.at(-1)?.type, 'session_info')
+  assert.equal(entries.at(-1)?.name, 'Fork of original')
+  await assertPrivateMode(targetIntent.sessionPath, 0o600)
+})
+
+test('does not carry a pending Queued Follow-up into a forked Session', async () => {
+  const { store } = await createStore()
+  const sourceIntent = store.intent('source-queue-session')
+  const targetIntent = store.intent('forked-queue-session')
+  const timestamp = new Date().toISOString()
+  const usage = {
+    input: 1,
+    output: 1,
+    cacheRead: 0,
+    cacheWrite: 0,
+    totalTokens: 2,
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+  }
+  await writeFile(
+    sourceIntent.sessionPath,
+    [
+      { type: 'session', version: 3, id: 'source-queue-session', timestamp, cwd: sourceIntent.directoryPath },
+      {
+        type: 'message',
+        id: 'aaaa0001',
+        parentId: null,
+        timestamp,
+        message: { role: 'user', content: 'Original request', timestamp: Date.now() },
+      },
+      {
+        type: 'message',
+        id: 'bbbb0002',
+        parentId: 'aaaa0001',
+        timestamp,
+        message: {
+          role: 'assistant',
+          content: [{ type: 'text', text: 'Original response' }],
+          api: 'openai-responses',
+          provider: 'openai',
+          model: 'test-model',
+          usage,
+          stopReason: 'stop',
+          timestamp: Date.now(),
+        },
+      },
+      {
+        type: 'custom',
+        id: 'cccc0003',
+        parentId: 'bbbb0002',
+        timestamp,
+        customType: 'pi-workspace.activity-layer',
+        data: {
+          version: 1,
+          type: 'queued-follow-up',
+          followUp: { id: 'follow-up-a', text: 'Do this later', createdAt: Date.now() },
+        },
+      },
+      {
+        type: 'message',
+        id: 'dddd0004',
+        parentId: 'cccc0003',
+        timestamp,
+        message: { role: 'user', content: 'Fork here', timestamp: Date.now() },
+      },
+    ]
+      .map((entry) => JSON.stringify(entry))
+      .join('\n') + '\n',
+    'utf8'
+  )
+
+  await store.fork({
+    ...targetIntent,
+    sourceSessionPath: sourceIntent.sessionPath,
+    sourceEntryId: 'dddd0004',
+    title: 'Fork without queue',
+  })
+
+  const records = SessionManager.open(targetIntent.sessionPath)
+    .getBranch()
+    .flatMap((entry) =>
+      entry.type === 'custom' && entry.customType === 'pi-workspace.activity-layer'
+        ? [entry.data as { type?: string; followUpId?: string }]
+        : []
+    )
+  assert.deepEqual(records.at(-1), { version: 1, type: 'queued-follow-up-removed', followUpId: 'follow-up-a' })
+})
 
 test('creates an app-owned Session at its deterministic path', async () => {
   const { store } = await createStore()

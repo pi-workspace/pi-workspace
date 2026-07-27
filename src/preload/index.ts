@@ -18,7 +18,7 @@ import type {
 } from '@/src/session-configuration'
 import { sessionConfigurationIpcChannels } from '@/src/session-configuration-ipc'
 import type { SettingsBridge, SettingsSnapshot, SettingsUpdate } from '@/src/settings'
-import type { WorkstreamsBridge, WorkstreamCreationOutcome } from '@/src/workstreams'
+import type { SessionForkOutcome, WorkstreamsBridge, WorkstreamCreationOutcome } from '@/src/workstreams'
 import { workstreamsIpcChannels } from '@/src/workstreams-ipc'
 import type { WorkstreamKnowledgeBridge } from '@/src/workstream-knowledge-ipc'
 import type { WorkstreamKnowledge } from '@/src/domain/workstream-knowledge-transitions'
@@ -122,6 +122,15 @@ const workstreamsBridge: WorkstreamsBridge = {
       workstreamId,
       ...options,
     }) as Promise<WorkstreamCreationOutcome>
+  },
+  getSessionForkPoints(sessionId) {
+    return ipcRenderer.invoke(workstreamsIpcChannels.getSessionForkPoints, { sessionId })
+  },
+  forkSession(sessionId, options) {
+    return ipcRenderer.invoke(workstreamsIpcChannels.forkSession, {
+      sessionId,
+      ...options,
+    }) as Promise<SessionForkOutcome>
   },
   setLifecycle(workstreamId, lifecycle) {
     return ipcRenderer.invoke(workstreamsIpcChannels.setLifecycle, { workstreamId, lifecycle })

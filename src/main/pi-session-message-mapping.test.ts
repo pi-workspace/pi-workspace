@@ -6,6 +6,7 @@ import {
   createPiSessionMessageStream,
   mapPiSessionMessageHistory,
   projectPiUserMessage,
+  restorePiUserMessageDraft,
 } from './pi-session-message-mapping'
 
 test('maps every text message on the active branch, including messages before compaction', () => {
@@ -49,6 +50,15 @@ test('projects a persisted Pi Skill invocation without exposing its expanded ins
       },
     ],
   })
+})
+
+test('restores an expanded Pi Skill invocation as an editable Composer draft', () => {
+  assert.equal(
+    restorePiUserMessageDraft(
+      '<skill name="code-review" location="/private/code-review/SKILL.md">\nExpanded instructions\n</skill>\n\nReview this change.'
+    ),
+    '/skill:code-review Review this change.'
+  )
 })
 
 test('restores a persisted raw Skill token as an inline reference', () => {

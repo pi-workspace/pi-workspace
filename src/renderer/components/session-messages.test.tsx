@@ -77,6 +77,30 @@ test('renders duplicate message text in canonical entry order', () => {
   assert.equal(view.getAllByText('Same text', { exact: true }).length, 2)
 })
 
+test('offers to fork from each completed user message by its canonical position', async () => {
+  const requestedPositions: number[] = []
+  const view = render(
+    <SessionMessages
+      sessionId={id}
+      isWorking={false}
+      onForkFromMessage={(position) => requestedPositions.push(position)}
+      transcript={transcript([
+        { type: 'message', message: { id: 'user-1', role: 'user', text: 'First', state: 'complete', revision: 1 } },
+        {
+          type: 'message',
+          message: { id: 'assistant-1', role: 'assistant', text: 'Response', state: 'complete', revision: 1 },
+        },
+        { type: 'message', message: { id: 'user-2', role: 'user', text: 'Second', state: 'complete', revision: 1 } },
+      ])}
+    />,
+    { container: browser.document.body as unknown as HTMLElement }
+  )
+
+  await view.getByRole('button', { name: 'Fork from “Second”' }).click()
+
+  assert.deepEqual(requestedPositions, [2])
+})
+
 test('renders a finished code review as a grouped transcript card', async () => {
   const user = userEvent.setup({ document: browser.document as unknown as Document })
   const view = render(
