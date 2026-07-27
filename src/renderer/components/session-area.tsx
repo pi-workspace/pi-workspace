@@ -51,7 +51,6 @@ type SessionAreaProperties = {
   onToggleSessionPin: (sessionId: SessionId) => void
   acceptActionCard?: SessionTranscriptBridge['acceptActionCard']
   dismissActionCard?: SessionTranscriptBridge['dismissActionCard']
-  onStartImplementSession?: (workstreamId: string) => Promise<void>
   onOpenCurrentDiff?: (sessionId: SessionId, repositoryId: string | undefined, path: string) => void
 }
 
@@ -85,7 +84,6 @@ export function SessionArea({
   onToggleSessionPin,
   acceptActionCard = async () => false,
   dismissActionCard = async () => false,
-  onStartImplementSession = async () => {},
   onOpenCurrentDiff = () => {},
 }: SessionAreaProperties) {
   const sessionPaneRefs = useRef(new Map<SessionId, HTMLDivElement>())
@@ -149,7 +147,6 @@ export function SessionArea({
             onTogglePin={() => onToggleSessionPin(session.id)}
             acceptActionCard={acceptActionCard}
             dismissActionCard={dismissActionCard}
-            onStartImplementSession={onStartImplementSession}
             onOpenCurrentDiff={(repositoryId, path) => onOpenCurrentDiff(session.id, repositoryId, path)}
           />
         </div>

@@ -227,7 +227,7 @@ test('forks an owned Session before a selected user message', async () => {
   assert.notEqual(forked.sessionId, created.sessionId)
   const workstream = forked.snapshot.workstreams[0]
   assert.equal(workstream?.sessions.length, 2)
-  assert.equal(workstream?.sessions[1]?.mode, 'implement')
+  assert.equal('mode' in workstream!.sessions[1]!, false)
   assert.equal(workstream?.sessions[1]?.title, 'Alternative approach')
   const target = await authority.resolveOwnedSession(forked.sessionId)
   assert.ok(target)
@@ -282,7 +282,7 @@ test('forks a current-checkout Quick Session into a new goal-less Workstream', a
   const target = targetWorkstream?.sessions[0]
   assert.equal(targetWorkstream?.goal, undefined)
   assert.equal(targetWorkstream?.workingLocation, 'current-checkouts')
-  assert.equal(target?.mode, 'default')
+  assert.equal(target ? 'mode' in target : true, false)
   assert.equal(target?.repositoryAccess.kind, 'direct')
   if (target?.repositoryAccess.kind === 'direct') {
     assert.equal(target.repositoryAccess.repositoryId, repository.id)
@@ -333,7 +333,7 @@ test('forks a dedicated-worktree Quick Session into a separate worktree at the s
   assert.equal(await readFile(join(target.directoryPath, 'tracked.txt'), 'utf8'), 'source branch')
 })
 
-test('creates a Workstream with exactly one default Implement Session', async () => {
+test('creates a Workstream with exactly one mode-less Session', async () => {
   const { authority, workspace } = await createFixture()
 
   const created = await authority.createWorkstream(workspace.id, { goal: 'Ship cancellation reasons' })
@@ -352,12 +352,12 @@ test('creates a Workstream with exactly one default Implement Session', async ()
   ])
   assert.equal(workstream?.lifecycle, 'active')
   assert.equal(workstream?.sessions.length, 1)
-  assert.equal(workstream?.sessions[0]?.mode, 'implement')
+  assert.equal('mode' in workstream!.sessions[0]!, false)
   assert.deepEqual(workstream?.sessions[0]?.repositoryAccess, { kind: 'managed' })
   assert.equal(workstream?.sessions[0]?.availability, 'available')
 })
 
-test('reports current checkout and branch context for an Implement Session', async () => {
+test('reports current checkout, path, and branch context for a Workstream Session', async () => {
   const { authority, workspace } = await createFixture()
   const repository = workspace.repositories[0]!
   await exec('git', ['-C', repository.directoryPath, 'branch', '-m', 'feature/current'])
@@ -372,12 +372,13 @@ test('reports current checkout and branch context for an Implement Session', asy
         kind: 'current-checkout',
         availability: 'available',
         branch: 'feature/current',
+        workingPath: repository.directoryPath,
       },
     ],
   })
 })
 
-test('prepares the current checkout for an Implement Session without creating a worktree', async () => {
+test('prepares the current checkout for a Workstream Session without creating a worktree', async () => {
   const { authority, storageDirectory, workspace } = await createFixture()
   const repository = workspace.repositories[0]!
   await commitRepositoryFile(repository.directoryPath, 'tracked.txt', 'committed', 'Initial commit')
@@ -390,7 +391,7 @@ test('prepares the current checkout for an Implement Session without creating a 
   await assert.rejects(access(worktreePath))
 })
 
-test('creates a Repository worktree only when explicitly requested for an Implement Session', async () => {
+test('creates a Repository worktree only when explicitly requested for a Workstream Session', async () => {
   const { authority, storageDirectory, workspace } = await createFixture()
   const repository = workspace.repositories[0]!
   await commitRepositoryFile(repository.directoryPath, 'tracked.txt', 'committed', 'Initial commit')
@@ -421,7 +422,7 @@ test('reports worktree and branch context after explicit Session isolation', asy
   )
 })
 
-test('does not create a Session worktree while its Implement Session is running', async () => {
+test('does not create a Session worktree while its Workstream Session is running', async () => {
   const { authority, workspace } = await createFixture()
   const repository = workspace.repositories[0]!
   const created = await authority.createWorkstream(workspace.id, { goal: 'Keep the active checkout stable' })
@@ -495,17 +496,15 @@ test('exposes the direct working location for Quick Session changes', async () =
   ])
 })
 
-test('excludes Brainstorm Sessions from Session changes', async () => {
+test('excludes unprepared Workstream Repositories from Session changes', async () => {
   const { authority, workspace } = await createFixture()
   const created = await authority.createWorkstream(workspace.id, { goal: 'Inspect without changes' })
-  const brainstorm = await authority.createWorkstreamSession(created.snapshot.workstreams[0]!.id, {
-    mode: 'brainstorm',
-  })
+  const session = await authority.createWorkstreamSession(created.snapshot.workstreams[0]!.id, {})
 
-  assert.deepEqual(await authority.resolveSessionChangeRepositories(brainstorm.sessionId), [])
+  assert.deepEqual(await authority.resolveSessionChangeRepositories(session.sessionId), [])
 })
 
-test('restores a removed Implement Session worktree from its persisted branch', async () => {
+test('restores a removed Workstream Session worktree from its persisted branch', async () => {
   const { authority, workspace } = await createFixture()
   const repository = workspace.repositories[0]!
   await commitRepositoryFile(repository.directoryPath, 'tracked.txt', 'committed', 'Initial commit')
@@ -539,7 +538,7 @@ test('falls back to the source checkout immediately after a Session worktree is 
   }
 })
 
-test('gives each Implement Session a distinct worktree from the Repository current HEAD', async () => {
+test('gives each Workstream Session a distinct worktree from the Repository current HEAD', async () => {
   const { authority, workspace } = await createFixture()
   const repository = workspace.repositories[0]!
   await writeFile(join(repository.directoryPath, 'first.txt'), 'first')
@@ -572,7 +571,7 @@ test('gives each Implement Session a distinct worktree from the Repository curre
     '-m',
     'Second commit',
   ])
-  const secondSession = await authority.createWorkstreamSession(workstream.id, { mode: 'implement' })
+  const secondSession = await authority.createWorkstreamSession(workstream.id, {})
   const second = await authority.createSessionWorktree(secondSession.sessionId, repository.id)
 
   assert.notEqual(second.workingPath, first.workingPath)
@@ -580,7 +579,7 @@ test('gives each Implement Session a distinct worktree from the Repository curre
   assert.equal(await readFile(join(second.workingPath, 'second.txt'), 'utf8'), 'second')
 })
 
-test('resolves a prepared worktree only for its owning Implement Session', async () => {
+test('resolves a prepared worktree only for its owning Workstream Session', async () => {
   const { authority, workspace } = await createFixture()
   const repository = workspace.repositories[0]!
   await writeFile(join(repository.directoryPath, 'tracked.txt'), 'committed')
@@ -598,7 +597,7 @@ test('resolves a prepared worktree only for its owning Implement Session', async
   ])
   const created = await authority.createWorkstream(workspace.id, { goal: 'Keep Session changes separate' })
   const workstream = created.snapshot.workstreams[0]!
-  const sibling = await authority.createWorkstreamSession(workstream.id, { mode: 'implement' })
+  const sibling = await authority.createWorkstreamSession(workstream.id, {})
   const before = await authority.resolveOwnedSession(created.sessionId)
   const prepared = await authority.createSessionWorktree(created.sessionId, repository.id)
 
@@ -619,29 +618,42 @@ test('resolves a prepared worktree only for its owning Implement Session', async
   }
 })
 
-test('does not prepare a Repository for a Brainstorm Session', async () => {
-  const { authority, workspace } = await createFixture()
-  const repository = workspace.repositories[0]!
+test('does not prepare a Repository outside the Workstream selection', async () => {
+  const storageDirectory = await realpath(await mkdtemp(join(tmpdir(), 'pi-workspace-unselected-prepare-')))
+  temporaryDirectories.push(storageDirectory)
+  const firstPath = join(storageDirectory, 'first')
+  const secondPath = join(storageDirectory, 'second')
+  await Promise.all([exec('git', ['init', firstPath]), exec('git', ['init', secondPath])])
+  const authority = await initializeApplicationAuthority(storageDirectory, { sqlite: bunSqlite })
+  const workspace = (await authority.createWorkspace('Workspace', [firstPath, secondPath])).workspaces[0]!
+  const [first, second] = workspace.repositories
+  assert.ok(first)
+  assert.ok(second)
   const created = await authority.createWorkstream(workspace.id, {
-    goal: 'Investigate without changes',
-    mode: 'brainstorm',
+    goal: 'Use selected context',
+    repositoryIds: [first.id],
   })
 
-  await assert.rejects(
-    authority.prepareSessionRepository(created.sessionId, repository.id),
-    /Implement Session Workspace/
-  )
+  await assert.rejects(authority.prepareSessionRepository(created.sessionId, second.id), /Workstream/)
 })
 
-test('does not create a Repository worktree for a Brainstorm Session', async () => {
-  const { authority, workspace } = await createFixture()
-  const repository = workspace.repositories[0]!
+test('does not create a worktree for a Repository outside the Workstream selection', async () => {
+  const storageDirectory = await realpath(await mkdtemp(join(tmpdir(), 'pi-workspace-unselected-worktree-')))
+  temporaryDirectories.push(storageDirectory)
+  const firstPath = join(storageDirectory, 'first')
+  const secondPath = join(storageDirectory, 'second')
+  await Promise.all([exec('git', ['init', firstPath]), exec('git', ['init', secondPath])])
+  const authority = await initializeApplicationAuthority(storageDirectory, { sqlite: bunSqlite })
+  const workspace = (await authority.createWorkspace('Workspace', [firstPath, secondPath])).workspaces[0]!
+  const [first, second] = workspace.repositories
+  assert.ok(first)
+  assert.ok(second)
   const created = await authority.createWorkstream(workspace.id, {
-    goal: 'Investigate without isolation',
-    mode: 'brainstorm',
+    goal: 'Use selected context',
+    repositoryIds: [first.id],
   })
 
-  await assert.rejects(authority.createSessionWorktree(created.sessionId, repository.id), /Implement Session Workspace/)
+  await assert.rejects(authority.createSessionWorktree(created.sessionId, second.id), /Workstream/)
 })
 
 test('keeps the source checkout available when Session worktree preparation is interrupted', async () => {
@@ -923,43 +935,39 @@ test('rejects Workstream records that reference a Repository outside their Works
   )
 })
 
-test('persists an explicit Brainstorm Session across restart', async () => {
+test('persists a mode-less Workstream Session across restart', async () => {
   const { authority, storageDirectory, workspace } = await createFixture()
-  await authority.createWorkstream(workspace.id, { goal: 'Understand current behavior', mode: 'brainstorm' })
+  await authority.createWorkstream(workspace.id, { goal: 'Understand current behavior' })
 
   const restarted = await initializeApplicationAuthority(storageDirectory, { sqlite: bunSqlite })
   const snapshot = await restarted.getWorkstreamSnapshot(workspace.id)
 
-  assert.equal(snapshot.workstreams[0]?.sessions[0]?.mode, 'brainstorm')
+  assert.equal('mode' in snapshot.workstreams[0]!.sessions[0]!, false)
 })
 
-test('keeps Execution Progress Implement-only at the persisted authority boundary', async () => {
+test('allows every Workstream Session to record Execution Progress', async () => {
   const { authority, workspace } = await createFixture()
-  const created = await authority.createWorkstream(workspace.id, {
-    goal: 'Keep Brainstorm read-only',
-    mode: 'brainstorm',
-  })
+  const created = await authority.createWorkstream(workspace.id, { goal: 'Track progress' })
   const workstream = created.snapshot.workstreams[0]!
 
-  await assert.rejects(
-    authority.applyPiWorkstreamKnowledgeCommand(
-      workstream.id,
-      {
-        type: 'put-record',
-        expectedKnowledgeRevision: 0,
-        expectedRecordRevision: 0,
-        record: {
-          id: 'progress-a',
-          kind: 'execution-progress',
-          repositoryIds: [],
-          status: 'in-progress',
-          summary: 'Started implementation.',
-        },
+  const result = await authority.applyPiWorkstreamKnowledgeCommand(
+    workstream.id,
+    {
+      type: 'put-record',
+      expectedKnowledgeRevision: 0,
+      expectedRecordRevision: 0,
+      record: {
+        id: 'progress-a',
+        kind: 'execution-progress',
+        repositoryIds: [],
+        status: 'in-progress',
+        summary: 'Started work.',
       },
-      created.sessionId
-    ),
-    /Implement-only/
+    },
+    created.sessionId
   )
+
+  assert.equal(result.knowledge.records[0]?.kind, 'execution-progress')
 })
 
 test('creates a goal-less Quick Session with direct access to its selected Repository', async () => {
@@ -972,7 +980,7 @@ test('creates a goal-less Quick Session with direct access to its selected Repos
   const quickSession = workstream?.sessions[0]
 
   assert.equal(workstream?.goal, undefined)
-  assert.equal(quickSession?.mode, 'default')
+  assert.equal(quickSession ? 'mode' in quickSession : true, false)
   assert.deepEqual(quickSession?.repositoryAccess, {
     kind: 'direct',
     repositoryId: repository.id,
@@ -1271,7 +1279,7 @@ test('persists Quick Session direct access and full tool policy across restart',
   assert.ok(quickSession)
   const resolution = await restarted.resolveOwnedSession(created.sessionId)
 
-  assert.equal(quickSession.mode, 'default')
+  assert.equal('mode' in quickSession, false)
   assert.deepEqual(quickSession.repositoryAccess, {
     kind: 'direct',
     repositoryId: repository.id,
@@ -1283,7 +1291,7 @@ test('persists Quick Session direct access and full tool policy across restart',
   assert.equal(resolution?.toolAccess, 'full')
 })
 
-test('derives the current Repository set from Quick access and excludes tombstoned impacts', async () => {
+test('derives the current Repository set from Quick access and Workstream selection', async () => {
   const { authority, workspace } = await createFixture()
   const repository = workspace.repositories[0]
   assert.ok(repository)
@@ -1327,10 +1335,10 @@ test('derives the current Repository set from Quick access and excludes tombston
     },
     session.id
   )
-  assert.deepEqual(tombstoned.knowledge.currentRepositoryIds, [])
+  assert.deepEqual(tombstoned.knowledge.currentRepositoryIds, [repository.id])
 })
 
-test('does not block membership removal for automatic managed Session access alone', async () => {
+test('rejects removing a Repository selected by an active Workstream', async () => {
   const { authority, storageDirectory, workspace } = await createFixture()
   const first = workspace.repositories[0]
   assert.ok(first)
@@ -1339,23 +1347,14 @@ test('does not block membership removal for automatic managed Session access alo
   const withSecond = await authority.addWorkspaceRepositories(workspace.id, [secondPath])
   const second = withSecond.workspaces[0]?.repositories.find((repository) => repository.id !== first.id)
   assert.ok(second)
-  const created = await authority.createWorkstream(workspace.id, { goal: 'Use automatic managed access' })
+  await authority.createWorkstream(workspace.id, {
+    goal: 'Use selected Repository context',
+    repositoryIds: [second.id],
+  })
 
-  const updated = await authority.removeWorkspaceRepository(workspace.id, second.membershipId)
-  const workstream = (await authority.getWorkstreamSnapshot(workspace.id)).workstreams[0]
-  const resolution = await authority.resolveOwnedSession(created.sessionId)
-
-  assert.equal(
-    updated.workspaces[0]?.repositories.some((repository) => repository.id === second.id),
-    false
-  )
-  assert.equal(
-    workstream?.repositoryWorkingLocations.some((location) => location.repositoryId === second.id),
-    false
-  )
-  assert.equal(
-    resolution?.managedPolicy?.repositories.some((repository) => repository.id === second.id),
-    false
+  await assert.rejects(
+    authority.removeWorkspaceRepository(workspace.id, second.membershipId),
+    /used by an active Workstream/
   )
 })
 
@@ -1528,7 +1527,7 @@ test('represents both Quick Session history and direct Repository checkout loss'
   assert.equal(await authority.resolveOwnedSession(created.sessionId), undefined)
 })
 
-test('keeps Quick Session mode and direct Repository access immutable when renamed', async () => {
+test('keeps Quick Session direct Repository access immutable when renamed', async () => {
   const { authority, workspace } = await createFixture()
   const repository = workspace.repositories[0]
   assert.ok(repository)
@@ -1539,7 +1538,7 @@ test('keeps Quick Session mode and direct Repository access immutable when renam
   const quickSession = quickWorkstream?.sessions[0]
 
   assert.equal(quickWorkstream?.goal, undefined)
-  assert.equal(quickSession?.mode, 'default')
+  assert.equal(quickSession ? 'mode' in quickSession : true, false)
   assert.deepEqual(quickSession?.repositoryAccess, {
     kind: 'direct',
     repositoryId: repository.id,
@@ -1556,7 +1555,7 @@ test('does not add managed Sessions to a goal-less Quick Workstream', async () =
   const quickWorkstream = created.snapshot.workstreams[0]
   assert.ok(quickWorkstream)
 
-  await assert.rejects(authority.createWorkstreamSession(quickWorkstream.id, { mode: 'implement' }), /Workstream goal/)
+  await assert.rejects(authority.createWorkstreamSession(quickWorkstream.id, {}), /Workstream goal/)
 })
 
 test('loads owned history after restart from the expected JSONL without Repository discovery', async () => {
@@ -1625,7 +1624,7 @@ test('restores a managed Session with every Workspace Repository and normal buil
   )
 })
 
-test('gives managed Sessions immediate access to Repositories added after Workstream creation', async () => {
+test('keeps Repositories added later outside the Workstream selection', async () => {
   const { authority, storageDirectory, workspace } = await createFixture()
   const created = await authority.createWorkstream(workspace.id, { goal: 'Use every current Repository' })
   const secondPath = join(storageDirectory, 'second-repository')
@@ -1641,16 +1640,54 @@ test('gives managed Sessions immediate access to Repositories added after Workst
     (location) => location.repositoryId === second.id
   )
 
-  assert.equal(runtimeRepository?.availability, 'available')
-  if (runtimeRepository?.availability === 'available') assert.equal(runtimeRepository.workingPath, secondPath)
-  assert.deepEqual(snapshotLocation, {
-    repositoryId: second.id,
-    repositoryName: second.name,
-    kind: 'current-checkout',
-    availability: 'available',
-    workingPath: secondPath,
+  assert.equal(runtimeRepository, undefined)
+  assert.equal(snapshotLocation, undefined)
+  await assert.rejects(authority.resolveWorkstreamWorkingLocation(workstream!.id, second.id), /unavailable/)
+})
+
+test('limits Workstream Session context to the selected Repositories and their metadata', async () => {
+  const storageDirectory = await realpath(await mkdtemp(join(tmpdir(), 'pi-workspace-selected-repositories-')))
+  temporaryDirectories.push(storageDirectory)
+  const firstPath = join(storageDirectory, 'application')
+  const secondPath = join(storageDirectory, 'service')
+  await Promise.all([exec('git', ['init', firstPath]), exec('git', ['init', secondPath])])
+  const authority = await initializeApplicationAuthority(storageDirectory, { sqlite: bunSqlite })
+  const workspace = (await authority.createWorkspace('Workspace', [firstPath, secondPath])).workspaces[0]!
+  const [application, service] = workspace.repositories
+  assert.ok(application)
+  assert.ok(service)
+  await authority.updateWorkspaceMembership(workspace.id, service.membershipId, {
+    role: 'API service',
+    relationships: [application.membershipId],
+    validationCommands: ['bun test'],
   })
-  assert.equal(await authority.resolveWorkstreamWorkingLocation(workstream!.id, second.id), secondPath)
+
+  const created = await authority.createWorkstream(workspace.id, {
+    goal: 'Ship the API change',
+    repositoryIds: [service.id],
+  })
+  const resolution = await authority.resolveOwnedSession(created.sessionId)
+
+  assert.deepEqual(
+    resolution?.managedPolicy?.repositories.map((repository) => ({
+      id: repository.id,
+      name: repository.name,
+      role: repository.role,
+      relationships: repository.relationships,
+      validationCommands: repository.validationCommands,
+      workingPath: repository.availability === 'available' ? repository.workingPath : undefined,
+    })),
+    [
+      {
+        id: service.id,
+        name: 'service',
+        role: 'API service',
+        relationships: [application.id],
+        validationCommands: ['bun test'],
+        workingPath: service.directoryPath,
+      },
+    ]
+  )
 })
 
 test('resolves managed runtime Repository relationships to Repository ids', async () => {
@@ -1794,19 +1831,22 @@ test('accepts a managed submission after restart', async () => {
   assert.equal(runtimeCreated, true)
 })
 
-test('creates another Session without sharing mode or transcript identity', async () => {
+test('creates another mode-less Session in the same goal-based Workstream', async () => {
   const { authority, workspace } = await createFixture()
-  const created = await authority.createWorkstream(workspace.id, { goal: 'Ship the change', mode: 'brainstorm' })
+  const created = await authority.createWorkstream(workspace.id, {
+    goal: 'Ship the change',
+    repositoryIds: [workspace.repositories[0]!.id],
+  })
   const workstream = created.snapshot.workstreams[0]
   assert.ok(workstream)
 
-  const updated = await authority.createWorkstreamSession(workstream.id, { mode: 'implement', title: 'Build it' })
+  const updated = await authority.createWorkstreamSession(workstream.id, { title: 'Build it' })
   const sessions = updated.snapshot.workstreams[0]?.sessions ?? []
 
   assert.equal(sessions.length, 2)
-  assert.deepEqual(
-    sessions.map((session) => session.mode),
-    ['brainstorm', 'implement']
+  assert.equal(
+    sessions.every((session) => !('mode' in session)),
+    true
   )
   assert.equal(new Set(sessions.map((session) => session.id)).size, 2)
   assert.deepEqual(
@@ -1897,9 +1937,9 @@ test('reopens an archived Quick Workstream after restart with its direct Session
   assert.deepEqual(archived?.sessions[0]?.repositoryAccess, workstream.sessions[0]?.repositoryAccess)
 })
 
-test('renaming a Session cannot change its permanent owner or mode', async () => {
+test('renaming a Session cannot change its permanent owner', async () => {
   const { authority, workspace } = await createFixture()
-  const created = await authority.createWorkstream(workspace.id, { goal: 'Understand the change', mode: 'brainstorm' })
+  const created = await authority.createWorkstream(workspace.id, { goal: 'Understand the change' })
   const before = created.snapshot.workstreams[0]?.sessions[0]
   assert.ok(before)
 
@@ -1907,7 +1947,7 @@ test('renaming a Session cannot change its permanent owner or mode', async () =>
   const after = renamed.workstreams[0]?.sessions[0]
 
   assert.equal(after?.workstreamId, before.workstreamId)
-  assert.equal(after?.mode, before.mode)
+  assert.equal(after ? 'mode' in after : true, false)
 })
 
 test('persists an agent-authored Session description across restart', async () => {
@@ -1947,7 +1987,7 @@ test('allows concurrent Session Agent Runs in isolated Session worktrees', async
 
   const created = await authority.createWorkstream(workspace.id, { goal: 'Coordinate the work' })
   const workstream = created.snapshot.workstreams[0]!
-  const second = await authority.createWorkstreamSession(workstream.id, { mode: 'implement' })
+  const second = await authority.createWorkstreamSession(workstream.id, {})
   await authority.createSessionWorktree(created.sessionId, repository.id)
   await authority.createSessionWorktree(second.sessionId, repository.id)
 
@@ -1964,11 +2004,11 @@ test('allows concurrent Session Agent Runs in isolated Session worktrees', async
   assert.equal(await authority.acquireSessionRunLease(second.sessionId), true)
 })
 
-test('blocks concurrent Implement Agent Runs that implicitly share current checkouts', async () => {
+test('blocks concurrent Workstream Agent Runs that implicitly share current checkouts', async () => {
   const { authority, workspace } = await createFixture()
   const created = await authority.createWorkstream(workspace.id, { goal: 'Coordinate checkout changes' })
   const workstream = created.snapshot.workstreams[0]!
-  const second = await authority.createWorkstreamSession(workstream.id, { mode: 'implement' })
+  const second = await authority.createWorkstreamSession(workstream.id, {})
 
   assert.equal(await authority.acquireSessionRunLease(created.sessionId), true)
   assert.equal(await authority.acquireSessionRunLease(second.sessionId), false)
@@ -1986,6 +2026,27 @@ test('blocks concurrent Agent Runs that share a Repository working path', async 
   assert.equal(await authority.acquireSessionRunLease(second.sessionId), false)
 
   await authority.settleSessionRunLease(first.sessionId)
+})
+
+test('migrates version 6 Workstreams to selected Repositories and mode-less Sessions', async () => {
+  const { authority, storageDirectory, workspace } = await createFixture()
+  const created = await authority.createWorkstream(workspace.id, { goal: 'Migrate Workstream context' })
+  const database = new Database(join(storageDirectory, 'application-state.sqlite'))
+  database.prepare("UPDATE sessions SET mode = 'brainstorm' WHERE id = ?").run(created.sessionId)
+  database.exec('DROP TABLE workstream_repositories')
+  database.prepare("UPDATE metadata SET value = '6' WHERE key = 'schema_version'").run()
+  database.close()
+
+  const restarted = await initializeApplicationAuthority(storageDirectory, { sqlite: bunSqlite })
+  const snapshot = await restarted.getWorkstreamSnapshot(workspace.id)
+  const session = snapshot.workstreams[0]?.sessions[0]
+
+  assert.equal(restarted.startup.status, 'ready')
+  assert.equal(session ? 'mode' in session : true, false)
+  assert.deepEqual(
+    snapshot.workstreams[0]?.repositoryWorkingLocations.map((location) => location.repositoryId),
+    workspace.repositories.map((repository) => repository.id)
+  )
 })
 
 test('migrates version 5 application state to persist Session fork lineage', async () => {
@@ -2190,7 +2251,7 @@ test('does not reject Session lookup for a malformed recorded working location',
   assert.equal(await authority.resolveOwnedSession(created.sessionId), undefined)
 })
 
-test('keeps malformed shared knowledge bounded to its owning Workstream', async () => {
+test('legacy structured records do not affect Workstream availability', async () => {
   const { authority, storageDirectory, workspace } = await createFixture()
   const created = await authority.createWorkstream(workspace.id, { goal: 'Keep shared knowledge trustworthy' })
   const workstream = created.snapshot.workstreams[0]
@@ -2215,13 +2276,13 @@ test('keeps malformed shared knowledge bounded to its owning Workstream', async 
   database.prepare("UPDATE workstream_records SET payload = '{malformed'").run()
   database.close()
 
-  const unavailable = (await authority.getWorkstreamSnapshot(workspace.id)).workstreams[0]
+  const available = (await authority.getWorkstreamSnapshot(workspace.id)).workstreams[0]
 
-  assert.match(unavailable?.unavailability ?? '', /persisted Workstream record is malformed/)
-  assert.deepEqual(unavailable?.sessions, [])
+  assert.equal(available?.unavailability, undefined)
+  assert.equal(available?.sessions.length, 1)
 })
 
-test('does not resolve Session capability for malformed shared Workstream knowledge', async () => {
+test('legacy structured records do not affect Session capability', async () => {
   const { authority, storageDirectory, workspace } = await createFixture()
   const created = await authority.createWorkstream(workspace.id, { goal: 'Keep shared knowledge trustworthy' })
   const workstream = created.snapshot.workstreams[0]
@@ -2232,7 +2293,7 @@ test('does not resolve Session capability for malformed shared Workstream knowle
     .run(workstream.id)
   database.close()
 
-  assert.equal(await authority.resolveOwnedSession(created.sessionId), undefined)
+  assert.ok(await authority.resolveOwnedSession(created.sessionId))
 })
 
 test('bounds a malformed persisted Session to its owning Workstream', async () => {
@@ -2366,7 +2427,7 @@ test('marks only a finalized Session unavailable when its JSONL becomes malforme
   const created = await authority.createWorkstream(workspace.id, { goal: 'Keep ownership' })
   const workstream = created.snapshot.workstreams[0]
   assert.ok(workstream)
-  await authority.createWorkstreamSession(workstream.id, { mode: 'brainstorm' })
+  await authority.createWorkstreamSession(workstream.id, {})
   const ownedSession = workstream.sessions[0]
   assert.ok(ownedSession)
   const resolution = await authority.resolveOwnedSession(ownedSession.id)

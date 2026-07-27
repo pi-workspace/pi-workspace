@@ -15,49 +15,26 @@ A local Git repository registered with Railyard. A Repository can belong to one 
 _Avoid_: Project
 
 **Workstream**:
-A persistent container for Sessions in a Workspace. A Brainstorm or Implement Workstream has a goal and retains Workstream Knowledge used to pursue it. A goal-less Workstream owns one Quick Session.
-
-**Workstream Knowledge**:
-The durable aggregate of structured records owned by a goal-based Workstream. It includes evidence, findings, decisions, assumptions, open questions, Repository impacts, plan steps, validation requirements, and execution progress. It is revised over time and can produce approved immutable Specification Versions.
-
-**Knowledge Record**:
-One durable structured record within Workstream Knowledge. Knowledge Records are the unit of evidence, reasoning, planning, validation, and execution progress retained by a Workstream.
-
-**Specification Version**:
-An approved immutable snapshot of the Workstream Knowledge records relevant to a specification at one point in its revision history. It is a versioned snapshot, not a second editable aggregate.
-
-**Execution Progress**:
-Knowledge Records describing implementation progress against plan steps. Execution Progress remains part of Workstream Knowledge after a Specification Version is approved; it is excluded from the source records of a Specification Version.
+A persistent, goal-oriented container for multiple Sessions in a Workspace. A Workstream selects one or more Repositories; their names, working locations, roles, relationships, validation commands, and other routing metadata become context for every Session in the Workstream.
 
 **Context**:
-Transient presentation context or model input. It is not the domain term for durable Workstream Knowledge.
+Repository metadata, paths, instructions, conversation history, and other transient model input supplied to a Session.
 
 **Activity Layer**:
-A retained technical persistence term for the internal Session activity-record format. It is not a domain term and does not name Workstream Knowledge; user-facing language uses Agent Activity and Activity Artifact.
-
-**Default**:
-The standard Pi Session mode used by a Quick Session. Default works directly in one selected Repository working location—either its current checkout or a dedicated worktree—with Pi’s normal tools and does not use Workspace-wide Repository routing.
+A retained technical persistence term for the internal Session activity-record format. It is not a domain term; user-facing language uses Agent Activity and Activity Artifact.
 
 **Quick Session**:
-A low-friction, goal-less Session in Default mode. It belongs to its own Workstream and works directly in one selected Repository working location, which defaults to the current checkout and can instead be a dedicated worktree.
+A low-friction, goal-less Session that works directly in one selected Repository working location. It defaults to the current checkout and can instead use a dedicated worktree.
 
-**Brainstorm**:
-The Session mode for investigating every Repository in its Workspace, asking questions, recording structured knowledge, and producing an implementation-ready specification. Brainstorm uses Pi's normal tools across supplied Repository working paths and is instructed not to modify Repository content; this is methodology, not sandbox enforcement. User-installed Pi extensions remain trusted local code with their normal authority.
-_Avoid_: Research Mode
-
-**Implement**:
-The Session mode for changing and validating Workspace Repositories with Pi's normal tools. It can inspect and modify every current Workspace Repository checkout. A user can instead create an isolated Implement Session Worktree for one Repository before changing it.
-_Avoid_: Implementation Mode, Execution Mode
-
-**Implement Session Worktree**:
-An ordinary Git worktree explicitly created by a user for one Implement Session and one Repository. It starts from the Repository's current local `HEAD` and is never shared with another Session.
+**Session Worktree**:
+An ordinary Git worktree explicitly created by a user for one Session and one Repository. It starts from the Repository's current local `HEAD` and is never shared with another Session.
 
 **Session**:
-A persistent Pi interaction associated with one Workstream. Each Session has an immutable mode and Repository access: direct access to one selected Repository working location for Default or automatic access to every current Workspace Repository for Brainstorm and Implement. An Implement Session uses current checkouts by default and can use a user-created Implement Session Worktree for an individual Repository.
+A persistent Pi interaction associated with one Workstream. A Workstream Session receives the Workstream goal and selected Repository context, uses current checkouts by default, and can use a user-created Session Worktree for an individual Repository. Sessions do not have modes.
 _Avoid_: Chat, thread
 
 **Session Fork**:
-A new Session whose history is copied through the response before one selected user message from a source Session. The selected message becomes an editable draft, the source remains unchanged, and Repository state is not rewound. A goal-based Session Fork remains in its Workstream and mode. A Quick Session Fork owns a new goal-less Workstream and preserves the source working-location policy without sharing a dedicated worktree.
+A new Session whose history is copied through the response before one selected user message from a source Session. The selected message becomes an editable draft, the source remains unchanged, and Repository state is not rewound. A Workstream Session Fork remains in its Workstream. A Quick Session Fork owns a new internal goal-less container and preserves the source working-location policy without sharing a dedicated worktree.
 
 **Session Description**:
 One or two concise, agent-authored sentences that summarize a Session's current focus for navigation. Pi can revise it as the focus materially changes.

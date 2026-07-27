@@ -52,7 +52,6 @@ type SessionContainerProperties = {
   onTogglePin: () => void
   acceptActionCard?: SessionTranscriptBridge['acceptActionCard']
   dismissActionCard?: SessionTranscriptBridge['dismissActionCard']
-  onStartImplementSession?: (workstreamId: string) => Promise<void>
   onOpenCurrentDiff?: (repositoryId: string | undefined, path: string) => void
 }
 
@@ -84,7 +83,6 @@ export function SessionContainer({
   onTogglePin,
   acceptActionCard = async () => false,
   dismissActionCard = async () => false,
-  onStartImplementSession = async () => {},
   onOpenCurrentDiff = () => {},
 }: SessionContainerProperties) {
   const headingId = useId()
@@ -93,12 +91,8 @@ export function SessionContainer({
   const isWorking = transcriptState.snapshot?.isWorking ?? false
   const unavailability = getSessionUnavailability(session)
   const composerUnavailable = Boolean(unavailability) || workstreamLifecycle === 'archived'
-  const modeLabel =
-    session.mode === 'default'
-      ? session.repositoryAccess.repositoryName
-      : session.mode === 'brainstorm'
-        ? 'Brainstorm'
-        : 'Implement'
+  const sessionContext =
+    session.repositoryAccess.kind === 'direct' ? session.repositoryAccess.repositoryName : 'Workstream Session'
 
   return (
     <section
@@ -135,7 +129,7 @@ export function SessionContainer({
               >
                 {session.title}
               </h1>
-              <p className="text-xs/4 text-content-muted-foreground">{modeLabel}</p>
+              <p className="text-xs/4 text-content-muted-foreground">{sessionContext}</p>
             </div>
             <button
               type="button"
@@ -193,10 +187,7 @@ export function SessionContainer({
         }
         onOpenCurrentDiff={onOpenCurrentDiff}
         onActionCard={async (card: SessionActionCard) => {
-          if (card.kind === 'start-implement-session') {
-            await onStartImplementSession(session.workstreamId)
-            return acceptActionCard(session.id, card.id)
-          }
+          if (card.kind === 'start-implement-session') return false
 
           const result = await submitMessage({
             sessionId: session.id,
@@ -265,7 +256,7 @@ export function SessionContainer({
           sessionSkills={sessionSkills}
           sessionFiles={sessionFiles}
           sessionWorkingLocations={sessionWorkingLocations}
-          canCreateWorktree={session.mode === 'implement' && workstreamLifecycle === 'active'}
+          canCreateWorktree={session.repositoryAccess.kind === 'managed' && workstreamLifecycle === 'active'}
         />
       )}
     </section>

@@ -129,13 +129,29 @@ function WorkingLocationControl({
   location: SessionRepositoryWorkingLocation
   onCreateWorktree: () => void
 }>) {
+  if (location.kind === 'worktree' && location.availability === 'available' && !creating) {
+    return (
+      <button
+        type="button"
+        aria-label="Copy worktree path"
+        className="flex min-w-0 max-w-[55%] items-center gap-1.5 rounded-md px-2 py-1 text-composer-muted-foreground hover:bg-composer-interaction hover:text-content-foreground"
+        title={relativeWorktreePath(location.workingPath)}
+        onClick={(event) => {
+          event.stopPropagation()
+          void window.navigator.clipboard.writeText(location.workingPath).catch(() => {})
+        }}
+      >
+        <GitBranch aria-hidden="true" className="size-3.5 shrink-0" />
+        <span className="truncate">Worktree</span>
+      </button>
+    )
+  }
+
   const label = workingLocationLabel(location)
   const content = (
     <span className="flex min-w-0 items-center gap-1.5">
       {creating ? (
         <LoaderCircle aria-hidden="true" className="size-3.5 shrink-0 animate-spin motion-reduce:animate-none" />
-      ) : location.kind === 'worktree' ? (
-        <GitBranch aria-hidden="true" className="size-3.5 shrink-0" />
       ) : (
         <FolderOpen aria-hidden="true" className="size-3.5 shrink-0" />
       )}
@@ -143,7 +159,7 @@ function WorkingLocationControl({
     </span>
   )
 
-  if (!canCreateWorktree || location.kind === 'worktree' || location.availability === 'unavailable') {
+  if (!canCreateWorktree || location.availability === 'unavailable') {
     return (
       <span className="min-w-0 px-2 py-1" title={label}>
         {content}
@@ -171,8 +187,15 @@ function WorkingLocationControl({
   )
 }
 
+function relativeWorktreePath(workingPath: string): string {
+  const pathSegments = workingPath.split(/[\\/]+/).filter(Boolean)
+  const worktreesSegment = pathSegments.lastIndexOf('.worktrees')
+
+  return pathSegments.slice(worktreesSegment < 0 ? -2 : worktreesSegment).join('/')
+}
+
 function workingLocationLabel(location: SessionRepositoryWorkingLocation): string {
   if (location.availability === 'unavailable') return 'Repository unavailable'
 
-  return `${location.kind === 'worktree' ? 'Worktree' : 'Current checkout'} · ${location.branch}`
+  return `Current checkout · ${location.branch}`
 }

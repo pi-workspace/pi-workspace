@@ -9,7 +9,6 @@ const pinnedSession: OwnedSession = {
   id: sessionId('pinned-session'),
   workstreamId: 'workstream-a',
   title: 'Pinned Session',
-  mode: 'brainstorm',
   availability: 'available',
   repositoryAccess: { kind: 'managed' as const },
 }
@@ -18,7 +17,6 @@ const activeSession: OwnedSession = {
   id: sessionId('active-session'),
   workstreamId: 'workstream-a',
   title: 'Active Session',
-  mode: 'implement',
   availability: 'available',
   repositoryAccess: { kind: 'managed' as const },
 }
@@ -100,7 +98,6 @@ test('keeps the Composer available for a Quick Session with direct Repository ac
     ...activeSession,
     id: sessionId('quick-session'),
     title: 'Quick Session',
-    mode: 'default',
     repositoryAccess: {
       kind: 'direct',
       repositoryId: 'repository-a',
@@ -130,7 +127,6 @@ test('keeps the Composer available for a Quick Session with direct Repository ac
 test('keeps the Composer available for a managed Session', () => {
   const pendingSession = {
     ...activeSession,
-    mode: 'implement' as const,
     availability: 'available' as const,
     repositoryAccess: { kind: 'managed' as const },
   }
@@ -155,7 +151,6 @@ test('explains unavailable direct Repository checkout separately from Session hi
     id: sessionId('quick-session'),
     workstreamId: 'quick-workstream',
     title: 'Quick Session',
-    mode: 'default',
     availability: 'available',
     repositoryAccess: {
       kind: 'direct',
@@ -177,7 +172,6 @@ test('explains when both Session history and direct Repository checkout are unav
     id: sessionId('quick-session'),
     workstreamId: 'quick-workstream',
     title: 'Quick Session',
-    mode: 'default',
     availability: 'unavailable',
     repositoryAccess: {
       kind: 'direct',

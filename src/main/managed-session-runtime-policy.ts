@@ -67,7 +67,7 @@ async function requireCurrentPolicyIdentity(
     current.workspaceId !== expected.workspaceId ||
     current.workstreamId !== expected.workstreamId ||
     current.sessionId !== expected.sessionId ||
-    current.mode !== expected.mode ||
+    current.goal !== expected.goal ||
     current.lifecycle !== expected.lifecycle ||
     current.runLeaseId !== expected.runLeaseId
   ) {

@@ -50,9 +50,13 @@ export function assertRepositoryMembershipRemovalAllowed(
           AND EXISTS (
             SELECT 1
               FROM (
+                SELECT selected.repository_id
+                  FROM workstream_repositories selected
+                 WHERE selected.workstream_id = w.id
+                UNION
                 SELECT s.repository_id AS repository_id
                   FROM sessions s
-                 WHERE s.workstream_id = w.id AND s.mode = 'default'
+                 WHERE s.workstream_id = w.id AND s.access_kind = 'direct'
                 UNION
                 SELECT json_extract(wr.payload, '$.repositoryId')
                   FROM workstream_records wr
@@ -81,9 +85,13 @@ export function readCurrentWorkstreamRepositorySet(database: SqliteDatabase, wor
     .prepare(
       `SELECT repository_id
          FROM (
+           SELECT selected.repository_id AS repository_id
+             FROM workstream_repositories selected
+            WHERE selected.workstream_id = ?
+           UNION
            SELECT s.repository_id AS repository_id
              FROM sessions s
-            WHERE s.workstream_id = ? AND s.mode = 'default'
+            WHERE s.workstream_id = ? AND s.access_kind = 'direct'
            UNION
            SELECT json_extract(wr.payload, '$.repositoryId') AS repository_id
              FROM workstream_records wr
@@ -101,7 +109,7 @@ export function readCurrentWorkstreamRepositorySet(database: SqliteDatabase, wor
         WHERE repository_id IS NOT NULL
         ORDER BY repository_id`
     )
-    .all(workstreamId, workstreamId, workstreamId, workstreamId)
+    .all(workstreamId, workstreamId, workstreamId, workstreamId, workstreamId)
 
   return rows.map((row) => String(row.repository_id))
 }
@@ -199,12 +207,10 @@ export function applyStoredWorkstreamKnowledgeCommand(
 ): WorkstreamKnowledgeMutationResult {
   try {
     database.exec('BEGIN IMMEDIATE;')
-    const sessionMode =
-      context.actor === 'pi' ? assertPiWorkstreamSession(database, workstreamId, context.sessionId) : undefined
+    if (context.actor === 'pi') assertPiWorkstreamSession(database, workstreamId, context.sessionId)
     assertRecordRepositoriesBelongToWorkspace(database, workstreamId, command)
 
     const current = readWorkstreamKnowledge(database, workstreamId)
-    if (context.actor === 'pi') assertPiCommandMode(current, command, sessionMode!)
     const result =
       context.actor === 'pi'
         ? applyPiWorkstreamKnowledgeCommand(current, command, { at: context.at, sessionId: context.sessionId })
@@ -233,13 +239,12 @@ function assertPiWorkstreamSession(
   database: SqliteDatabase,
   workstreamId: string,
   sessionId: string | undefined
-): 'brainstorm' | 'implement' {
+): void {
   const session = database
-    .prepare("SELECT mode FROM sessions WHERE id = ? AND workstream_id = ? AND mode IN ('brainstorm', 'implement')")
+    .prepare("SELECT 1 FROM sessions WHERE id = ? AND workstream_id = ? AND access_kind = 'managed'")
     .get(sessionId ?? null, workstreamId)
 
-  if (!session) throw new TypeError('Pi mutations require an owning Brainstorm or Implement Session.')
-  return session.mode === 'brainstorm' ? 'brainstorm' : 'implement'
+  if (!session) throw new TypeError('Pi mutations require an owning Workstream Session.')
 }
 
 function assertRecordRepositoriesBelongToWorkspace(
@@ -271,20 +276,6 @@ function recordRepositoryIds(record: WorkstreamKnowledgeRecordDraft): readonly s
   }
 
   return []
-}
-
-function assertPiCommandMode(
-  knowledge: WorkstreamKnowledge,
-  command: WorkstreamKnowledgeCommand,
-  mode: 'brainstorm' | 'implement'
-): void {
-  if (mode === 'implement') return
-
-  const targetsExecutionProgress =
-    (command.type === 'put-record' && command.record.kind === 'execution-progress') ||
-    ('recordId' in command &&
-      knowledge.records.some((record) => record.id === command.recordId && record.kind === 'execution-progress'))
-  if (targetsExecutionProgress) throw new TypeError('Execution Progress is Implement-only.')
 }
 
 function persistWorkstreamKnowledgeMutation(

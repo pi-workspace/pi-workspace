@@ -239,7 +239,7 @@ test('labels a steering message separately from an ordinary user message', () =>
   assert.ok(view.getByText('Prioritize transcript delivery.', { exact: true }))
 })
 
-test('hides an accepted action card', () => {
+test('hides a legacy mode-transition action card', () => {
   const view = render(
     <SessionMessages
       sessionId={id}
@@ -253,7 +253,7 @@ test('hides an accepted action card', () => {
             kind: 'start-implement-session',
             title: 'Start implementation',
             description: 'Create an Implement Session.',
-            status: 'accepted',
+            status: 'available',
             createdAt: 1,
           },
         ],
@@ -339,9 +339,9 @@ test('allows retrying an action after its request fails', async () => {
           {
             id: 'card-1',
             sessionId: id,
-            kind: 'start-implement-session',
-            title: 'Start implementation',
-            description: 'Create an Implement Session.',
+            kind: 'prepare-pull-request',
+            title: 'Prepare the pull request',
+            description: 'Review the completed changes.',
             status: 'available',
             createdAt: 1,
           },
@@ -356,13 +356,13 @@ test('allows retrying an action after its request fails', async () => {
   )
 
   await act(async () => {
-    await view.getByRole('button', { name: 'Start Implement Session' }).click()
+    await view.getByRole('button', { name: 'Prepare draft pull request' }).click()
   })
   assert.equal(attempts, 1)
-  assert.ok(view.getByText('Could not start this action.', { exact: true }))
+  assert.ok(view.getByText('Could not start this request.', { exact: true }))
 
   await act(async () => {
-    await view.getByRole('button', { name: 'Start Implement Session' }).click()
+    await view.getByRole('button', { name: 'Prepare draft pull request' }).click()
   })
   assert.equal(attempts, 2)
 })

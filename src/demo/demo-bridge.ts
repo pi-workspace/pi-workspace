@@ -94,6 +94,20 @@ export function createDemoBridge(scenarioName?: string): PiWorkspaceBridge {
     return { staged: state !== 'unstaged', unstaged: state !== 'staged' }
   }
 
+  const repositoriesForSession = (requestedSessionId: string): readonly WorkspaceRepositorySnapshot[] => {
+    const workstream = workstreamsSnapshot.workstreams.find((candidate) =>
+      candidate.sessions.some((session) => session.id === requestedSessionId)
+    )
+    const session = workstream?.sessions.find((candidate) => candidate.id === requestedSessionId)
+    if (!workstream || !session || session.repositoryAccess.kind === 'direct') return []
+
+    const selectedRepositoryIds = workstream.repositoryWorkingLocations.map((location) => location.repositoryId)
+
+    return selectedRepositoryIds.length === 0
+      ? demoRepositories.slice(0, 2)
+      : demoRepositories.filter((repository) => selectedRepositoryIds.includes(repository.id))
+  }
+
   const transcriptSnapshot = (requestedSessionId: string): SessionTranscriptSnapshot =>
     transcriptsBySessionId[requestedSessionId] ?? {
       sessionId: sessionId(requestedSessionId),
@@ -260,45 +274,42 @@ export function createDemoBridge(scenarioName?: string): PiWorkspaceBridge {
     },
     sessionChanges: {
       async getSnapshot(sessionId) {
-        const session = workstreamsSnapshot.workstreams
-          .flatMap((workstream) => workstream.sessions)
-          .find((candidate) => candidate.id === sessionId)
+        const repositories = repositoriesForSession(sessionId)
 
         return {
           sessionId,
-          repositories:
-            session?.mode === 'implement'
-              ? [
-                  {
-                    repositoryId: 'Atlas Notes',
-                    repositoryName: 'Atlas Notes',
-                    branch: {
-                      head: 'railyard/offline-editing',
-                      upstream: 'origin/main',
-                      ahead: 2,
-                      behind: 0,
-                      detached: false,
-                      unborn: false,
-                    },
-                    files: [
-                      {
-                        path: 'src/notes/note-store.ts',
-                        status: 'modified' as const,
-                        ...stagingState('src/notes/note-store.ts'),
-                        additions: 8,
-                        deletions: 2,
-                      },
-                      {
-                        path: 'src/notes/sync-queue.ts',
-                        status: 'added' as const,
-                        ...stagingState('src/notes/sync-queue.ts'),
-                        additions: 42,
-                        deletions: 0,
-                      },
-                    ],
+          repositories: repositories.some((repository) => repository.id === 'Atlas Notes')
+            ? [
+                {
+                  repositoryId: 'Atlas Notes',
+                  repositoryName: 'Atlas Notes',
+                  branch: {
+                    head: 'railyard/offline-editing',
+                    upstream: 'origin/main',
+                    ahead: 2,
+                    behind: 0,
+                    detached: false,
+                    unborn: false,
                   },
-                ]
-              : [],
+                  files: [
+                    {
+                      path: 'src/notes/note-store.ts',
+                      status: 'modified' as const,
+                      ...stagingState('src/notes/note-store.ts'),
+                      additions: 8,
+                      deletions: 2,
+                    },
+                    {
+                      path: 'src/notes/sync-queue.ts',
+                      status: 'added' as const,
+                      ...stagingState('src/notes/sync-queue.ts'),
+                      additions: 42,
+                      deletions: 0,
+                    },
+                  ],
+                },
+              ]
+            : [],
         }
       },
       async loadFileDiff(_sessionId, _repositoryId, path, view) {
@@ -321,14 +332,9 @@ export function createDemoBridge(scenarioName?: string): PiWorkspaceBridge {
     },
     sessionWorkingLocations: {
       async get(sessionId) {
-        const session = workstreamsSnapshot.workstreams
-          .flatMap((workstream) => workstream.sessions)
-          .find((candidate) => candidate.id === sessionId)
-        if (!session || session.mode === 'default') return { sessionId, repositories: [] }
-
         return {
           sessionId,
-          repositories: demoRepositories.slice(0, 2).map((repository) => {
+          repositories: repositoriesForSession(sessionId).map((repository) => {
             const usesWorktree = demoSessionWorktrees.has(`${sessionId}:${repository.id}`)
             return {
               repositoryId: repository.id,
@@ -336,6 +342,9 @@ export function createDemoBridge(scenarioName?: string): PiWorkspaceBridge {
               kind: usesWorktree ? ('worktree' as const) : ('current-checkout' as const),
               availability: 'available' as const,
               branch: usesWorktree ? `railyard/demo/${repository.id}` : 'main',
+              workingPath: usesWorktree
+                ? `/Users/maya/Projects/.worktrees/${sessionId}/${repository.id}`
+                : repository.directoryPath,
             }
           }),
         }
@@ -447,19 +456,20 @@ export function createDemoBridge(scenarioName?: string): PiWorkspaceBridge {
               goal: options.goal.trim(),
               lifecycle: 'active' as const,
               workingLocation: 'current-checkouts' as const,
-              repositoryWorkingLocations: demoRepositories.map((repository) => ({
-                repositoryId: repository.id,
-                repositoryName: repository.name,
-                kind: 'current-checkout' as const,
-                availability: 'available' as const,
-                workingPath: repository.directoryPath,
-              })),
+              repositoryWorkingLocations: demoRepositories
+                .filter((repository) => options.repositoryIds?.includes(repository.id))
+                .map((repository) => ({
+                  repositoryId: repository.id,
+                  repositoryName: repository.name,
+                  kind: 'current-checkout' as const,
+                  availability: 'available' as const,
+                  workingPath: repository.directoryPath,
+                })),
               sessions: [
                 {
                   id: createdSessionId,
                   workstreamId,
                   title: 'New Session',
-                  mode: options.mode ?? ('implement' as const),
                   availability: 'available' as const,
                   repositoryAccess: { kind: 'managed' as const },
                 },
@@ -505,7 +515,6 @@ export function createDemoBridge(scenarioName?: string): PiWorkspaceBridge {
                   id: createdSessionId,
                   workstreamId,
                   title: 'Quick Session',
-                  mode: 'default' as const,
                   availability: 'available' as const,
                   repositoryAccess: {
                     kind: 'direct' as const,
@@ -536,7 +545,6 @@ export function createDemoBridge(scenarioName?: string): PiWorkspaceBridge {
                       id: createdSessionId,
                       workstreamId,
                       title: options.title?.trim() || 'New Session',
-                      mode: options.mode,
                       availability: 'available' as const,
                       repositoryAccess: { kind: 'managed' as const },
                     },
@@ -574,7 +582,7 @@ export function createDemoBridge(scenarioName?: string): PiWorkspaceBridge {
         const createdSessionId = sessionId(`forked-session-${createdSessionNumber}`)
         const target = { ...source, id: createdSessionId, title: options.title.trim() }
 
-        if (source.mode === 'default') {
+        if (source.repositoryAccess.kind === 'direct') {
           const workstreamId = `forked-quick-workstream-${createdSessionNumber}`
           workstreamsSnapshot = {
             revision: workstreamsSnapshot.revision + 1,

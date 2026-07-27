@@ -22,7 +22,6 @@ const activeSession: OwnedSession = {
   id: sessionId('session-a'),
   workstreamId: workstream.id,
   title: 'Implement changes',
-  mode: 'implement',
   availability: 'available',
   repositoryAccess: { kind: 'managed' },
 }

@@ -17,8 +17,8 @@ Railyard is a local desktop app for working with [Pi](https://github.com/earendi
 
 - Organize related Git Repositories into persistent **Workspaces**.
 - Use a **Quick Session** when you want Pi to work directly in one Repository checkout.
-- Create a goal-based **Workstream** with shared context that carries across multiple Sessions.
-- Use **Brainstorm** Sessions to investigate and plan, then **Implement** Sessions to make and validate changes.
+- Create a goal-based **Workstream**, select the relevant Repositories, and carry their metadata and working locations across multiple Sessions.
+- Create as many Sessions as the goal needs without choosing a Session mode.
 - Pin Sessions side by side when work spans multiple conversations or Repositories.
 - Fork a Session from an earlier user message while keeping the original path intact.
 - Reopen Railyard and continue from locally stored Session history.
@@ -99,7 +99,7 @@ Then:
 1. Open Railyard and create a Workspace.
 2. Select one or more local Git Repositories that belong together.
 3. Start a Quick Session for a focused task, or create a Workstream for a durable goal.
-4. Choose an available Model in Composer, review the selected mode and Repository access, then send your first message.
+4. Choose an available Model in Composer, review the Repository working location, then send your first message.
 
 ### Troubleshooting setup
 
@@ -107,15 +107,11 @@ Then:
 - **A message cannot start:** confirm that the selected Model is still available through Pi CLI and that its provider login is current, then restart Railyard and retry. Your draft stays in Composer when Pi rejects a submission.
 - **Need help:** report reproducible bugs or feature feedback in [GitHub Issues](https://github.com/pi-workspace/pi-workspace/issues). Include only sanitized logs and screenshots.
 
-## Session modes
+## Repository context
 
-| Mode           | Best for                                  | Repository access                                                                                                         |
-| -------------- | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| **Default**    | A focused Quick Session in one Repository | Works directly in the selected Repository's current checkout or a dedicated worktree.                                     |
-| **Brainstorm** | Investigation, questions, and planning    | Can inspect every Repository in the Workspace. Read-only behavior is instructed, not sandboxed.                           |
-| **Implement**  | Making and validating Repository changes  | Uses each Repository's current checkout by default; you can explicitly create a separate Session worktree per Repository. |
+A Quick Session works with one selected Repository. A Workstream selects one or more Repositories and adds their names, locations, roles, relationships, validation commands, and related metadata to every Session's system prompt. Workstream Sessions use current checkouts by default; you can explicitly create a separate Session worktree for an individual Repository.
 
-A Workspace is a routing boundary, not an operating-system sandbox. Pi, installed extensions, and commands run with your normal user permissions.
+A Workspace and Workstream are routing boundaries, not operating-system sandboxes. Pi, installed extensions, and commands run with your normal user permissions.
 
 ## Privacy and local data
 

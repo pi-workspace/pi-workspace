@@ -247,7 +247,7 @@ function SessionActionCardView({
     }
   }
 
-  if (dismissState === 'dismissed') return null
+  if (dismissState === 'dismissed' || card.kind === 'start-implement-session') return null
 
   return (
     <aside
@@ -258,31 +258,19 @@ function SessionActionCardView({
       <h2 className="mt-1 text-sm/5 font-medium text-content-foreground">{card.title}</h2>
       <p className="mt-1 text-sm/5 text-content-muted-foreground">{card.description}</p>
       <div className="mt-3 flex flex-wrap gap-2">
-        {card.kind === 'start-implement-session' ? (
-          <Button disabled={disabled} onClick={() => void runAction()}>
-            {actionState === 'working'
-              ? 'Starting…'
-              : actionState === 'complete'
-                ? 'Implement Session started'
-                : 'Start Implement Session'}
-          </Button>
-        ) : (
-          <Button disabled={disabled} onClick={() => void runAction()}>
-            {actionState === 'working'
-              ? 'Preparing pull request…'
-              : actionState === 'complete'
-                ? 'Pull request request sent'
-                : 'Prepare draft pull request'}
-          </Button>
-        )}
+        <Button disabled={disabled} onClick={() => void runAction()}>
+          {actionState === 'working'
+            ? 'Preparing pull request…'
+            : actionState === 'complete'
+              ? 'Pull request request sent'
+              : 'Prepare draft pull request'}
+        </Button>
         <Button outline disabled={disabled} onClick={() => void dismiss()}>
           {dismissState === 'working' ? 'Dismissing…' : 'Not now'}
         </Button>
       </div>
       {actionState === 'failed' ? (
-        <p className="mt-2 text-sm/5 text-activity-failed">
-          {card.kind === 'start-implement-session' ? 'Could not start this action.' : 'Could not start this request.'}
-        </p>
+        <p className="mt-2 text-sm/5 text-activity-failed">Could not start this request.</p>
       ) : null}
       {dismissState === 'failed' ? (
         <p className="mt-2 text-sm/5 text-activity-failed">Could not dismiss this suggestion.</p>

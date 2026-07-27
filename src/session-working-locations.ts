@@ -5,7 +5,10 @@ export type SessionRepositoryWorkingLocation = Readonly<{
   repositoryName: string
   kind: 'current-checkout' | 'worktree'
 }> &
-  (Readonly<{ availability: 'available'; branch: string }> | Readonly<{ availability: 'unavailable'; branch?: never }>)
+  (
+    | Readonly<{ availability: 'available'; branch: string; workingPath: string }>
+    | Readonly<{ availability: 'unavailable'; branch?: never; workingPath?: never }>
+  )
 
 export type SessionWorkingLocationsSnapshot = Readonly<{
   sessionId: SessionId

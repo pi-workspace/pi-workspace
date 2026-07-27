@@ -33,7 +33,7 @@ export function WorkstreamContextLayout({
   activeSession,
   changesSelection,
 }: WorkstreamContextLayoutProperties) {
-  const hasChanges = Boolean(activeSession && activeSession.mode !== 'brainstorm')
+  const hasChanges = Boolean(activeSession)
   const [open, setOpen] = useState(hasChanges)
   const [dockWidth, setDockWidth] = useState(520)
   const [layoutWidth, setLayoutWidth] = useState(0)

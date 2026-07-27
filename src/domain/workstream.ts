@@ -1,10 +1,5 @@
 import type { SessionId } from './session'
 
-export const sessionModes = ['default', 'brainstorm', 'implement'] as const
-export const managedSessionModes = ['brainstorm', 'implement'] as const
-
-export type SessionMode = (typeof sessionModes)[number]
-export type ManagedSessionMode = (typeof managedSessionModes)[number]
 export type WorkstreamLifecycle = 'active' | 'archived'
 export type WorkstreamWorkingLocation = 'current-checkouts' | 'worktrees'
 export type SessionAvailability = 'available' | 'unavailable'
@@ -25,19 +20,10 @@ type OwnedSessionProperties = Readonly<{
   availability: SessionAvailability
 }>
 
-export type OwnedSession =
-  | Readonly<
-      OwnedSessionProperties & {
-        mode: 'default'
-        repositoryAccess: DirectSessionRepositoryAccess
-      }
-    >
-  | Readonly<
-      OwnedSessionProperties & {
-        mode: ManagedSessionMode
-        repositoryAccess: ManagedSessionRepositoryAccess
-      }
-    >
+export type OwnedSession = OwnedSessionProperties &
+  Readonly<{
+    repositoryAccess: DirectSessionRepositoryAccess | ManagedSessionRepositoryAccess
+  }>
 
 export type WorkstreamRepositoryWorkingLocation = Readonly<{
   repositoryId: string
@@ -89,7 +75,7 @@ export type ForkSessionOptions = Readonly<{
 
 export type CreateWorkstreamOptions = Readonly<{
   goal: string
-  mode?: ManagedSessionMode
+  repositoryIds?: readonly string[]
 }>
 
 export type CreateQuickSessionOptions = Readonly<{
@@ -99,7 +85,6 @@ export type CreateQuickSessionOptions = Readonly<{
 }>
 
 export type CreateSessionOptions = Readonly<{
-  mode: ManagedSessionMode
   title?: string
 }>
 
@@ -109,8 +94,4 @@ export function normalizeWorkstreamGoal(goal: string): string {
   if (!normalizedGoal) throw new TypeError('A Workstream goal is required.')
 
   return normalizedGoal
-}
-
-export function normalizeSessionMode(mode?: ManagedSessionMode): ManagedSessionMode {
-  return mode ?? 'implement'
 }

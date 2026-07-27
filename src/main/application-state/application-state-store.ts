@@ -83,7 +83,7 @@ function migrateApplicationState(database: SqliteDatabase): void {
   database.exec('PRAGMA foreign_keys = ON;')
   const schemaVersion = Number(database.prepare("SELECT value FROM metadata WHERE key = 'schema_version'").get()?.value)
 
-  if (schemaVersion !== 3 && schemaVersion !== 4 && schemaVersion !== 5) return
+  if (schemaVersion !== 3 && schemaVersion !== 4 && schemaVersion !== 5 && schemaVersion !== 6) return
 
   database.exec('BEGIN IMMEDIATE;')
 
@@ -139,6 +139,19 @@ function migrateApplicationState(database: SqliteDatabase): void {
       database.exec('ALTER TABLE sessions ADD COLUMN forked_from_entry_id TEXT;')
     }
 
+    if (!tableExists(database, 'workstream_repositories')) {
+      database.exec(`
+        CREATE TABLE workstream_repositories (workstream_id TEXT NOT NULL REFERENCES workstreams(id), repository_id TEXT NOT NULL REFERENCES repositories(id), PRIMARY KEY (workstream_id, repository_id));
+        INSERT INTO workstream_repositories (workstream_id, repository_id)
+        SELECT workstream.id, membership.repository_id
+          FROM workstreams workstream
+          JOIN workspace_repositories membership ON membership.workspace_id = workstream.workspace_id
+         WHERE workstream.goal IS NOT NULL;
+      `)
+    }
+
+    database.prepare("UPDATE sessions SET mode = 'managed' WHERE access_kind = 'managed'").run()
+
     database
       .prepare("UPDATE metadata SET value = ? WHERE key = 'schema_version'")
       .run(String(applicationStateSchemaVersion))
@@ -161,6 +174,7 @@ function initializeSchema(database: SqliteDatabase, generationId: string): void 
     CREATE TABLE workspace_repositories (id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL REFERENCES workspaces(id), repository_id TEXT NOT NULL REFERENCES repositories(id), role TEXT NOT NULL DEFAULT '', relationships TEXT NOT NULL DEFAULT '[]', validation_commands TEXT NOT NULL DEFAULT '[]', UNIQUE(workspace_id, repository_id));
     CREATE TABLE workstreams (id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL REFERENCES workspaces(id), goal TEXT, lifecycle TEXT NOT NULL, working_location TEXT NOT NULL, working_location_revision INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL);
     CREATE TABLE sessions (id TEXT PRIMARY KEY, workstream_id TEXT NOT NULL REFERENCES workstreams(id), title TEXT NOT NULL, description TEXT, mode TEXT NOT NULL, availability TEXT NOT NULL, access_kind TEXT NOT NULL, repository_id TEXT REFERENCES repositories(id), pi_session_id TEXT NOT NULL UNIQUE, expected_jsonl_path TEXT NOT NULL UNIQUE, creation_status TEXT NOT NULL, created_at INTEGER NOT NULL, parent_session_id TEXT REFERENCES sessions(id), forked_from_entry_id TEXT);
+    CREATE TABLE workstream_repositories (workstream_id TEXT NOT NULL REFERENCES workstreams(id), repository_id TEXT NOT NULL REFERENCES repositories(id), PRIMARY KEY (workstream_id, repository_id));
     CREATE TABLE workstream_repository_locations (workstream_id TEXT NOT NULL REFERENCES workstreams(id), repository_id TEXT NOT NULL REFERENCES repositories(id), kind TEXT NOT NULL, working_path TEXT NOT NULL, branch TEXT, base_commit TEXT, availability TEXT NOT NULL, PRIMARY KEY (workstream_id, repository_id));
     CREATE TABLE session_run_leases (session_id TEXT PRIMARY KEY REFERENCES sessions(id), workstream_id TEXT NOT NULL REFERENCES workstreams(id), lease_id TEXT NOT NULL UNIQUE, purpose TEXT NOT NULL, acquired_at INTEGER NOT NULL);
     CREATE TABLE session_repository_locations (session_id TEXT NOT NULL REFERENCES sessions(id), repository_id TEXT NOT NULL REFERENCES repositories(id), kind TEXT NOT NULL, working_path TEXT NOT NULL, branch TEXT, base_commit TEXT, availability TEXT NOT NULL, PRIMARY KEY (session_id, repository_id));
@@ -181,6 +195,7 @@ function readMetadata(database: SqliteDatabase): ApplicationStateMetadata | unde
       'repositories',
       'workspace_repositories',
       'workstream_repository_locations',
+      ...(schemaVersionNumber >= 7 ? ['workstream_repositories'] : []),
       ...workstreamKnowledgeTableNames,
     ]) {
       database.prepare(`SELECT 1 FROM ${table} LIMIT 1`).get()
@@ -263,7 +278,10 @@ export async function initializeApplicationStateStore(storageDirectory: string, 
         marker &&
         metadata.integrity === 'ok' &&
         metadata.generationId === marker.generationId &&
-        (metadata.schemaVersion === 3 || metadata.schemaVersion === 4 || metadata.schemaVersion === 5)
+        (metadata.schemaVersion === 3 ||
+          metadata.schemaVersion === 4 ||
+          metadata.schemaVersion === 5 ||
+          metadata.schemaVersion === 6)
       ) {
         migrateApplicationState(database)
       }

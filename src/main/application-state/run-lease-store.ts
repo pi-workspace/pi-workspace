@@ -49,12 +49,13 @@ export function createRunLeaseStore({ openDatabase }: RunLeaseStoreOptions) {
                       END AS working_path
                  FROM sessions session
                  JOIN workstreams workstream ON workstream.id = session.workstream_id
-                 JOIN workspace_repositories membership ON membership.workspace_id = workstream.workspace_id
+                 JOIN workstream_repositories selected ON selected.workstream_id = workstream.id
+                 JOIN workspace_repositories membership
+                   ON membership.workspace_id = workstream.workspace_id AND membership.repository_id = selected.repository_id
                  JOIN repositories repository ON repository.id = membership.repository_id
                  LEFT JOIN session_repository_locations location
                    ON location.session_id = session.id AND location.repository_id = repository.id
                 WHERE session.access_kind = 'managed'
-                  AND session.mode = 'implement'
                   AND repository.availability = 'available'
              )
              SELECT 1

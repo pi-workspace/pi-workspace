@@ -15,7 +15,6 @@ const session: OwnedSession = {
   id: sessionId('session-a'),
   workstreamId: 'workstream-a',
   title: 'First Session',
-  mode: 'implement',
   availability: 'available',
   repositoryAccess: { kind: 'managed' as const },
 }

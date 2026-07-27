@@ -13,27 +13,50 @@ import {
   parseWorkstreamLifecycleRequest,
 } from './workstreams-ipc'
 
-test('parses Workstream creation with an omitted Session mode', () => {
-  assert.deepEqual(parseCreateWorkstreamRequest({ workspaceId: 'workspace-a', goal: 'Ship the change' }), {
-    workspaceId: 'workspace-a',
-    options: { goal: 'Ship the change' },
-  })
-})
-
-test('parses Workstream creation with an explicit Session mode', () => {
+test('parses Workstream creation with selected Repositories', () => {
   assert.deepEqual(
     parseCreateWorkstreamRequest({
       workspaceId: 'workspace-a',
-      goal: 'Work separately',
-      mode: 'implement',
+      goal: 'Ship the change',
+      repositoryIds: ['repository-a', 'repository-b', 'repository-a'],
     }),
     {
       workspaceId: 'workspace-a',
-      options: {
-        goal: 'Work separately',
-        mode: 'implement',
-      },
+      options: { goal: 'Ship the change', repositoryIds: ['repository-a', 'repository-b'] },
     }
+  )
+})
+
+test('rejects Workstream creation without a selected Repository', () => {
+  assert.equal(
+    parseCreateWorkstreamRequest({ workspaceId: 'workspace-a', goal: 'Ship the change', repositoryIds: [] }),
+    undefined
+  )
+})
+
+test('rejects removed Session modes through Workstream creation', () => {
+  assert.equal(
+    parseCreateWorkstreamRequest({
+      workspaceId: 'workspace-a',
+      goal: 'Ship the change',
+      repositoryIds: ['repository-a'],
+      mode: 'brainstorm',
+    }),
+    undefined
+  )
+})
+
+test('parses mode-less Session creation', () => {
+  assert.deepEqual(parseCreateSessionRequest({ workstreamId: 'workstream-a', title: 'Build it' }), {
+    workstreamId: 'workstream-a',
+    options: { title: 'Build it' },
+  })
+})
+
+test('rejects removed modes through Session creation', () => {
+  assert.equal(
+    parseCreateSessionRequest({ workstreamId: 'workstream-a', mode: 'implement', title: 'Build it' }),
+    undefined
   )
 })
 
@@ -67,27 +90,6 @@ test('parses a worktree preview scoped to one Repository', () => {
 
 test('rejects a worktree preview without a selected Repository', () => {
   assert.equal(parsePreviewWorktreeLocationsRequest({ workspaceId: 'workspace-a' }), undefined)
-})
-
-test('rejects Default mode through Workstream creation', () => {
-  assert.equal(
-    parseCreateWorkstreamRequest({ workspaceId: 'workspace-a', goal: 'Ship the change', mode: 'default' }),
-    undefined
-  )
-})
-
-test('rejects Default mode through managed Session creation', () => {
-  assert.equal(
-    parseCreateSessionRequest({ workstreamId: 'workstream-a', mode: 'default', title: 'Quick Session' }),
-    undefined
-  )
-})
-
-test('rejects an unknown Session mode', () => {
-  assert.equal(
-    parseCreateSessionRequest({ workstreamId: 'workstream-a', mode: 'execute', title: 'Build it' }),
-    undefined
-  )
 })
 
 test('rejects an unknown Workstream lifecycle', () => {

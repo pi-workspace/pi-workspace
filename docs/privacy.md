@@ -14,12 +14,12 @@ directory, returned by `app.getPath('userData')`:
 - `settings.json` contains the appearance preference.
 - `application-state.json` identifies the current application-state generation.
 - `application-state.sqlite` contains Workspaces, registered Repository paths, memberships, Workstreams, Session
-  ownership and access state, and structured Workstream knowledge.
+  ownership and access state, and legacy structured Workstream records retained for compatibility.
 - `application-state-*.sqlite` files are backups created before an application-state reset or through the recovery UI.
 - `sessions/*.jsonl` files contain the app-owned Pi Session histories.
 - `session-quarantine/*.jsonl` retains conflicting Session files that Railyard will not adopt as an owned Session.
-- `session-cwd/` is the app-owned working directory recorded by managed Session files. A Quick Session instead runs
-  directly in its selected Repository's current checkout or dedicated worktree.
+- `session-cwd/` is the app-owned working directory recorded by Workstream Session files. A Quick Session instead
+  runs directly in its selected Repository's current checkout or dedicated worktree.
 
 The exact application-data path is platform-dependent. On supported Debian systems it is normally
 `~/.config/Railyard`; on macOS it is normally `~/Library/Application Support/Railyard`. Railyard creates or corrects
@@ -33,7 +33,7 @@ non-empty application-data directories, and leaves the legacy directory in place
 have confirmed that the copied Workspaces and Sessions open correctly.
 
 Railyard does not copy complete Repository checkouts into its application-data directory. Session history and
-structured Workstream knowledge can still contain file contents, paths, commands, tool results, and other Repository data
+legacy structured Workstream records can still contain file contents, paths, commands, tool results, and other Repository data
 that entered the Agent conversation or activity record.
 
 ### Pi configuration and credentials
@@ -53,10 +53,10 @@ metadata, tool calls, tool input and output, command output, errors, summaries, 
 Workspace Agent Activity metadata. Session history is append-only and tree-shaped; compacting the model context does
 not remove earlier records from the Session file.
 
-User-level Pi resources remain available in every Session. Managed Brainstorm and Implement Sessions also aggregate
-conventional instruction, extension, skill, prompt-template, and theme paths from every current Workspace Repository.
-Because a Workspace can contain multiple Repositories, Railyard does not merge conflicting Repository-local
-`.pi/settings.json` files; managed Sessions use global settings plus settings from their app-owned working directory.
+User-level Pi resources remain available in every Session. Workstream Sessions also aggregate conventional
+instruction, extension, skill, prompt-template, and theme paths from the Repositories selected for that Workstream.
+Because a Workstream can contain multiple Repositories, Railyard does not merge conflicting Repository-local
+`.pi/settings.json` files; Workstream Sessions use global settings plus settings from their app-owned working directory.
 Railyard does not currently present Pi's interactive project-trust prompt for these paths. Treat Workspace
 membership as trusting each Repository's local Pi resources. Third-party extensions and packages run with the user's
 normal local authority and can store data, access files, execute commands, or make network requests independently of
@@ -96,19 +96,19 @@ package, and do not ask the Agent to print credential files or environment varia
 
 A Workspace or Workstream is an application routing boundary, not an operating-system sandbox:
 
-- A **Quick Session** in Default mode works directly in its selected Repository's current checkout or dedicated
-  worktree with Pi's normal tools.
-- A **Brainstorm Session** receives every current Workspace Repository working path and Pi's normal tools. Its system
-  prompt instructs the Agent not to modify Repository content, but this is methodology rather than sandbox enforcement.
-- An **Implement Session** can inspect and modify every current Workspace Repository checkout. A user can explicitly
-  create a dedicated worktree for one Session and Repository from the Repository's current local `HEAD`; subsequent
-  Agent changes for that Repository are routed there. This routing is instructed rather than filesystem-enforced.
-- Managed Sessions expose Workspace metadata, selected Repository working locations, explicit Implement worktree
-  creation, and structured Workstream knowledge through Railyard-owned tools. They do not add Repository approval
-  prompts or per-operation confirmations before normal Pi tool use.
+- A **Quick Session** works directly in its selected Repository's current checkout or dedicated worktree with Pi's
+  normal tools.
+- A **Workstream Session** receives the Workstream goal plus the selected Repositories' names, working locations,
+  roles, relationships, validation commands, and related metadata in its system prompt. It can inspect and modify
+  those Repository checkouts with Pi's normal tools.
+- A user can explicitly create a dedicated worktree for one Session and Repository from the Repository's current local
+  `HEAD`; subsequent Agent changes for that Repository are routed there. This routing is instructed rather than
+  filesystem-enforced.
+- Workstream Sessions expose current Repository metadata and selected working locations through Railyard-owned tools.
+  They do not add Repository approval prompts or per-operation confirmations before normal Pi tool use.
 
 User-installed extensions remain trusted local code with their normal authority. Their tools and lifecycle hooks are
-not confined by Brainstorm mode, Workspace membership, Repository routing, or managed worktrees. An extension can
+not confined by Workspace membership, Workstream Repository selection, Repository routing, or Session worktrees. An extension can
 inspect, create, change, or delete files and run programs with the permissions of the user who launched Railyard.
 Only install extensions and packages whose authority is appropriate for the Workspace.
 
@@ -141,7 +141,7 @@ transient console output.
 Data remains until the user or another local process removes it:
 
 - Back up and then delete Railyard's Electron user-data directory to remove its settings, application authority,
-  structured Workstream knowledge, backups, and app-owned Session histories. If Railyard copied legacy Pi Workspace
+  legacy structured Workstream records, backups, and app-owned Session histories. If Railyard copied legacy Pi Workspace
   data, delete that legacy directory separately after confirming the copied data. Railyard currently has no UI for
   deleting an individual Workspace, Workstream, or Session.
 - Use Pi's authentication tooling or remove the relevant entry from Pi's `auth.json` to remove a locally stored provider

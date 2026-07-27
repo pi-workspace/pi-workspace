@@ -68,7 +68,7 @@ test('managed Sessions load normal global and Workspace Repository resources', a
     workspaceId: 'workspace-a',
     workstreamId: 'workstream-a',
     sessionId: sessionId('session-a'),
-    mode: 'brainstorm',
+    goal: 'Ship the Workstream goal',
     lifecycle: 'active',
     repositories: [
       {
@@ -80,6 +80,7 @@ test('managed Sessions load normal global and Workspace Repository resources', a
         availability: 'available',
         role: '',
         relationships: [],
+        validationCommands: [],
       },
     ],
     piSessionPath: join(root, 'session.jsonl'),
@@ -137,7 +138,7 @@ test('managed Sessions ignore resources from unavailable Workspace Repositories'
     workspaceId: 'workspace-a',
     workstreamId: 'workstream-a',
     sessionId: sessionId('session-a'),
-    mode: 'brainstorm',
+    goal: 'Ship the Workstream goal',
     lifecycle: 'active',
     repositories: [
       {
@@ -147,6 +148,7 @@ test('managed Sessions ignore resources from unavailable Workspace Repositories'
         availability: 'unavailable',
         role: '',
         relationships: [],
+        validationCommands: [],
       },
     ],
     piSessionPath: join(root, 'session.jsonl'),

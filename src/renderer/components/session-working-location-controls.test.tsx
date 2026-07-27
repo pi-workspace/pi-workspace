@@ -16,6 +16,7 @@ const currentSnapshot = {
       kind: 'current-checkout' as const,
       availability: 'available' as const,
       branch: 'main',
+      workingPath: '/workspace/repository-a',
     },
   ],
 }
@@ -24,6 +25,7 @@ afterEach(cleanup)
 
 test('creates a worktree only after the user requests isolation for the selected Repository', async () => {
   const requests: string[][] = []
+  const copiedPaths: string[] = []
   const bridge: SessionWorkingLocationsBridge = {
     async get() {
       return currentSnapshot
@@ -37,12 +39,21 @@ test('creates a worktree only after the user requests isolation for the selected
             ...currentSnapshot.repositories[0]!,
             kind: 'worktree',
             branch: 'railyard/session-a/repository-a',
+            workingPath: '/workspace/.worktrees/session-a/repository-a',
           },
         ],
       }
     },
   }
   const user = userEvent.setup({ document: browser.document as unknown as Document })
+  Object.defineProperty(browser.navigator, 'clipboard', {
+    configurable: true,
+    value: {
+      async writeText(path: string) {
+        copiedPaths.push(path)
+      },
+    },
+  })
   const view = render(
     <SessionWorkingLocationControls
       bridge={bridge}
@@ -60,7 +71,14 @@ test('creates a worktree only after the user requests isolation for the selected
   await user.click(view.getByRole('button', { name: 'Current checkout · main' }))
   await user.click(view.getByRole('menuitem', { name: 'Create worktree' }))
 
-  await waitFor(() => assert.ok(view.getByText('Worktree · railyard/session-a/repository-a')))
+  const worktree = await view.findByRole('button', { name: 'Copy worktree path' })
+  assert.equal(worktree.title, '.worktrees/session-a/repository-a')
+  assert.equal(worktree.textContent, 'Worktree')
+  assert.equal(view.queryByText('/workspace/.worktrees/session-a/repository-a'), null)
+  await user.hover(worktree)
+  assert.equal(worktree.textContent, 'Worktree')
+  await user.click(worktree)
+  await waitFor(() => assert.deepEqual(copiedPaths, ['/workspace/.worktrees/session-a/repository-a']))
   await waitFor(() => assert.equal(view.queryByRole('menuitem'), null))
   assert.deepEqual(requests, [[currentSnapshot.sessionId, 'repository-a']])
 })
@@ -78,6 +96,7 @@ test('selects which Workstream Repository context to show', async () => {
             kind: 'current-checkout' as const,
             availability: 'available' as const,
             branch: 'develop',
+            workingPath: '/workspace/repository-b',
           },
         ],
       }

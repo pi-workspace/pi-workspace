@@ -97,9 +97,9 @@ each supported platform:
 3. Create a Workstream and confirm its owned Session is available.
 4. Start a Quick Session for a Workspace Repository and submit a message successfully.
 5. Reopen an app-owned Session and confirm its history, Model, and Effort are available.
-6. Create Brainstorm and Implement Sessions and confirm their Composers are immediately available,
-   `workspace_overview` lists every current Workspace Repository and its available working path, configured Pi
-   extensions remain available, and Pi's normal filesystem and shell tools work without approval prompts.
+6. Create a Workstream with multiple selected Repositories and confirm its Sessions' Composers are immediately
+   available, `workspace_overview` lists only those Repositories with their metadata and available working paths,
+   configured Pi extensions remain available, and Pi's normal filesystem and shell tools work without approval prompts.
 7. If the release promises compatibility with the previous beta's application data, upgrade and verify that exact
    compatibility claim. Otherwise, confirm the Release Note states the compatibility limitation before sharing the
    prerelease.
@@ -110,7 +110,7 @@ expected Railyard icon and does not show an unidentified-developer warning.
 
 On Windows 11 x64, use a local Git Repository whose path has a drive letter and spaces. Confirm Git is available on
 `PATH`, Railyard detects the Pi provider configuration created by `pi` and `/login`, Quick Sessions work from both
-the current checkout and a dedicated worktree, and Brainstorm and Implement Sessions can run a shell command.
+the current checkout and a dedicated worktree, and Workstream Sessions can run a shell command.
 
 ## Revoke a compromised release
 

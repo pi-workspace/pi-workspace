@@ -12,7 +12,7 @@ function policy(
     workspaceId: 'workspace-a',
     workstreamId: 'workstream-a',
     sessionId: sessionId('session-a'),
-    mode: 'implement',
+    goal: 'Ship the Workstream goal',
     lifecycle: 'active',
     runLeaseId: 'lease-a',
     repositories: [
@@ -22,6 +22,7 @@ function policy(
         commonDirectoryPath: '/repositories/a/.git',
         role: '',
         relationships: [],
+        validationCommands: [],
         availability: 'available',
         workingPath:
           workingLocation === 'source-checkout' ? '/repositories/a' : '/repositories/.worktrees/session-a/repository-a',

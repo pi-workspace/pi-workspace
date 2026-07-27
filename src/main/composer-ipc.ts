@@ -9,10 +9,6 @@ import {
 import type { SessionManager } from '@earendil-works/pi-coding-agent'
 import { isSessionSkillName, type SessionMessageSubmissionResult, type SessionRunStopResult } from '@/src/composer'
 import type { ManagedSessionRuntimePolicy } from '@/src/domain/managed-session'
-import type {
-  WorkstreamKnowledgeCommand,
-  WorkstreamKnowledgeMutationResult,
-} from '@/src/domain/workstream-knowledge-transitions'
 import {
   composerIpcChannels,
   parseCodeReviewCommentCommand,
@@ -55,11 +51,7 @@ import { classifyPersistedAgentState } from '@/src/main/pi-session-history'
 import { createDefaultSessionServices, createManagedSessionServices } from '@/src/main/managed-session-resources'
 import { managedSessionFileRoots } from '@/src/main/managed-session-file-roots'
 import { createManagedSessionRuntimePolicyGuard } from '@/src/main/managed-session-runtime-policy'
-import {
-  managedSessionMethodology,
-  parsePiWorkstreamKnowledgeMutation,
-  projectWorkspaceOverview,
-} from '@/src/main/managed-session-tools'
+import { managedSessionMethodology, projectWorkspaceOverview } from '@/src/main/managed-session-tools'
 import { broadcastToTrustedRenderers, handleTrustedIpc } from '@/src/main/trusted-ipc'
 import { isAllowedExternalUrl } from '@/src/session-transcript'
 import {
@@ -85,10 +77,6 @@ type PiSessionRuntimeOptions =
       setSessionDescription: (description: string) => Promise<void>
       policy: ManagedSessionRuntimePolicy
       resolvePolicy: () => Promise<ManagedSessionRuntimePolicy | undefined>
-      getWorkstreamKnowledge: () => Promise<unknown>
-      applyWorkstreamKnowledgeCommand: (
-        command: WorkstreamKnowledgeCommand
-      ) => Promise<WorkstreamKnowledgeMutationResult>
       prepareSessionRepository: (
         repositoryId: string
       ) => Promise<Readonly<{ repositoryId: string; workingPath: string; resourcePolicyRevision: number }>>
@@ -197,24 +185,16 @@ export async function createPiSessionRuntime(
     description: 'Show the user an optional Railyard action card for an allowlisted next step.',
     promptGuidelines: [
       'Use only when the suggested action follows clearly from the completed work.',
-      'Use start-implement-session only in a Brainstorm Session when planning is ready for implementation.',
-      'When implementation is ready for user review and a pull request can be created, call suggest_action with prepare-pull-request before completing your response.',
+      'When changes are ready for user review and a pull request can be created, call suggest_action with prepare-pull-request before completing your response.',
     ],
     parameters: Type.Object({
-      kind: Type.Union([Type.Literal('start-implement-session'), Type.Literal('prepare-pull-request')]),
+      kind: Type.Literal('prepare-pull-request'),
       title: Type.String({ minLength: 1 }),
       description: Type.String({ minLength: 1 }),
     }),
     async execute(_toolCallId, input) {
       const action = parseSessionActionCardToolInput(input)
       if (!action) throw new TypeError('An allowlisted action card with a title and description is required.')
-      if (
-        action.kind === 'start-implement-session' &&
-        (options.kind !== 'managed' || options.policy.mode !== 'brainstorm')
-      ) {
-        throw new TypeError('Only a Brainstorm Session can suggest starting an Implement Session.')
-      }
-
       runtimeListeners.forEach((listener) =>
         listener({ type: 'action_card_created', input: action, createdAt: Date.now() })
       )
@@ -237,69 +217,29 @@ export async function createPiSessionRuntime(
               return { content: [{ type: 'text' as const, text: JSON.stringify(overview) }], details: {} }
             },
           }),
-          ...(options.policy.mode === 'implement'
-            ? [
-                defineTool({
-                  name: 'prepare_repository',
-                  label: 'Prepare Repository',
-                  description:
-                    'Create or reuse this Implement Session’s isolated worktree for one Workspace Repository before modifying it.',
-                  parameters: Type.Object({
-                    repositoryId: Type.String({ minLength: 1, description: 'Repository id from workspace_overview' }),
-                  }),
-                  async execute(_toolCallId, input) {
-                    const prepared = await prepareManagedRepository(input.repositoryId)
-
-                    return {
-                      content: [
-                        {
-                          type: 'text' as const,
-                          text: JSON.stringify({
-                            repositoryId: prepared.repositoryId,
-                            workingPath: prepared.workingPath,
-                          }),
-                        },
-                      ],
-                      details: {},
-                    }
-                  },
-                }),
-              ]
-            : []),
           defineTool({
-            name: 'workstream_knowledge',
-            label: 'Workstream knowledge',
-            description: 'Read the current durable knowledge owned by this Workstream.',
-            parameters: Type.Object({}),
-            async execute() {
-              await validateManagedPolicy()
-              const state = await options.getWorkstreamKnowledge()
-
-              return { content: [{ type: 'text' as const, text: JSON.stringify(state) }], details: {} }
-            },
-          }),
-          defineTool({
-            name: 'update_workstream_knowledge',
-            label: 'Update Workstream knowledge',
+            name: 'prepare_repository',
+            label: 'Prepare Repository',
             description:
-              'Create, revise, or tombstone a draft Workstream record. Read workstream_knowledge first and supply its current optimistic revisions. User-only decision, assumption, and specification transitions are unavailable.',
+              'Create or reuse this Session’s working location for one selected Workstream Repository before modifying it.',
             parameters: Type.Object({
-              operation: Type.Union([Type.Literal('put-record'), Type.Literal('tombstone-record')]),
-              expectedKnowledgeRevision: Type.Integer({ minimum: 0 }),
-              expectedRecordRevision: Type.Integer({ minimum: 0 }),
-              record: Type.Optional(Type.Unknown({ description: 'Complete structured record draft for put-record' })),
-              recordId: Type.Optional(
-                Type.String({ minLength: 1, description: 'Existing record ID for tombstone-record' })
-              ),
+              repositoryId: Type.String({ minLength: 1, description: 'Repository id from workspace_overview' }),
             }),
             async execute(_toolCallId, input) {
-              await validateManagedPolicy()
-              const command = parsePiWorkstreamKnowledgeMutation(input)
-              if (!command) throw new TypeError('A valid Pi-authorized Workstream knowledge mutation is required.')
+              const prepared = await prepareManagedRepository(input.repositoryId)
 
-              const result = await options.applyWorkstreamKnowledgeCommand(command)
-
-              return { content: [{ type: 'text' as const, text: JSON.stringify(result) }], details: {} }
+              return {
+                content: [
+                  {
+                    type: 'text' as const,
+                    text: JSON.stringify({
+                      repositoryId: prepared.repositoryId,
+                      workingPath: prepared.workingPath,
+                    }),
+                  },
+                ],
+                details: {},
+              }
             },
           }),
         ]
@@ -307,11 +247,7 @@ export async function createPiSessionRuntime(
   const customTools = [startActivity, completeActivity, setSessionDescription, suggestAction, ...managedTools]
   const sessionServices =
     options.kind === 'managed'
-      ? await createManagedSessionServices(
-          directoryPath,
-          options.policy,
-          managedSessionMethodology(options.policy.mode)
-        )
+      ? await createManagedSessionServices(directoryPath, options.policy, managedSessionMethodology(options.policy))
       : await createDefaultSessionServices(directoryPath)
   const { session } = await createAgentSession({
     cwd: directoryPath,
@@ -694,9 +630,6 @@ export function initializeComposer(authority: ApplicationAuthority): void {
         setSessionDescription,
         policy: managedPolicy,
         resolvePolicy: async () => (await authority.resolveOwnedSession(managedPolicy.sessionId))?.managedPolicy,
-        getWorkstreamKnowledge: () => authority.getWorkstreamKnowledge(managedPolicy.workstreamId),
-        applyWorkstreamKnowledgeCommand: (command) =>
-          authority.applyPiWorkstreamKnowledgeCommand(managedPolicy.workstreamId, command, managedPolicy.sessionId),
         prepareSessionRepository: (repositoryId) =>
           authority.prepareSessionRepository(managedPolicy.sessionId, repositoryId),
       })

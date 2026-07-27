@@ -507,7 +507,6 @@ export function WorkspaceShell({ initialWorkspacesSnapshot, initialSessionDispla
             onToggleSessionPin={toggleSessionPin}
             acceptActionCard={window.piWorkspace.transcript.acceptActionCard}
             dismissActionCard={window.piWorkspace.transcript.dismissActionCard}
-            onStartImplementSession={(workstreamId) => createSession(workstreamId, { mode: 'implement' })}
             onOpenCurrentDiff={openCurrentDiff}
           />
         ) : selectedWorkstream?.goal ? (

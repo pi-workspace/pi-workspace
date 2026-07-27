@@ -13,6 +13,20 @@ test('the demo bridge dismisses an available action card', async () => {
   assert.equal((await bridge.transcript.getSnapshot(implementationSessionId)).actionCards?.[0]?.status, 'dismissed')
 })
 
+test('the demo bridge projects only a Workstream’s selected Repository locations', async () => {
+  const bridge = createDemoBridge('workstream')
+  const created = await bridge.workstreams.createWorkstream('Atlas Product', {
+    goal: 'Ship API reliability',
+    repositoryIds: ['Atlas API'],
+  })
+  const locations = await bridge.sessionWorkingLocations.get(created.sessionId)
+
+  assert.deepEqual(
+    locations.repositories.map((repository) => repository.repositoryId),
+    ['Atlas API']
+  )
+})
+
 test('the multi-Session demo includes empty, half-full, and full context windows', () => {
   const scenario = getDemoScenario('multi-session')
   const usages = scenario.workstreams.workstreams

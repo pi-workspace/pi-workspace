@@ -9,11 +9,9 @@ import {
   ChevronRight,
   Ellipsis,
   GitBranch,
-  Hammer,
   LoaderCircle,
   Plus,
   SquareTerminal,
-  Telescope,
   Workflow,
 } from 'lucide-react'
 import { Dropdown, DropdownButton, DropdownItem, DropdownLabel, DropdownMenu } from '@/components/ui-kit/dropdown'
@@ -35,20 +33,12 @@ function workstreamLabel(workstream: Workstream): string {
   return workstream.goal || (workstream.unavailability ? 'Quick Session' : 'Sessions')
 }
 
-function sessionModeLabel(session: Workstream['sessions'][number]): string {
-  if (session.mode === 'default') return 'Default'
-  return session.mode === 'brainstorm' ? 'Brainstorm' : 'Implement'
-}
-
 function sessionContext(session: Workstream['sessions'][number]): string {
-  const mode = sessionModeLabel(session)
-
   const unavailableContext = sessionUnavailabilityContext(session)
+  const context =
+    session.repositoryAccess.kind === 'direct' ? session.repositoryAccess.repositoryName : 'Workstream Session'
 
-  if (session.mode === 'default') {
-    return `${session.repositoryAccess.repositoryName}${unavailableContext ? ` · ${unavailableContext}` : ''}`
-  }
-  return unavailableContext ? `${mode} · ${unavailableContext}` : mode
+  return unavailableContext ? `${context} · ${unavailableContext}` : context
 }
 
 const sessionListClassName =
@@ -286,7 +276,8 @@ function QuickSessionNavigationItem({
 }: QuickSessionNavigationItemProperties) {
   const [lifecycleSaving, setLifecycleSaving] = useState(false)
   const [lifecycleError, setLifecycleError] = useState<string>()
-  const repositoryName = session.mode === 'default' ? session.repositoryAccess.repositoryName : 'unknown Repository'
+  const repositoryName =
+    session.repositoryAccess.kind === 'direct' ? session.repositoryAccess.repositoryName : 'unknown Repository'
   const inaccessible = Boolean(getSessionUnavailability(session))
   const lifecycleActionLabel = workstream.lifecycle === 'active' ? 'Archive Session' : 'Restore Session'
   const context = `${sessionContext(session)}${workstream.lifecycle === 'archived' ? ' · archived' : ''}`
@@ -573,8 +564,7 @@ export function WorkstreamGroup({
         <div id={sessionsId} className={sessionListClassName}>
           <SidebarSection>
             {workstream.sessions.map((session, sessionIndex) => {
-              const ModeIcon =
-                session.mode === 'default' ? SquareTerminal : session.mode === 'brainstorm' ? Telescope : Hammer
+              const SessionIcon = session.repositoryAccess.kind === 'direct' ? SquareTerminal : Workflow
               const pinned = pinnedSessionIds.includes(session.id)
               const inaccessible = Boolean(getSessionUnavailability(session))
 
@@ -586,7 +576,7 @@ export function WorkstreamGroup({
                   working={workingSessionIds.has(session.id)}
                   titleEditing={titleEditing}
                   currentIndicatorClassName={sessionCurrentIndicatorClassName(sessionIndex, workstream.sessions.length)}
-                  icon={<ModeIcon aria-hidden="true" className="size-4 shrink-0 text-sidebar-muted-foreground" />}
+                  icon={<SessionIcon aria-hidden="true" className="size-4 shrink-0 text-sidebar-muted-foreground" />}
                   endAction={
                     <Dropdown>
                       <DropdownButton

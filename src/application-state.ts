@@ -1,4 +1,4 @@
-export const applicationStateSchemaVersion = 6
+export const applicationStateSchemaVersion = 7
 
 export type InstallationMarker = Readonly<{
   generationId: string
