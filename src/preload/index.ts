@@ -10,6 +10,8 @@ import type { SessionSkillsBridge } from '@/src/session-skills'
 import { sessionSkillsIpcChannels } from '@/src/session-skills-ipc'
 import type { SessionChangesBridge, SessionChangesSnapshot, SessionFileDiff } from '@/src/session-changes'
 import { sessionChangesIpcChannels } from '@/src/session-changes-ipc'
+import type { SessionWorkingLocationsBridge, SessionWorkingLocationsSnapshot } from '@/src/session-working-locations'
+import { sessionWorkingLocationsIpcChannels } from '@/src/session-working-locations-ipc'
 import type { SessionFilesBridge } from '@/src/session-files'
 import { sessionFilesIpcChannels } from '@/src/session-files-ipc'
 import type {
@@ -232,6 +234,20 @@ const sessionChangesBridge: SessionChangesBridge = {
   },
 }
 
+const sessionWorkingLocationsBridge: SessionWorkingLocationsBridge = {
+  get(sessionId) {
+    return ipcRenderer.invoke(sessionWorkingLocationsIpcChannels.get, {
+      sessionId,
+    }) as Promise<SessionWorkingLocationsSnapshot>
+  },
+  createWorktree(sessionId, repositoryId) {
+    return ipcRenderer.invoke(sessionWorkingLocationsIpcChannels.createWorktree, {
+      sessionId,
+      repositoryId,
+    }) as Promise<SessionWorkingLocationsSnapshot>
+  },
+}
+
 const sessionConfigurationBridge: SessionConfigurationBridge = {
   getSnapshot(sessionId) {
     return ipcRenderer.invoke(sessionConfigurationIpcChannels.getSnapshot, {
@@ -305,6 +321,7 @@ const piWorkspaceBridge: PiWorkspaceBridge = {
   sessionSkills: sessionSkillsBridge,
   sessionFiles: sessionFilesBridge,
   sessionChanges: sessionChangesBridge,
+  sessionWorkingLocations: sessionWorkingLocationsBridge,
   sessionConfiguration: sessionConfigurationBridge,
   transcript: sessionTranscriptBridge,
   settings: settingsBridge,

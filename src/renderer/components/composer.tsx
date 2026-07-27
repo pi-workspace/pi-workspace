@@ -17,6 +17,8 @@ import { ComposerEditor, type ComposerEditorHandle } from '@/src/renderer/compon
 import { getComposerSubmissionState } from '@/src/renderer/composer-submission'
 import type { SessionSkill, SessionSkillsBridge } from '@/src/session-skills'
 import type { SessionFile, SessionFilesBridge } from '@/src/session-files'
+import type { SessionWorkingLocationsBridge } from '@/src/session-working-locations'
+import { SessionWorkingLocationControls } from '@/src/renderer/components/session-working-location-controls'
 import { useSessionConfiguration } from '@/src/renderer/session-configuration-state'
 
 type ComposerProperties = Readonly<{
@@ -33,6 +35,8 @@ type ComposerProperties = Readonly<{
   sessionConfiguration?: SessionConfigurationBridge
   sessionSkills?: SessionSkillsBridge
   sessionFiles?: SessionFilesBridge
+  sessionWorkingLocations?: SessionWorkingLocationsBridge
+  canCreateWorktree?: boolean
 }>
 
 export function Composer({
@@ -49,6 +53,8 @@ export function Composer({
   sessionConfiguration,
   sessionSkills,
   sessionFiles,
+  sessionWorkingLocations,
+  canCreateWorktree = false,
 }: ComposerProperties) {
   const descriptionId = useId()
   const statusId = useId()
@@ -390,6 +396,14 @@ export function Composer({
           </div>
         </div>
       </div>
+      {sessionWorkingLocations && (
+        <SessionWorkingLocationControls
+          bridge={sessionWorkingLocations}
+          canCreateWorktree={canCreateWorktree}
+          isWorking={isWorking}
+          sessionId={session.id}
+        />
+      )}
       <p id={descriptionId} className="sr-only">
         Enter to send or steer. Shift+Enter for a new line. Alt+Enter to queue.
       </p>

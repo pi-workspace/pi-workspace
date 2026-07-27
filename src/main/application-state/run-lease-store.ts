@@ -6,11 +6,10 @@ type RunLeaseStoreOptions = Readonly<{
   openDatabase: () => SqliteDatabase
 }>
 
+type SessionLeasePurpose = 'agent-run' | 'context-compaction' | 'worktree-creation'
+
 export function createRunLeaseStore({ openDatabase }: RunLeaseStoreOptions) {
-  async function acquireSessionLease(
-    sessionId: SessionId,
-    purpose: 'agent-run' | 'context-compaction'
-  ): Promise<boolean> {
+  async function acquireSessionLease(sessionId: SessionId, purpose: SessionLeasePurpose): Promise<boolean> {
     const database = openDatabase()
 
     try {
@@ -73,10 +72,7 @@ export function createRunLeaseStore({ openDatabase }: RunLeaseStoreOptions) {
     }
   }
 
-  async function settleSessionLease(
-    sessionId: SessionId,
-    purpose: 'agent-run' | 'context-compaction'
-  ): Promise<boolean> {
+  async function settleSessionLease(sessionId: SessionId, purpose: SessionLeasePurpose): Promise<boolean> {
     const database = openDatabase()
 
     try {
@@ -97,5 +93,7 @@ export function createRunLeaseStore({ openDatabase }: RunLeaseStoreOptions) {
     settleSessionRunLease: (sessionId: SessionId) => settleSessionLease(sessionId, 'agent-run'),
     acquireSessionCompactionLease: (sessionId: SessionId) => acquireSessionLease(sessionId, 'context-compaction'),
     settleSessionCompactionLease: (sessionId: SessionId) => settleSessionLease(sessionId, 'context-compaction'),
+    acquireSessionWorktreeLease: (sessionId: SessionId) => acquireSessionLease(sessionId, 'worktree-creation'),
+    settleSessionWorktreeLease: (sessionId: SessionId) => settleSessionLease(sessionId, 'worktree-creation'),
   }
 }

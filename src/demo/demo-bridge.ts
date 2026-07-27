@@ -71,6 +71,7 @@ export function createDemoBridge(scenarioName?: string): PiWorkspaceBridge {
   const transcriptListeners = new Set<Parameters<PiWorkspaceBridge['transcript']['subscribe']>[0]>()
   const settingsListeners = new Set<Parameters<PiWorkspaceBridge['settings']['subscribe']>[0]>()
   const codeReviewDrafts = new Map<string, SessionCodeReviewDraft>()
+  const demoSessionWorktrees = new Set<string>()
   const demoFileStaging = new Map<string, 'staged' | 'unstaged' | 'partial'>([
     ['src/notes/note-store.ts', 'partial'],
     ['src/notes/sync-queue.ts', 'unstaged'],
@@ -316,6 +317,32 @@ export function createDemoBridge(scenarioName?: string): PiWorkspaceBridge {
 
         demoFileStaging.set(path, staged ? 'staged' : 'unstaged')
         return this.getSnapshot(sessionId)
+      },
+    },
+    sessionWorkingLocations: {
+      async get(sessionId) {
+        const session = workstreamsSnapshot.workstreams
+          .flatMap((workstream) => workstream.sessions)
+          .find((candidate) => candidate.id === sessionId)
+        if (!session || session.mode === 'default') return { sessionId, repositories: [] }
+
+        return {
+          sessionId,
+          repositories: demoRepositories.slice(0, 2).map((repository) => {
+            const usesWorktree = demoSessionWorktrees.has(`${sessionId}:${repository.id}`)
+            return {
+              repositoryId: repository.id,
+              repositoryName: repository.name,
+              kind: usesWorktree ? ('worktree' as const) : ('current-checkout' as const),
+              availability: 'available' as const,
+              branch: usesWorktree ? `railyard/demo/${repository.id}` : 'main',
+            }
+          }),
+        }
+      },
+      async createWorktree(sessionId, repositoryId) {
+        demoSessionWorktrees.add(`${sessionId}:${repositoryId}`)
+        return this.get(sessionId)
       },
     },
     sessionConfiguration: {

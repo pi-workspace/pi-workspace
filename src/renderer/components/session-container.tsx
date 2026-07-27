@@ -13,6 +13,7 @@ import type { SessionConfigurationBridge } from '@/src/session-configuration'
 import type { SessionSkillsBridge } from '@/src/session-skills'
 import type { SessionActionCard } from '@/src/session-action-cards'
 import type { SessionFilesBridge } from '@/src/session-files'
+import type { SessionWorkingLocationsBridge } from '@/src/session-working-locations'
 import type { SessionTranscriptBridge } from '@/src/session-transcript'
 import { Composer } from '@/src/renderer/components/composer'
 import { QueuedFollowUpTray } from '@/src/renderer/components/queued-follow-up-tray'
@@ -45,6 +46,7 @@ type SessionContainerProperties = {
   sessionConfiguration?: SessionConfigurationBridge
   sessionSkills?: SessionSkillsBridge
   sessionFiles?: SessionFilesBridge
+  sessionWorkingLocations?: SessionWorkingLocationsBridge
   getForkPoints?: () => Promise<readonly SessionForkPoint[]>
   forkSession?: (options: ForkSessionOptions) => Promise<void>
   onTogglePin: () => void
@@ -75,6 +77,7 @@ export function SessionContainer({
   sessionConfiguration,
   sessionSkills,
   sessionFiles,
+  sessionWorkingLocations,
   getForkPoints,
   forkSession,
   onTogglePin,
@@ -261,6 +264,8 @@ export function SessionContainer({
           sessionConfiguration={sessionConfiguration}
           sessionSkills={sessionSkills}
           sessionFiles={sessionFiles}
+          sessionWorkingLocations={sessionWorkingLocations}
+          canCreateWorktree={session.mode === 'implement' && workstreamLifecycle === 'active'}
         />
       )}
     </section>

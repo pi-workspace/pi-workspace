@@ -117,6 +117,17 @@ function worktreeCreationError(proposal: WorktreeProposal, error: unknown): Erro
   return new Error(detail || `Git could not create the worktree at ${proposal.worktreePath}.`, { cause: error })
 }
 
+export async function inspectGitBranch(repositoryPath: string): Promise<string> {
+  const symbolicBranch = await exec('git', ['-C', repositoryPath, 'symbolic-ref', '--quiet', '--short', 'HEAD']).then(
+    ({ stdout }) => stdout.trim(),
+    () => ''
+  )
+  if (symbolicBranch) return symbolicBranch
+
+  const { stdout } = await exec('git', ['-C', repositoryPath, 'rev-parse', '--short', 'HEAD'])
+  return `Detached HEAD (${stdout.trim()})`
+}
+
 export async function inspectGitRepository(selectedDirectoryPath: string): Promise<InspectedGitRepository> {
   const canonicalSelectedDirectoryPath = await realpath(selectedDirectoryPath).catch(() => {
     throw new TypeError('Select an existing local Git Repository.')

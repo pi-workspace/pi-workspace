@@ -16,6 +16,15 @@ import { initializeApplicationAuthority, type SqliteModule } from './index'
 const exec = promisify(execFile)
 const temporaryDirectories: string[] = []
 
+function deferred<Value>() {
+  let resolve: (value: Value | PromiseLike<Value>) => void = () => {}
+  const promise = new Promise<Value>((resolvePromise) => {
+    resolve = resolvePromise
+  })
+
+  return { promise, resolve }
+}
+
 type BunSqliteModule = Readonly<{ Database: SqliteModule['DatabaseSync'] }>
 type RepositoryInspector = (directoryPath: string) => Promise<InspectedGitRepository>
 const { Database } = (await Function('return import("bun:sqlite")')()) as BunSqliteModule
@@ -348,6 +357,26 @@ test('creates a Workstream with exactly one default Implement Session', async ()
   assert.equal(workstream?.sessions[0]?.availability, 'available')
 })
 
+test('reports current checkout and branch context for an Implement Session', async () => {
+  const { authority, workspace } = await createFixture()
+  const repository = workspace.repositories[0]!
+  await exec('git', ['-C', repository.directoryPath, 'branch', '-m', 'feature/current'])
+  const created = await authority.createWorkstream(workspace.id, { goal: 'Show working context' })
+
+  assert.deepEqual(await authority.getSessionWorkingLocations(created.sessionId), {
+    sessionId: created.sessionId,
+    repositories: [
+      {
+        repositoryId: repository.id,
+        repositoryName: repository.name,
+        kind: 'current-checkout',
+        availability: 'available',
+        branch: 'feature/current',
+      },
+    ],
+  })
+})
+
 test('prepares the current checkout for an Implement Session without creating a worktree', async () => {
   const { authority, storageDirectory, workspace } = await createFixture()
   const repository = workspace.repositories[0]!
@@ -376,6 +405,22 @@ test('creates a Repository worktree only when explicitly requested for an Implem
   assert.equal(await readFile(join(expectedPath, 'tracked.txt'), 'utf8'), 'committed')
 })
 
+test('reports worktree and branch context after explicit Session isolation', async () => {
+  const { authority, workspace } = await createFixture()
+  const repository = workspace.repositories[0]!
+  await commitRepositoryFile(repository.directoryPath, 'tracked.txt', 'committed', 'Initial commit')
+  const created = await authority.createWorkstream(workspace.id, { goal: 'Show isolated working context' })
+  await authority.createSessionWorktree(created.sessionId, repository.id)
+
+  const context = await authority.getSessionWorkingLocations(created.sessionId)
+
+  assert.equal(context.repositories[0]?.kind, 'worktree')
+  assert.match(
+    context.repositories[0]?.availability === 'available' ? context.repositories[0].branch : '',
+    /^railyard\//
+  )
+})
+
 test('does not create a Session worktree while its Implement Session is running', async () => {
   const { authority, workspace } = await createFixture()
   const repository = workspace.repositories[0]!
@@ -386,6 +431,35 @@ test('does not create a Session worktree while its Implement Session is running'
     authority.createSessionWorktree(created.sessionId, repository.id),
     /Wait for the Session to become idle/
   )
+})
+
+test('blocks an Agent Run while a Session worktree is being created', async () => {
+  const storageDirectory = await realpath(await mkdtemp(join(tmpdir(), 'pi-workspace-worktree-lease-')))
+  temporaryDirectories.push(storageDirectory)
+  const repositoryPath = join(storageDirectory, 'repository')
+  await exec('git', ['init', repositoryPath])
+  await commitRepositoryFile(repositoryPath, 'tracked.txt', 'committed', 'Initial commit')
+  const creationStarted = deferred<void>()
+  const continueCreation = deferred<void>()
+  const authority = await initializeApplicationAuthority(storageDirectory, {
+    sqlite: bunSqlite,
+    createWorktree: async (proposal) => {
+      creationStarted.resolve()
+      await continueCreation.promise
+      return createWorktree(proposal)
+    },
+  })
+  const workspace = (await authority.createWorkspace('Workspace', [repositoryPath])).workspaces[0]!
+  const repository = workspace.repositories[0]!
+  const created = await authority.createWorkstream(workspace.id, { goal: 'Keep worktree creation exclusive' })
+
+  const creating = authority.createSessionWorktree(created.sessionId, repository.id)
+  await creationStarted.promise
+
+  assert.equal(await authority.acquireSessionRunLease(created.sessionId), false)
+
+  continueCreation.resolve()
+  await creating
 })
 
 test('exposes only prepared writable Repository locations for Session changes', async () => {

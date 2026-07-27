@@ -17,12 +17,14 @@ import type {
 } from '@/src/domain/workstream'
 import {
   createWorktree as createGitWorktree,
+  inspectGitBranch,
   inspectGitRepository,
   restoreWorktree as restoreGitWorktree,
   type InspectedGitRepository,
   type WorktreeProposal,
 } from '@/src/main/git-repositories'
 import { createPiSessionFileStore, type PiSessionFileStore } from '@/src/main/pi-session-files'
+import type { SessionWorkingLocationsSnapshot } from '@/src/session-working-locations'
 import type { SqliteModule } from './sqlite'
 import { createRunLeaseStore } from './run-lease-store'
 import { createSessionFileReconciliation } from './session-file-reconciliation'
@@ -41,11 +43,13 @@ import { incrementRevision, initializeApplicationStateStore, loadSqlite } from '
 export type { SqliteDatabase, SqliteModule } from './sqlite'
 
 type RepositoryInspector = (directoryPath: string) => Promise<InspectedGitRepository>
+type BranchInspector = (directoryPath: string) => Promise<string>
 
 export type ApplicationAuthorityOptions = Readonly<{
   sqlite?: SqliteModule
   sessionFiles?: PiSessionFileStore
   inspectRepository?: RepositoryInspector
+  inspectBranch?: BranchInspector
   createWorktree?: (proposal: WorktreeProposal) => Promise<WorktreeProposal>
 }>
 
@@ -84,6 +88,7 @@ export type ApplicationAuthority = Readonly<{
   renameWorkstreamSession(sessionId: SessionId, title: string): Promise<WorkstreamsSnapshot>
   setSessionDescription(sessionId: SessionId, description: string): Promise<WorkstreamsSnapshot>
   resolveOwnedSession(sessionId: SessionId): Promise<OwnedSessionResolution | undefined>
+  getSessionWorkingLocations(sessionId: SessionId): Promise<SessionWorkingLocationsSnapshot>
   resolveSessionChangeRepositories(sessionId: SessionId): Promise<readonly SessionChangeRepositoryLocation[]>
   resolveWorkstreamWorkingLocation(workstreamId: string, repositoryId: string): Promise<string>
   getWorkstreamKnowledge(workstreamId: string): Promise<WorkstreamKnowledge>
@@ -113,6 +118,7 @@ export async function initializeApplicationAuthority(
   const { createBackup, reset, openDatabase } = applicationStateStore
   const sessionFiles = options.sessionFiles ?? (await createPiSessionFileStore(storageDirectory))
   const inspectRepository = options.inspectRepository ?? inspectGitRepository
+  const inspectBranch = options.inspectBranch ?? inspectGitBranch
   const createWorktree = options.createWorktree ?? createGitWorktree
 
   const workspaceRepositoryStore = createWorkspaceRepositoryStore({
@@ -138,8 +144,14 @@ export async function initializeApplicationAuthority(
   } = workspaceRepositoryStore
   const { reconcilePendingSessionFiles, refreshOwnedSessionAvailability, reconcileCommittedSession } =
     sessionFileReconciliation
-  const { acquireSessionRunLease, settleSessionRunLease, acquireSessionCompactionLease, settleSessionCompactionLease } =
-    runLeaseStore
+  const {
+    acquireSessionRunLease,
+    settleSessionRunLease,
+    acquireSessionCompactionLease,
+    settleSessionCompactionLease,
+    acquireSessionWorktreeLease,
+    settleSessionWorktreeLease,
+  } = runLeaseStore
   const {
     getWorkstreamKnowledge,
     applyUserWorkstreamKnowledgeCommand,
@@ -150,6 +162,7 @@ export async function initializeApplicationAuthority(
   const workstreamSessionStore = createWorkstreamSessionStore({
     openDatabase,
     inspectRepository,
+    inspectBranch,
     createWorktree,
     restoreWorktree: restoreGitWorktree,
     sessionFiles,
@@ -163,7 +176,7 @@ export async function initializeApplicationAuthority(
     previewWorktreeLocations,
     createWorkstream,
     createQuickSession,
-    createSessionWorktree,
+    createSessionWorktree: createPersistedSessionWorktree,
     prepareSessionRepository,
     createWorkstreamSession,
     getSessionForkPoints,
@@ -172,10 +185,23 @@ export async function initializeApplicationAuthority(
     renameWorkstreamSession,
     setSessionDescription,
     resolveOwnedSession,
+    getSessionWorkingLocations,
     resolveSessionChangeRepositories,
     resolveWorkstreamWorkingLocation,
     getCurrentWorkstreamRepositorySet,
   } = workstreamSessionStore
+
+  const createSessionWorktree = async (sessionId: SessionId, repositoryId: string) => {
+    if (!(await acquireSessionWorktreeLease(sessionId))) {
+      throw new TypeError('Wait for the Session to become idle before creating a worktree.')
+    }
+
+    try {
+      return await createPersistedSessionWorktree(sessionId, repositoryId)
+    } finally {
+      await settleSessionWorktreeLease(sessionId)
+    }
+  }
 
   return {
     get startup() {
@@ -202,6 +228,7 @@ export async function initializeApplicationAuthority(
     renameWorkstreamSession,
     setSessionDescription,
     resolveOwnedSession,
+    getSessionWorkingLocations,
     resolveSessionChangeRepositories,
     resolveWorkstreamWorkingLocation,
     getWorkstreamKnowledge,

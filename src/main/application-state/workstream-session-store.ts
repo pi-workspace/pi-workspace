@@ -29,6 +29,7 @@ import { restorePiUserMessageDraft } from '@/src/main/pi-session-message-mapping
 import { normalizeSessionDescription } from '@/src/session-description'
 import { normalizeSessionTitle } from '@/src/session-title'
 import type { OwnedPiSessionLocation, PiSessionCreationIntent, PiSessionFileStore } from '@/src/main/pi-session-files'
+import type { SessionWorkingLocationsSnapshot } from '@/src/session-working-locations'
 import type { SqliteDatabase } from './sqlite'
 import {
   initializeStoredWorkstreamKnowledge,
@@ -43,11 +44,13 @@ import {
 } from './workspace-repository-store'
 
 type RepositoryInspector = (directoryPath: string) => Promise<InspectedGitRepository>
+type BranchInspector = (directoryPath: string) => Promise<string>
 type SessionCreationStatus = 'available' | 'pending' | 'quarantined'
 
 type WorkstreamSessionStoreOptions = Readonly<{
   openDatabase: () => SqliteDatabase
   inspectRepository: RepositoryInspector
+  inspectBranch: BranchInspector
   createWorktree: (proposal: WorktreeProposal) => Promise<WorktreeProposal>
   restoreWorktree: (proposal: WorktreeProposal) => Promise<WorktreeProposal>
   sessionFiles: PiSessionFileStore
@@ -97,6 +100,7 @@ export type SessionChangeRepositoryLocation = Readonly<{
 export function createWorkstreamSessionStore({
   openDatabase,
   inspectRepository,
+  inspectBranch,
   createWorktree,
   restoreWorktree,
   sessionFiles,
@@ -802,9 +806,6 @@ export function createWorkstreamSessionStore({
 
       if (!repository) throw new TypeError('Select a Repository from the Implement Session Workspace.')
       if (repository.availability !== 'available') throw new TypeError('The selected Repository is unavailable.')
-      if (database.prepare('SELECT 1 FROM session_run_leases WHERE session_id = ?').get(sessionId)) {
-        throw new TypeError('Wait for the Session to become idle before creating a worktree.')
-      }
 
       const existing = database
         .prepare('SELECT kind FROM session_repository_locations WHERE session_id = ? AND repository_id = ?')
@@ -1572,6 +1573,47 @@ export function createWorkstreamSessionStore({
     }
   }
 
+  async function getSessionWorkingLocations(sessionId: SessionId): Promise<SessionWorkingLocationsSnapshot> {
+    const resolution = await resolveOwnedSession(sessionId)
+    if (!resolution) throw new TypeError('The Session is unavailable.')
+    if (!resolution.managedPolicy) return { sessionId, repositories: [] }
+
+    const repositories = await Promise.all(
+      resolution.managedPolicy.repositories.map(async (repository) => {
+        if (repository.availability !== 'available') {
+          return {
+            repositoryId: repository.id,
+            repositoryName: repository.name,
+            kind: 'current-checkout' as const,
+            availability: 'unavailable' as const,
+          }
+        }
+
+        const kind =
+          repository.workingLocation === 'session-worktree' ? ('worktree' as const) : ('current-checkout' as const)
+
+        try {
+          return {
+            repositoryId: repository.id,
+            repositoryName: repository.name,
+            kind,
+            availability: 'available' as const,
+            branch: await inspectBranch(repository.workingPath),
+          }
+        } catch {
+          return {
+            repositoryId: repository.id,
+            repositoryName: repository.name,
+            kind,
+            availability: 'unavailable' as const,
+          }
+        }
+      })
+    )
+
+    return { sessionId, repositories }
+  }
+
   async function resolveSessionChangeRepositories(
     sessionId: SessionId
   ): Promise<readonly SessionChangeRepositoryLocation[]> {
@@ -1652,6 +1694,7 @@ export function createWorkstreamSessionStore({
     renameWorkstreamSession,
     setSessionDescription,
     resolveOwnedSession,
+    getSessionWorkingLocations,
     resolveSessionChangeRepositories,
     resolveWorkstreamWorkingLocation,
     getCurrentWorkstreamRepositorySet,

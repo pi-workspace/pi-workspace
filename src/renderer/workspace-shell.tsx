@@ -501,6 +501,7 @@ export function WorkspaceShell({ initialWorkspacesSnapshot, initialSessionDispla
             sessionConfiguration={window.piWorkspace.sessionConfiguration}
             sessionSkills={window.piWorkspace.sessionSkills}
             sessionFiles={window.piWorkspace.sessionFiles}
+            sessionWorkingLocations={window.piWorkspace.sessionWorkingLocations}
             getSessionForkPoints={(sessionId) => window.piWorkspace.workstreams.getSessionForkPoints(sessionId)}
             forkSession={forkSession}
             onToggleSessionPin={toggleSessionPin}
