@@ -518,9 +518,10 @@ jobs:
           archive="${archives[0]}"
           shasum -a 256 "$package" > "${package%.dmg}.sha256"
           shasum -a 256 "$archive" > "$archive.sha256"
+          archive_sha512="$(openssl dgst -sha512 -binary "$archive" | openssl base64 -A)"
           grep --fixed-strings --line-regexp "version: ${{ needs.validate.outputs.version }}" "$metadata"
           grep --fixed-strings "url: $archive" "$metadata"
-          grep --extended-regexp '^    sha512: .+' "$metadata"
+          grep --fixed-strings --line-regexp "    sha512: $archive_sha512" "$metadata"
           echo "path=release/$package" >> "$GITHUB_OUTPUT"
           echo "sbom=release/${package%.dmg}.spdx.json" >> "$GITHUB_OUTPUT"
 
@@ -609,9 +610,10 @@ jobs:
           disk_image="$(echo railyard-*-mac-universal.dmg)"
           archive="$(echo railyard-*-mac-universal.zip)"
           metadata="beta-mac.yml"
+          archive_sha512="$(openssl dgst -sha512 -binary "$archive" | openssl base64 -A)"
           grep --fixed-strings --line-regexp "version: $VERSION" "$metadata"
           grep --fixed-strings "url: $archive" "$metadata"
-          grep --extended-regexp '^    sha512: .+' "$metadata"
+          grep --fixed-strings --line-regexp "    sha512: $archive_sha512" "$metadata"
 
           update_path="$(mktemp -d)"
           ditto -x -k "$archive" "$update_path"
