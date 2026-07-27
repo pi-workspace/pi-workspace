@@ -37,6 +37,7 @@ type SessionAreaProperties = {
   sessionSkills?: SessionSkillsBridge
   onToggleSessionPin: (sessionId: SessionId) => void
   acceptActionCard?: SessionTranscriptBridge['acceptActionCard']
+  dismissActionCard?: SessionTranscriptBridge['dismissActionCard']
   onStartImplementSession?: (workstreamId: string) => Promise<void>
 }
 
@@ -64,6 +65,7 @@ export function SessionArea({
   sessionSkills,
   onToggleSessionPin,
   acceptActionCard = async () => false,
+  dismissActionCard = async () => false,
   onStartImplementSession = async () => {},
 }: SessionAreaProperties) {
   const sessionPaneRefs = useRef(new Map<SessionId, HTMLDivElement>())
@@ -121,6 +123,7 @@ export function SessionArea({
             sessionSkills={sessionSkills}
             onTogglePin={() => onToggleSessionPin(session.id)}
             acceptActionCard={acceptActionCard}
+            dismissActionCard={dismissActionCard}
             onStartImplementSession={onStartImplementSession}
           />
         </div>

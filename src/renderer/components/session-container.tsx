@@ -36,6 +36,7 @@ type SessionContainerProperties = {
   sessionSkills?: SessionSkillsBridge
   onTogglePin: () => void
   acceptActionCard?: SessionTranscriptBridge['acceptActionCard']
+  dismissActionCard?: SessionTranscriptBridge['dismissActionCard']
   onStartImplementSession?: (workstreamId: string) => Promise<void>
 }
 
@@ -61,6 +62,7 @@ export function SessionContainer({
   sessionSkills,
   onTogglePin,
   acceptActionCard = async () => false,
+  dismissActionCard = async () => false,
   onStartImplementSession = async () => {},
 }: SessionContainerProperties) {
   const headingId = useId()
@@ -143,7 +145,7 @@ export function SessionContainer({
         timelineAnnouncement={transcriptState.announcement}
         timelineError={transcriptState.error}
         onReloadTimeline={transcriptState.reload}
-        onActionCard={async (card: SessionActionCard, option) => {
+        onActionCard={async (card: SessionActionCard) => {
           if (card.kind === 'start-implement-session') {
             await onStartImplementSession(session.workstreamId)
             return acceptActionCard(session.id, card.id)
@@ -152,14 +154,12 @@ export function SessionContainer({
           const result = await submitMessage({
             sessionId: session.id,
             delivery: 'action',
-            text:
-              option === 'ready'
-                ? 'Create a pull request for the completed work. Review the current changes, validation results, and branch status, then prepare a clear title and description for my approval.'
-                : 'Create a draft pull request for the completed work. Review the current changes, validation results, and branch status, then prepare a clear title and description for my approval.',
+            text: 'Create a draft pull request for the completed work. Review the current changes, validation results, and branch status, then prepare a clear title and description for my approval.',
           })
 
           return result.status === 'accepted' && (await acceptActionCard(session.id, card.id))
         }}
+        onDismissActionCard={(card) => dismissActionCard(session.id, card.id)}
       />
       {!composerUnavailable && transcriptState.snapshot?.queuedFollowUps && (
         <QueuedFollowUpTray

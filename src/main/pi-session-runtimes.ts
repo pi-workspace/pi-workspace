@@ -154,6 +154,7 @@ export interface PiSessionRuntimeRegistry {
   removeQueuedFollowUp(sessionId: SessionId, followUpId: string): Promise<boolean>
   resumeQueuedFollowUps(sessionId: SessionId): Promise<boolean>
   acceptActionCard(sessionId: SessionId, actionCardId: string): Promise<boolean>
+  dismissActionCard(sessionId: SessionId, actionCardId: string): Promise<boolean>
   renameSession(sessionId: SessionId, title: string): Promise<void>
   getWorkingStateSnapshots(): readonly SessionWorkingStateSnapshot[]
   loadActivityDetails(sessionId: SessionId, activityId: string): Promise<AgentActivityDetails | undefined>
@@ -255,7 +256,7 @@ export function createPiSessionRuntimeRegistry({
     return true
   }
 
-  function acceptActionCard(sessionId: SessionId, actionCardId: string): boolean {
+  function setActionCardStatus(sessionId: SessionId, actionCardId: string, status: 'accepted' | 'dismissed'): boolean {
     const timeline = getTimeline(sessionId)
     const cardIndex = timeline.actionCards.findIndex(
       (card) => card.id === actionCardId && card.sessionId === sessionId && card.status === 'available'
@@ -270,12 +271,12 @@ export function createPiSessionRuntimeRegistry({
       version: 1,
       type: 'action-card-status',
       actionCardId,
-      status: 'accepted',
+      status,
     })
 
     if (!persisted) return false
 
-    timeline.actionCards[cardIndex] = { ...card, status: 'accepted' }
+    timeline.actionCards[cardIndex] = { ...card, status }
     publishTimeline(sessionId)
     return true
   }
@@ -1533,7 +1534,11 @@ export function createPiSessionRuntimeRegistry({
     },
     async acceptActionCard(sessionId, actionCardId) {
       await getRuntime(sessionId)
-      return acceptActionCard(sessionId, actionCardId)
+      return setActionCardStatus(sessionId, actionCardId, 'accepted')
+    },
+    async dismissActionCard(sessionId, actionCardId) {
+      await getRuntime(sessionId)
+      return setActionCardStatus(sessionId, actionCardId, 'dismissed')
     },
     async renameSession(sessionId, title) {
       const runtime = await getRuntime(sessionId)

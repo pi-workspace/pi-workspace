@@ -5,6 +5,7 @@ export const sessionTranscriptIpcChannels = {
   getWorkingStateSnapshots: 'session-transcript:get-working-state-snapshots',
   loadActivityDetails: 'session-transcript:load-activity-details',
   acceptActionCard: 'session-transcript:accept-action-card',
+  dismissActionCard: 'session-transcript:dismiss-action-card',
   openExternalLink: 'session-transcript:open-external-link',
   changed: 'session-transcript:changed',
 } as const
@@ -17,9 +18,7 @@ export function parseSessionTranscriptRequest(value: unknown): { sessionId: stri
   return isSessionId(sessionId) ? { sessionId } : undefined
 }
 
-export function parseActionCardAcceptanceRequest(
-  value: unknown
-): { sessionId: string; actionCardId: string } | undefined {
+export function parseActionCardStatusRequest(value: unknown): { sessionId: string; actionCardId: string } | undefined {
   const request = parseSessionTranscriptRequest(value)
   if (!request || typeof (value as Record<string, unknown>).actionCardId !== 'string') return undefined
 

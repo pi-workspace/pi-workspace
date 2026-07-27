@@ -209,6 +209,9 @@ export function createDemoBridge(scenarioName?: string): PiWorkspaceBridge {
       async acceptActionCard() {
         return false
       },
+      async dismissActionCard() {
+        return false
+      },
       async openExternalLink() {},
       subscribe(listener) {
         transcriptListeners.add(listener)

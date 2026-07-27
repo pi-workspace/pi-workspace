@@ -53,7 +53,7 @@ import {
 import { broadcastToTrustedRenderers, handleTrustedIpc } from '@/src/main/trusted-ipc'
 import { isAllowedExternalUrl } from '@/src/session-transcript'
 import {
-  parseActionCardAcceptanceRequest,
+  parseActionCardStatusRequest,
   parseSessionTranscriptRequest,
   parseTranscriptActivityDetailsRequest,
   sessionTranscriptIpcChannels,
@@ -729,10 +729,18 @@ export function initializeComposer(authority: ApplicationAuthority): void {
   })
 
   handleTrustedIpc(sessionTranscriptIpcChannels.acceptActionCard, (_event, value: unknown) => {
-    const request = parseActionCardAcceptanceRequest(value)
+    const request = parseActionCardStatusRequest(value)
 
     return request
       ? registry.acceptActionCard(sessionId(request.sessionId), request.actionCardId)
+      : Promise.resolve(false)
+  })
+
+  handleTrustedIpc(sessionTranscriptIpcChannels.dismissActionCard, (_event, value: unknown) => {
+    const request = parseActionCardStatusRequest(value)
+
+    return request
+      ? registry.dismissActionCard(sessionId(request.sessionId), request.actionCardId)
       : Promise.resolve(false)
   })
 

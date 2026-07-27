@@ -71,6 +71,7 @@ export interface SessionTranscriptBridge {
   getWorkingStateSnapshots(): Promise<readonly SessionWorkingStateSnapshot[]>
   loadActivityDetails(sessionId: SessionId, activityId: string): Promise<AgentActivityDetails | undefined>
   acceptActionCard(sessionId: SessionId, actionCardId: string): Promise<boolean>
+  dismissActionCard(sessionId: SessionId, actionCardId: string): Promise<boolean>
   openExternalLink(url: string): Promise<void>
   subscribe(listener: (mutation: SessionTranscriptMutation) => void): () => void
 }

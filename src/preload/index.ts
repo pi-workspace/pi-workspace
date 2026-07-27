@@ -235,6 +235,12 @@ const sessionTranscriptBridge: SessionTranscriptBridge = {
       actionCardId,
     }) as Promise<boolean>
   },
+  dismissActionCard(sessionId, actionCardId) {
+    return ipcRenderer.invoke(sessionTranscriptIpcChannels.dismissActionCard, {
+      sessionId,
+      actionCardId,
+    }) as Promise<boolean>
+  },
   openExternalLink(url) {
     return ipcRenderer.invoke(sessionTranscriptIpcChannels.openExternalLink, url) as Promise<void>
   },
