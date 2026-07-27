@@ -1964,6 +1964,18 @@ test('allows concurrent Session Agent Runs in isolated Session worktrees', async
   assert.equal(await authority.acquireSessionRunLease(second.sessionId), true)
 })
 
+test('blocks concurrent Implement Agent Runs that implicitly share current checkouts', async () => {
+  const { authority, workspace } = await createFixture()
+  const created = await authority.createWorkstream(workspace.id, { goal: 'Coordinate checkout changes' })
+  const workstream = created.snapshot.workstreams[0]!
+  const second = await authority.createWorkstreamSession(workstream.id, { mode: 'implement' })
+
+  assert.equal(await authority.acquireSessionRunLease(created.sessionId), true)
+  assert.equal(await authority.acquireSessionRunLease(second.sessionId), false)
+
+  await authority.settleSessionRunLease(created.sessionId)
+})
+
 test('blocks concurrent Agent Runs that share a Repository working path', async () => {
   const { authority, workspace } = await createFixture()
   const repository = workspace.repositories[0]!
