@@ -262,7 +262,7 @@ export function Composer({
   }, [session.id, sessionConfiguration])
 
   return (
-    <div className="composer-tray relative z-10 shrink-0 px-4 pt-3 pb-4">
+    <div className="composer-tray relative z-10 shrink-0 px-6 pt-3 pb-4">
       <div
         aria-busy={agentRunDisabled ? 'true' : undefined}
         className="composer-surface group flex min-h-[52px] flex-col rounded-xl border border-composer-border bg-composer-background"
@@ -360,7 +360,7 @@ export function Composer({
       >
         {statusMessage}
         {configuration?.persistenceWarning && (
-          <button type="button" className="ml-2 underline" onClick={dismissWarning}>
+          <button type="button" className="pointer-events-auto ml-2 underline" onClick={dismissWarning}>
             Dismiss warning
           </button>
         )}

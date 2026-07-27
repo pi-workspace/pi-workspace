@@ -106,7 +106,7 @@ export function QueuedFollowUpTray({
       onMouseLeave={() => setExpanded(false)}
     >
       <ol
-        className="absolute right-3 bottom-3 left-3"
+        className="pointer-events-auto absolute right-3 bottom-3 left-3"
         style={{
           height: `${followUpCardHeight + (expanded ? (visibleFollowUps.length - 1) * expandedFollowUpOffset : 0)}px`,
         }}
