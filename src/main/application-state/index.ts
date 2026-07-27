@@ -75,6 +75,7 @@ export type ApplicationAuthority = Readonly<{
   previewWorktreeLocations(workspaceId: string, repositoryId: string): Promise<WorktreeLocationsPreview>
   createWorkstream(workspaceId: string, options: CreateWorkstreamOptions): Promise<WorkstreamCreationResult>
   createQuickSession(workspaceId: string, options: CreateQuickSessionOptions): Promise<WorkstreamCreationResult>
+  createSessionWorktree(sessionId: SessionId, repositoryId: string): Promise<PreparedSessionRepository>
   prepareSessionRepository(sessionId: SessionId, repositoryId: string): Promise<PreparedSessionRepository>
   createWorkstreamSession(workstreamId: string, options: CreateSessionOptions): Promise<WorkstreamCreationResult>
   getSessionForkPoints(sessionId: SessionId): Promise<readonly SessionForkPoint[]>
@@ -162,6 +163,7 @@ export async function initializeApplicationAuthority(
     previewWorktreeLocations,
     createWorkstream,
     createQuickSession,
+    createSessionWorktree,
     prepareSessionRepository,
     createWorkstreamSession,
     getSessionForkPoints,
@@ -191,6 +193,7 @@ export async function initializeApplicationAuthority(
     previewWorktreeLocations,
     createWorkstream,
     createQuickSession,
+    createSessionWorktree,
     prepareSessionRepository,
     createWorkstreamSession,
     getSessionForkPoints,

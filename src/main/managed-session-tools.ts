@@ -30,9 +30,9 @@ export function managedSessionMethodology(mode: ManagedSessionRuntimePolicy['mod
           'Investigate the Workspace and produce an implementation-ready specification. Do not modify Repository content.',
         ]
       : [
-          'Call workspace_overview before Repository work. Source checkout paths are for inspection only.',
+          'Call workspace_overview before Repository work.',
           'Read workstream_knowledge before implementing. Use update_workstream_knowledge to preserve relevant implementation progress and newly discovered Workstream knowledge.',
-          'Before modifying a Repository, call prepare_repository with its id. Make and validate all changes in the returned Session worktree path.',
+          'Before modifying a Repository, call prepare_repository with its id. Make and validate all changes in the returned Session working path, whether it is the current checkout or a user-selected Session worktree.',
         ]
 
   return [
