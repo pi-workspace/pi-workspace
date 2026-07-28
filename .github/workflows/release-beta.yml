@@ -98,7 +98,10 @@ jobs:
           grep --fixed-strings --line-regexp '/NOTICE' /tmp/package-contents
           grep --fixed-strings --line-regexp '/THIRD_PARTY_NOTICES.md' /tmp/package-contents
           grep --fixed-strings --line-regexp '/node_modules/@earendil-works/pi-coding-agent/package.json' /tmp/package-contents
+          grep --fixed-strings --line-regexp '/node_modules/electron-updater/package.json' /tmp/package-contents
           grep --fixed-strings --line-regexp '/node_modules/@mariozechner/clipboard-linux-x64-gnu/package.json' /tmp/package-contents
+          grep --fixed-strings --line-regexp 'owner: pi-workspace' release/linux-unpacked/resources/app-update.yml
+          grep --fixed-strings --line-regexp 'repo: railyard' release/linux-unpacked/resources/app-update.yml
 
       - name: Identify package and create checksum
         id: package
@@ -139,6 +142,7 @@ jobs:
             railyard \
             @earendil-works/pi-coding-agent \
             @earendil-works/pi-tui \
+            electron-updater \
             react \
             @mariozechner/clipboard-linux-x64-gnu; do
             jq --exit-status --arg package "$package" \
@@ -281,6 +285,7 @@ jobs:
             '/NOTICE'
             '/THIRD_PARTY_NOTICES.md'
             '/node_modules/@earendil-works/pi-coding-agent/package.json'
+            '/node_modules/electron-updater/package.json'
             '/node_modules/@mariozechner/clipboard-win32-x64-msvc/package.json'
           )
 
@@ -288,6 +293,11 @@ jobs:
             if ($packageContents -notcontains $expectedPath) {
               throw "Packaged application is missing $expectedPath."
             }
+          }
+
+          $updateConfiguration = Get-Content release/win-unpacked/resources/app-update.yml
+          if ($updateConfiguration -notcontains 'owner: pi-workspace' -or $updateConfiguration -notcontains 'repo: railyard') {
+            throw 'Packaged application has an invalid update source.'
           }
 
       - name: Identify package and create checksum
@@ -334,6 +344,7 @@ jobs:
             'railyard'
             '@earendil-works/pi-coding-agent'
             '@earendil-works/pi-tui'
+            'electron-updater'
             'react'
             '@mariozechner/clipboard-win32-x64-msvc'
           )) {
@@ -483,21 +494,34 @@ jobs:
           grep --fixed-strings --line-regexp '/NOTICE' /tmp/package-contents
           grep --fixed-strings --line-regexp '/THIRD_PARTY_NOTICES.md' /tmp/package-contents
           grep --fixed-strings --line-regexp '/node_modules/@earendil-works/pi-coding-agent/package.json' /tmp/package-contents
+          grep --fixed-strings --line-regexp '/node_modules/electron-updater/package.json' /tmp/package-contents
           grep --fixed-strings --line-regexp '/node_modules/@mariozechner/clipboard/package.json' /tmp/package-contents
 
-      - name: Identify package and create checksum
+          resources_path="$(dirname "${asar_paths[0]}")"
+          grep --fixed-strings --line-regexp 'owner: pi-workspace' "$resources_path/app-update.yml"
+          grep --fixed-strings --line-regexp 'repo: railyard' "$resources_path/app-update.yml"
+
+      - name: Identify updater artifacts and create checksums
         id: package
         working-directory: release
         run: |
           packages=(railyard-*-mac-universal.dmg)
+          archives=(railyard-*-mac-universal.zip)
+          metadata=beta-mac.yml
 
-          if [[ "${#packages[@]}" != 1 ]]; then
-            echo "Expected exactly one universal macOS disk image." >&2
+          if [[ "${#packages[@]}" != 1 || "${#archives[@]}" != 1 || ! -f "$metadata" ]]; then
+            echo "Expected one macOS disk image, update archive, and metadata file." >&2
             exit 1
           fi
 
           package="${packages[0]}"
+          archive="${archives[0]}"
           shasum -a 256 "$package" > "${package%.dmg}.sha256"
+          shasum -a 256 "$archive" > "$archive.sha256"
+          archive_sha512="$(openssl dgst -sha512 -binary "$archive" | openssl base64 -A)"
+          grep --fixed-strings --line-regexp "version: ${{ needs.validate.outputs.version }}" "$metadata"
+          grep --fixed-strings "url: $archive" "$metadata"
+          grep --fixed-strings --line-regexp "    sha512: $archive_sha512" "$metadata"
           echo "path=release/$package" >> "$GITHUB_OUTPUT"
           echo "sbom=release/${package%.dmg}.spdx.json" >> "$GITHUB_OUTPUT"
 
@@ -528,6 +552,7 @@ jobs:
             railyard \
             @earendil-works/pi-coding-agent \
             @earendil-works/pi-tui \
+            electron-updater \
             react \
             @mariozechner/clipboard-darwin-arm64; do
             jq --exit-status --arg package "$package" \
@@ -540,6 +565,8 @@ jobs:
           name: railyard-${{ needs.validate.outputs.version }}-mac-universal
           path: |
             release/*.dmg
+            release/*.zip
+            release/*-mac.yml
             release/*.sha256
             release/*.spdx.json
           if-no-files-found: error
@@ -571,16 +598,38 @@ jobs:
           path: release
 
       - name: Verify, mount, and launch release candidate
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
         run: |
           set -euo pipefail
 
           cd release
           shasum -a 256 --check railyard-*-mac-universal.sha256
+          shasum -a 256 --check railyard-*-mac-universal.zip.sha256
 
           disk_image="$(echo railyard-*-mac-universal.dmg)"
+          archive="$(echo railyard-*-mac-universal.zip)"
+          metadata="beta-mac.yml"
+          archive_sha512="$(openssl dgst -sha512 -binary "$archive" | openssl base64 -A)"
+          grep --fixed-strings --line-regexp "version: $VERSION" "$metadata"
+          grep --fixed-strings "url: $archive" "$metadata"
+          grep --fixed-strings --line-regexp "    sha512: $archive_sha512" "$metadata"
+
+          update_path="$(mktemp -d)"
+          ditto -x -k "$archive" "$update_path"
+          update_application="$update_path/Railyard.app"
+          test -d "$update_application"
+          codesign --verify --deep --strict --verbose=2 "$update_application"
+          spctl --assess --type execute --verbose=4 "$update_application"
+          xcrun stapler validate "$update_application"
+
           mount_path="$(mktemp -d)"
           hdiutil attach "$disk_image" -nobrowse -readonly -mountpoint "$mount_path"
-          trap 'hdiutil detach "$mount_path"' EXIT
+          cleanup() {
+            hdiutil detach "$mount_path"
+            rm -rf "$update_path" "$mount_path"
+          }
+          trap cleanup EXIT
 
           application_path="$mount_path/Railyard.app"
           test -d "$application_path"
@@ -591,6 +640,7 @@ jobs:
           ./../node_modules/.bin/asar list "$application_path/Contents/Resources/app.asar" > /tmp/package-contents
           grep --fixed-strings --line-regexp '/dist/main/index.js' /tmp/package-contents
           grep --fixed-strings --line-regexp '/dist/preload/index.cjs' /tmp/package-contents
+          grep --fixed-strings --line-regexp '/node_modules/electron-updater/package.json' /tmp/package-contents
 
           "$application_path/Contents/MacOS/Railyard" --no-sandbox >/tmp/railyard.log 2>&1 &
           application_pid=$!
@@ -655,6 +705,8 @@ jobs:
             release/*.deb
             release/*.dmg
             release/*.exe
+            release/*.zip
+            release/*-mac.yml
             release/*.sha256
             release/*.spdx.json
 
@@ -683,14 +735,24 @@ jobs:
 
           release_created=true
 
-          gh release upload "$RELEASE_TAG" release/*.deb release/*.dmg release/*.exe release/*.sha256 release/*.spdx.json
+          gh release upload "$RELEASE_TAG" \
+            release/*.deb \
+            release/*.dmg \
+            release/*.exe \
+            release/*.zip \
+            release/*-mac.yml \
+            release/*.sha256 \
+            release/*.spdx.json
 
           gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name' > published-assets.txt
           grep --fixed-strings --line-regexp "$(basename release/*.deb)" published-assets.txt
           grep --fixed-strings --line-regexp "$(basename release/*-mac-universal.dmg)" published-assets.txt
+          grep --fixed-strings --line-regexp "$(basename release/*-mac-universal.zip)" published-assets.txt
+          grep --fixed-strings --line-regexp "$(basename release/*-mac.yml)" published-assets.txt
           grep --fixed-strings --line-regexp "$(basename release/*-win-x64-setup.exe)" published-assets.txt
           grep --fixed-strings --line-regexp "$(basename release/*-amd64.sha256)" published-assets.txt
           grep --fixed-strings --line-regexp "$(basename release/*-mac-universal.sha256)" published-assets.txt
+          grep --fixed-strings --line-regexp "$(basename release/*-mac-universal.zip.sha256)" published-assets.txt
           grep --fixed-strings --line-regexp "$(basename release/*-win-x64-setup.sha256)" published-assets.txt
           grep --fixed-strings --line-regexp "$(basename release/*-amd64.spdx.json)" published-assets.txt
           grep --fixed-strings --line-regexp "$(basename release/*-mac-universal.spdx.json)" published-assets.txt

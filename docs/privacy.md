@@ -64,6 +64,21 @@ Railyard.
 
 ## Data sent over the network
 
+### Update checks and downloads
+
+Railyard contacts GitHub only when a user chooses **Check for updates** in **Settings** → **Updates**. Development
+builds do not make update requests. Packaged macOS builds request release metadata from GitHub and, after a separate
+**Download update** action, download the signed and notarized update archive from the corresponding GitHub Release.
+Packaged Windows and Debian builds request the public GitHub Releases API to identify a newer release; they do not
+download or execute the installer or package and instead open the release only when the user asks.
+
+These requests disclose the information ordinarily visible to GitHub and the network path, including the user's IP
+address, request timing, application network headers, installed application version when included by the updater, and
+the release metadata or asset requested. Railyard does not send Workspace, Repository, Workstream, Session, prompt, or
+credential data as part of an update check. GitHub handles these requests under its own privacy and retention terms.
+
+### Model providers
+
 When a message is submitted, Pi sends the configured model provider the material needed for the Agent Run. Depending
 on the Session and what the Agent does, this can include:
 

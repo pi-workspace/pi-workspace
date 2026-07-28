@@ -17,8 +17,8 @@ Participation in this repository is governed by the [Code of Conduct](./CODE_OF_
 Railyard supports development with Bun 1.3.14 on Debian-based Linux and macOS. Release validation also uses GitHub-hosted macOS runners for the signed, notarized macOS beta.
 
 ```sh
-git clone https://github.com/pi-workspace/pi-workspace.git
-cd pi-workspace
+git clone https://github.com/pi-workspace/railyard.git
+cd railyard
 bun install --frozen-lockfile
 bun run dev
 ```

@@ -1,10 +1,11 @@
 import { useState } from 'react'
-import { Palette, X } from 'lucide-react'
+import { Palette, RefreshCw, X } from 'lucide-react'
 import { Button } from '@/components/ui-kit/button'
 import { Dialog, DialogBody, DialogDescription, DialogTitle } from '@/components/ui-kit/dialog'
 import { Description, Field, Fieldset, Label } from '@/components/ui-kit/fieldset'
 import { Radio, RadioField, RadioGroup } from '@/components/ui-kit/radio'
 import { getTheme, isThemeId, themes, type AppearancePreference } from '@/src/theme'
+import { ApplicationUpdateSettings } from '@/src/renderer/components/application-update-settings'
 import { useTheme } from '@/src/renderer/theme'
 
 type SettingsDialogProperties = Readonly<{
@@ -12,7 +13,7 @@ type SettingsDialogProperties = Readonly<{
   onClose(): void
 }>
 
-type SettingsSection = 'appearance'
+type SettingsSection = 'appearance' | 'updates'
 
 export function SettingsDialog({ open, onClose }: SettingsDialogProperties) {
   const [section, setSection] = useState<SettingsSection>('appearance')
@@ -27,23 +28,38 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProperties) {
           <div className="px-3 py-2">
             <DialogTitle>Settings</DialogTitle>
           </div>
-          <nav aria-label="Settings sections" className="mt-4">
+          <nav aria-label="Settings sections" className="mt-4 space-y-1">
             <button
               type="button"
               aria-current={section === 'appearance' ? 'page' : undefined}
-              className="flex w-full items-center gap-2 rounded-md bg-content-interaction px-3 py-2 text-left text-sm/5 font-medium text-content-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+              className={`flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm/5 font-medium text-content-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring ${section === 'appearance' ? 'bg-content-interaction' : 'hover:bg-content-interaction'}`}
               onClick={() => setSection('appearance')}
             >
               <Palette aria-hidden="true" className="size-4" />
               Appearance
+            </button>
+            <button
+              type="button"
+              aria-current={section === 'updates' ? 'page' : undefined}
+              className={`flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm/5 font-medium text-content-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring ${section === 'updates' ? 'bg-content-interaction' : 'hover:bg-content-interaction'}`}
+              onClick={() => setSection('updates')}
+            >
+              <RefreshCw aria-hidden="true" className="size-4" />
+              Updates
             </button>
           </nav>
         </aside>
         <div className="flex min-w-0 flex-col">
           <header className="flex items-start justify-between gap-6 border-b border-content-border px-8 py-6">
             <div>
-              <h2 className="text-xl/7 font-semibold tracking-tight text-content-foreground">Appearance</h2>
-              <DialogDescription className="mt-1">Choose how Railyard looks on this device.</DialogDescription>
+              <h2 className="text-xl/7 font-semibold tracking-tight text-content-foreground">
+                {section === 'appearance' ? 'Appearance' : 'Updates'}
+              </h2>
+              <DialogDescription className="mt-1">
+                {section === 'appearance'
+                  ? 'Choose how Railyard looks on this device.'
+                  : 'Check for a newer Railyard release and choose when to install it.'}
+              </DialogDescription>
             </div>
             <Button plain aria-label="Close settings" className="-mt-2 -mr-2 shrink-0 px-3! py-2!" onClick={onClose}>
               <X aria-hidden="true" data-slot="icon" />
@@ -112,6 +128,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProperties) {
                 </Field>
               </Fieldset>
             )}
+            {section === 'updates' && <ApplicationUpdateSettings />}
           </DialogBody>
         </div>
       </div>

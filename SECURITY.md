@@ -16,7 +16,7 @@ A security advisory may instruct users to stop using an affected release while a
 
 Do not disclose a suspected vulnerability in a public issue, discussion, pull request, or social-media post.
 
-When GitHub private vulnerability reporting is available, use the repository's [private vulnerability report](https://github.com/pi-workspace/pi-workspace/security/advisories/new). If that form is unavailable, email **security@pi-workspace.com** with the subject `Railyard security report`.
+When GitHub private vulnerability reporting is available, use the repository's [private vulnerability report](https://github.com/pi-workspace/railyard/security/advisories/new). If that form is unavailable, email **security@pi-workspace.com** with the subject `Railyard security report`.
 
 Include as much of the following as is safe to share:
 

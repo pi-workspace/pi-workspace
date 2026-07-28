@@ -1,3 +1,4 @@
+import type { ApplicationUpdateSnapshot } from '@/src/application-update'
 import type { WorkspaceRepositorySnapshot } from '@/src/application-state'
 import type { PiWorkspaceBridge } from '@/src/pi-workspace'
 import { createSettingsSnapshot, defaultSettings, type SettingsSnapshot } from '@/src/settings'
@@ -17,6 +18,60 @@ import {
 
 const demoModels = [{ provider: 'openai', providerName: 'OpenAI', id: 'gpt-5.6-sol', name: 'GPT-5.6 Sol' }] as const
 const demoModel = { provider: 'openai', id: 'gpt-5.6-sol' } as const
+const demoCurrentVersion = '2.0.0-beta.1'
+const demoAvailableVersion = '2.0.0-beta.2'
+const demoReleaseUrl = `https://github.com/pi-workspace/railyard/releases/tag/v${demoAvailableVersion}`
+
+function getDemoApplicationUpdateSnapshot(stateName?: string): ApplicationUpdateSnapshot {
+  const current = { currentVersion: demoCurrentVersion } as const
+  const selfInstallUpdate = {
+    ...current,
+    updateMethod: 'self-install',
+    availableVersion: demoAvailableVersion,
+    releaseUrl: demoReleaseUrl,
+  } as const
+
+  switch (stateName) {
+    case 'idle':
+    case 'checking':
+    case 'up-to-date':
+      return { ...current, updateMethod: 'self-install', status: stateName }
+    case 'available':
+    case 'ready':
+      return { ...selfInstallUpdate, status: stateName }
+    case 'downloading':
+      return {
+        ...selfInstallUpdate,
+        status: 'downloading',
+        progress: {
+          percent: 42,
+          transferred: 44_040_192,
+          total: 104_857_600,
+          bytesPerSecond: 8_388_608,
+        },
+      }
+    case 'manual-windows':
+    case 'manual-debian':
+    case 'manual-unsupported':
+      return {
+        ...current,
+        updateMethod: 'manual',
+        status: 'available',
+        availableVersion: demoAvailableVersion,
+        releaseUrl: demoReleaseUrl,
+        manualUpdateKind: stateName.replace('manual-', '') as 'windows' | 'debian' | 'unsupported',
+      }
+    case 'error':
+      return {
+        ...current,
+        updateMethod: 'self-install',
+        status: 'error',
+        error: 'Railyard could not check GitHub Releases. Check your connection and try again.',
+      }
+    default:
+      return { ...current, updateMethod: 'unavailable', status: 'unavailable' }
+  }
+}
 
 const demoRepositories: readonly WorkspaceRepositorySnapshot[] = [
   {
@@ -61,10 +116,11 @@ const demoRepositories: readonly WorkspaceRepositorySnapshot[] = [
   },
 ]
 
-export function createDemoBridge(scenarioName?: string): PiWorkspaceBridge {
+export function createDemoBridge(scenarioName?: string, applicationUpdateStateName?: string): PiWorkspaceBridge {
   const scenario = structuredClone(getDemoScenario(scenarioName))
   const colorSchemeMediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
   let settingsSnapshot: SettingsSnapshot = createSettingsSnapshot(defaultSettings, colorSchemeMediaQuery.matches)
+  const applicationUpdateSnapshot = getDemoApplicationUpdateSnapshot(applicationUpdateStateName)
   let createdSessionNumber = 0
   let workstreamsSnapshot: WorkstreamsSnapshot = scenario.workstreams
   const transcriptsBySessionId: Record<string, SessionTranscriptSnapshot> = { ...scenario.transcriptsBySessionId }
@@ -144,6 +200,26 @@ export function createDemoBridge(scenarioName?: string): PiWorkspaceBridge {
   }
 
   return {
+    applicationUpdate: {
+      async getSnapshot() {
+        return applicationUpdateSnapshot
+      },
+      async check() {
+        return applicationUpdateSnapshot
+      },
+      async download() {
+        return applicationUpdateSnapshot
+      },
+      async restartToUpdate() {
+        return 'not-ready'
+      },
+      async openRelease() {
+        return false
+      },
+      subscribe() {
+        return () => {}
+      },
+    },
     applicationState: {
       async getStartup() {
         return { status: 'ready' }

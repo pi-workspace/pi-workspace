@@ -43,8 +43,8 @@ A deferred finding must record its evidence, scope, compensating controls, owner
 Each release must retain or publish:
 
 - The source commit and workflow run.
-- The Debian package, macOS DMG, and SHA-256 checksums.
+- The Debian package, macOS DMG, Windows installer, macOS ZIP updater payload, update metadata, and SHA-256 checksums.
 - The SPDX JSON SBOM generated from each unpacked packaged application, including representative JavaScript and native dependencies.
 - Successful macOS Developer ID signature, notarization, and stapling verification.
 - A successful release-source security scan.
-- A keyless GitHub artifact attestation for every package, checksum, and SBOM; verify each downloaded asset with `gh attestation verify "$artifact" --repo pi-workspace/pi-workspace`.
+- A keyless GitHub artifact attestation for every package, updater payload, update metadata file, checksum, and SBOM; verify each downloaded asset with `gh attestation verify "$artifact" --repo pi-workspace/railyard`.

@@ -4,8 +4,9 @@ import { join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { startApplicationLifecycle, type ApplicationWindow } from '@/src/main/application-lifecycle'
 import { initializeApplicationAuthority } from '@/src/main/application-state'
+import { initializeApplicationUpdates } from '@/src/main/application-updates'
 import { initializeApplicationStateIpc } from '@/src/main/application-state-ipc'
-import { initializeComposer } from '@/src/main/composer-ipc'
+import { getPiSessionRuntimeRegistry, initializeComposer } from '@/src/main/composer-ipc'
 import {
   applicationProtocolScheme,
   allowBrowserPermissionCheck,
@@ -120,6 +121,7 @@ async function initializeApplication(): Promise<void> {
     initializeWorkstreamKnowledge(authority)
     const settings = await initializeSettings()
     initializeComposer(authority)
+    initializeApplicationUpdates(getPiSessionRuntimeRegistry())
     windowBackgroundColor = getThemeWindowBackgroundColor(settings.theme, settings.resolvedColorScheme)
   } catch (error) {
     initializationFailed = true

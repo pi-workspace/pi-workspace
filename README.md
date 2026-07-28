@@ -25,7 +25,7 @@ Railyard is a local desktop app for working with [Pi](https://github.com/earendi
 
 ## Install the beta
 
-Download the latest build from [GitHub Releases](https://github.com/pi-workspace/pi-workspace/releases).
+Download the latest build from [GitHub Releases](https://github.com/pi-workspace/railyard/releases).
 
 Railyard currently supports:
 
@@ -34,6 +34,10 @@ Railyard currently supports:
 - Windows 11 on x64
 
 AppImage, Windows 10, other Linux distributions, and other CPU architectures are not currently supported.
+
+The first release that includes in-app updates still requires one final manual installation from GitHub Releases. After
+that release is installed, **Settings** → **Updates** can check for newer releases. Update checks happen only when you
+choose **Check for updates**.
 
 ### macOS
 
@@ -46,7 +50,9 @@ AppImage, Windows 10, other Linux distributions, and other CPU architectures are
 
 3. Open the DMG and drag **Railyard** into Applications.
 
-The macOS build is Developer ID signed and notarized. To update, replace the existing app in Applications with the newer version.
+The macOS build is Developer ID signed and notarized. After the first updater-enabled release is installed manually,
+Railyard can download verified macOS updates. Installation happens only when you choose **Restart to update**, and an
+active Agent Run must finish first.
 
 ### Windows
 
@@ -65,8 +71,10 @@ The macOS build is Developer ID signed and notarized. To update, replace the exi
 
 3. Run the installer, then launch **Railyard** from the Start menu.
 
-The Windows installer is not code signed, so Windows may require confirmation before opening it. To update, install the
-newer version. To uninstall, use **Settings** → **Apps** → **Installed apps**.
+The Windows installer is not code signed, so Railyard never downloads or executes it automatically. **Settings** →
+**Updates** opens the matching GitHub Release when a newer version is available; download the installer and checksum,
+verify them with the steps above, and run the installer yourself. To uninstall, use **Settings** → **Apps** →
+**Installed apps**.
 
 ### Debian
 
@@ -86,7 +94,9 @@ To update, install the newer `.deb` with the same command. To uninstall:
 sudo apt remove railyard
 ```
 
-Beta updates are currently manual. Debian packages are not signed; use the published checksum to verify your download.
+Debian packages are not signed, so Railyard never installs them automatically. **Settings** → **Updates** opens the
+matching GitHub Release when a newer version is available; use the published checksum and commands above before
+installing it manually.
 
 ## Before your first Session
 
@@ -105,7 +115,7 @@ Then:
 
 - **No Model is available:** install Pi CLI, run `pi`, and use `/login` to sign in to a provider. Restart Railyard after setup. Never paste credentials into an issue or a Session.
 - **A message cannot start:** confirm that the selected Model is still available through Pi CLI and that its provider login is current, then restart Railyard and retry. Your draft stays in Composer when Pi rejects a submission.
-- **Need help:** report reproducible bugs or feature feedback in [GitHub Issues](https://github.com/pi-workspace/pi-workspace/issues). Include only sanitized logs and screenshots.
+- **Need help:** report reproducible bugs or feature feedback in [GitHub Issues](https://github.com/pi-workspace/railyard/issues). Include only sanitized logs and screenshots.
 
 ## Repository context
 
@@ -123,7 +133,7 @@ Railyard does not add analytics, advertising identifiers, or a crash-reporting s
 
 ## Support, privacy, and security
 
-Railyard is under active development. Use [GitHub Issues](https://github.com/pi-workspace/pi-workspace/issues) for reproducible bugs and feature feedback, [GitHub Releases](https://github.com/pi-workspace/pi-workspace/releases) for Release Notes, and the [contribution guide](./CONTRIBUTING.md) to help improve the app.
+Railyard is under active development. Use [GitHub Issues](https://github.com/pi-workspace/railyard/issues) for reproducible bugs and feature feedback, [GitHub Releases](https://github.com/pi-workspace/railyard/releases) for Release Notes, and the [contribution guide](./CONTRIBUTING.md) to help improve the app.
 
 Read the [privacy, data handling, and agent authority guide](./docs/privacy.md) before using sensitive Repository content. Report security vulnerabilities privately by following the [security policy](./SECURITY.md); do not include sensitive details in a public issue.
 
@@ -175,7 +185,7 @@ Unknown scenario names use `startup`. Use a 1200 by 800 browser viewport as the 
 | `bun run lint`             | Lint the source files.                                                 |
 | `bun run format:check`     | Check formatting.                                                      |
 | `bun run package:linux`    | Build a local Debian package for release troubleshooting.              |
-| `bun run package:mac`      | Build a local universal macOS DMG for release troubleshooting.         |
+| `bun run package:mac`      | Build local universal macOS release and update artifacts.              |
 | `bun run package:win`      | Build a local Windows x64 installer for release troubleshooting.       |
 | `bun run release:validate` | Validate the beta version and latest bundled Release Note.             |
 | `bun run security:scan`    | Scan Git history and dependencies for known risks.                     |
