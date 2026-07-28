@@ -1,5 +1,5 @@
 import { app, net, shell } from 'electron'
-import { autoUpdater } from 'electron-updater'
+import electronUpdater from 'electron-updater'
 import type { ApplicationUpdateSnapshot } from '@/src/application-update'
 import { applicationUpdateIpcChannels, parseApplicationUpdateCommand } from '@/src/application-update-ipc'
 import {
@@ -10,6 +10,8 @@ import {
 import { createApplicationUpdater } from '@/src/main/application-updater'
 import type { PiSessionRuntimeRegistry } from '@/src/main/pi-session-runtimes'
 import { broadcastToTrustedRenderers, handleTrustedIpc } from '@/src/main/trusted-ipc'
+
+const { autoUpdater } = electronUpdater
 
 function electronUpdateClient(): ElectronUpdateClient {
   return {
