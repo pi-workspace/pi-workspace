@@ -340,7 +340,7 @@ export function Composer({
               onEffortChange={changeEffort}
             />
           )}
-          <div className="ml-auto flex items-end gap-1">
+          <div className="ml-auto flex items-center gap-1">
             {contextUsage && <ContextWindowUsage usage={contextUsage} />}
             {contextUsage?.canCompact && !isWorking && !isCompacting && (
               <Button
@@ -362,7 +362,7 @@ export function Composer({
               <button
                 type="button"
                 aria-label="Stop run"
-                className="flex size-11 items-end justify-center rounded-lg text-composer-error-foreground outline-none transition-opacity motion-reduce:transition-none enabled:cursor-pointer focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-composer-background disabled:cursor-not-allowed disabled:opacity-50"
+                className="flex size-11 items-center justify-center rounded-lg text-composer-error-foreground outline-none transition-opacity motion-reduce:transition-none enabled:cursor-pointer focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-composer-background disabled:cursor-not-allowed disabled:opacity-50"
                 disabled={stopping}
                 onClick={(event) => {
                   event.stopPropagation()
@@ -454,7 +454,7 @@ function ContextWindowUsage({ usage }: ContextWindowUsageProperties) {
   const valueText = `${used} used of ${contextWindow} tokens; ${formatTokenCount(remaining)} left`
 
   return (
-    <div className="flex h-11 items-end pb-3">
+    <div className="flex h-11 items-center">
       <span
         aria-label="Context window"
         aria-valuemax={100}

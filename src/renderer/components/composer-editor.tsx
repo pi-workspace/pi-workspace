@@ -177,6 +177,12 @@ function getDOMPlainText(node: Node): string {
     : childText
 }
 
+function removeUnmanagedComposerText(rootElement: HTMLElement): void {
+  for (const child of Array.from(rootElement.childNodes)) {
+    if (child.nodeType === Node.TEXT_NODE) child.remove()
+  }
+}
+
 function getDOMComposerDraft(node: Node): string {
   if (node instanceof HTMLElement && node.hasAttribute('data-skill-reference')) {
     return `/skill:${node.getAttribute('data-skill-reference') ?? ''}`
@@ -1168,6 +1174,9 @@ function FileAutocomplete({
             const markerText = markerElement?.firstChild
             if (!rootElement || !markerText) return
 
+            // Replacing a live at-sign query with a DecoratorNode can leave the
+            // browser's raw query text beside Lexical's managed paragraph.
+            removeUnmanagedComposerText(rootElement)
             rootElement.focus()
             const range = document.createRange()
             range.setStart(markerText, markerText.textContent?.length ?? 0)

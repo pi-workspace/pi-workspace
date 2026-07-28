@@ -257,6 +257,27 @@ test('selects a whitespace path from at-sign autocomplete and sends its canonica
   )
 })
 
+test('inserts a file tag by clicking a result after one at-sign', async () => {
+  const user = createUser()
+  const view = renderInBrowser(
+    <FileComposer
+      submitMessage={async () => ({ status: 'accepted', delivery: 'prompt' })}
+      sessionFiles={{
+        async getAvailable() {
+          return [{ path: 'README.md', name: 'README.md', kind: 'file' }]
+        },
+      }}
+    />
+  )
+  const editor = view.getByRole('textbox')
+
+  await user.click(editor)
+  await user.keyboard('@')
+  await user.click(await view.findByRole('option', { name: /README\.md/ }))
+
+  assert.equal(composerText(editor), '@README.md')
+})
+
 test('closes file autocomplete after selecting a file', async () => {
   const user = createUser()
   const view = renderInBrowser(
