@@ -32,7 +32,7 @@ async function buildElectronProcesses() {
   const results = await Promise.all([
     Bun.build({
       entrypoints: ['src/main/index.ts'],
-      external: ['electron', '@earendil-works/pi-coding-agent'],
+      external: ['electron', 'electron-updater', '@earendil-works/pi-coding-agent'],
       format: 'esm',
       outdir: 'dist/main',
       target: 'node',
