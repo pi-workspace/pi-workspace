@@ -125,18 +125,22 @@ test(
   }
 )
 
-test('reset creates a new application authority generation', async () => {
-  const storageDirectory = await mkdtemp(join(tmpdir(), 'pi-workspace-reset-generation-'))
-  temporaryDirectories.push(storageDirectory)
-  const authority = await initializeApplicationAuthority(storageDirectory, { sqlite: bunSqlite })
-  const markerPath = join(storageDirectory, 'application-state.json')
-  const before = JSON.parse(await readFile(markerPath, 'utf8')) as { generationId: string }
+test(
+  'reset creates a new application authority generation',
+  { skip: process.platform === 'win32' ? 'Bun retains closed SQLite handles on Windows.' : false },
+  async () => {
+    const storageDirectory = await mkdtemp(join(tmpdir(), 'pi-workspace-reset-generation-'))
+    temporaryDirectories.push(storageDirectory)
+    const authority = await initializeApplicationAuthority(storageDirectory, { sqlite: bunSqlite })
+    const markerPath = join(storageDirectory, 'application-state.json')
+    const before = JSON.parse(await readFile(markerPath, 'utf8')) as { generationId: string }
 
-  await authority.reset()
+    await authority.reset()
 
-  const after = JSON.parse(await readFile(markerPath, 'utf8')) as { generationId: string }
-  assert.notEqual(after.generationId, before.generationId)
-})
+    const after = JSON.parse(await readFile(markerPath, 'utf8')) as { generationId: string }
+    assert.notEqual(after.generationId, before.generationId)
+  }
+)
 
 test('reset backs up the prior SQLite generation before replacing it', async () => {
   const storageDirectory = await mkdtemp(join(tmpdir(), 'pi-workspace-reset-backup-'))

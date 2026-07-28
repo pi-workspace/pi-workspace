@@ -247,6 +247,9 @@ test('selects a whitespace path from at-sign autocomplete and sends its canonica
   )
 
   const editor = view.getByRole('textbox')
+  await act(async () => {
+    await new Promise<void>((resolve) => window.setTimeout(resolve, 0))
+  })
   await user.click(editor)
   await user.keyboard('@')
   await waitFor(() => assert.ok(view.getByRole('option', { name: /src\/my file\.ts/ })), { timeout: 3_000 })
@@ -272,9 +275,13 @@ test('inserts a file tag by clicking a result after one at-sign', async () => {
   )
   const editor = view.getByRole('textbox')
 
+  await act(async () => {
+    await new Promise<void>((resolve) => window.setTimeout(resolve, 0))
+  })
   await user.click(editor)
   await user.keyboard('@')
-  await user.click(await view.findByRole('option', { name: /README\.md/ }))
+  await waitFor(() => assert.ok(view.getByRole('option', { name: /README\.md/ })), { timeout: 3_000 })
+  await user.click(view.getByRole('option', { name: /README\.md/ }))
 
   assert.equal(composerText(editor), '@README.md')
 })
