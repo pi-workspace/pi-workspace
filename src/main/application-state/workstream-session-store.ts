@@ -19,6 +19,7 @@ import {
 import {
   inspectWorktree,
   proposeWorktree,
+  type GitBranchReference,
   type InspectedGitRepository,
   type WorktreeProposal,
 } from '@/src/main/git-repositories'
@@ -26,7 +27,10 @@ import { restorePiUserMessageDraft } from '@/src/main/pi-session-message-mapping
 import { normalizeSessionDescription } from '@/src/session-description'
 import { normalizeSessionTitle } from '@/src/session-title'
 import type { OwnedPiSessionLocation, PiSessionCreationIntent, PiSessionFileStore } from '@/src/main/pi-session-files'
-import type { SessionWorkingLocationsSnapshot } from '@/src/session-working-locations'
+import type {
+  SessionRepositoryBranchesSnapshot,
+  SessionWorkingLocationsSnapshot,
+} from '@/src/session-working-locations'
 import type { SqliteDatabase } from './sqlite'
 import { initializeStoredWorkstreamKnowledge, readCurrentWorkstreamRepositorySet } from './workstream-knowledge-store'
 import {
@@ -38,12 +42,17 @@ import {
 
 type RepositoryInspector = (directoryPath: string) => Promise<InspectedGitRepository>
 type BranchInspector = (directoryPath: string) => Promise<string>
+type BranchLister = (directoryPath: string) => Promise<readonly GitBranchReference[]>
+type BranchSwitcher = (directoryPath: string, branch: GitBranchReference) => Promise<string>
 type SessionCreationStatus = 'available' | 'pending' | 'quarantined'
 
 type WorkstreamSessionStoreOptions = Readonly<{
   openDatabase: () => SqliteDatabase
   inspectRepository: RepositoryInspector
   inspectBranch: BranchInspector
+  listBranches: BranchLister
+  fetchBranches: BranchLister
+  switchBranch: BranchSwitcher
   createWorktree: (proposal: WorktreeProposal) => Promise<WorktreeProposal>
   restoreWorktree: (proposal: WorktreeProposal) => Promise<WorktreeProposal>
   sessionFiles: PiSessionFileStore
@@ -93,6 +102,9 @@ export function createWorkstreamSessionStore({
   openDatabase,
   inspectRepository,
   inspectBranch,
+  listBranches,
+  fetchBranches,
+  switchBranch,
   createWorktree,
   restoreWorktree,
   sessionFiles,
@@ -1576,10 +1588,149 @@ export function createWorkstreamSessionStore({
     }
   }
 
+  function resolveQuickSessionBranchLocation(sessionId: SessionId, repositoryId: string) {
+    const database = openDatabase()
+
+    try {
+      const location = database
+        .prepare(
+          `SELECT session.workstream_id, location.kind, location.working_path
+             FROM sessions session
+             JOIN workstreams workstream ON workstream.id = session.workstream_id
+             JOIN session_repository_locations location
+               ON location.session_id = session.id AND location.repository_id = ?
+            WHERE session.id = ?
+              AND session.repository_id = ?
+              AND session.access_kind = 'direct'
+              AND session.creation_status = 'finalized'
+              AND workstream.lifecycle = 'active'`
+        )
+        .get(repositoryId, sessionId, repositoryId)
+
+      if (!location) throw new TypeError('The Quick Session Repository is unavailable.')
+
+      return {
+        workstreamId: String(location.workstream_id),
+        kind: parseWorkstreamRepositoryLocationKind(location.kind),
+        workingPath: String(location.working_path),
+      }
+    } finally {
+      database.close()
+    }
+  }
+
+  async function getSessionBranches(
+    sessionId: SessionId,
+    repositoryId: string,
+    refresh: boolean
+  ): Promise<SessionRepositoryBranchesSnapshot> {
+    const location = resolveQuickSessionBranchLocation(sessionId, repositoryId)
+    let branches: readonly GitBranchReference[]
+    let refreshError: string | undefined
+
+    if (refresh) {
+      try {
+        branches = await fetchBranches(location.workingPath)
+      } catch {
+        branches = await listBranches(location.workingPath)
+        refreshError = 'Remote branches could not be refreshed. Check network access and Git credentials, then retry.'
+      }
+    } else {
+      branches = await listBranches(location.workingPath)
+    }
+
+    return {
+      sessionId,
+      repositoryId,
+      branches,
+      ...(refreshError ? { refreshError } : {}),
+    }
+  }
+
+  async function switchQuickSessionBranch(
+    sessionId: SessionId,
+    repositoryId: string,
+    branchRef: string
+  ): Promise<SessionWorkingLocationsSnapshot> {
+    const location = resolveQuickSessionBranchLocation(sessionId, repositoryId)
+    const branch = (await listBranches(location.workingPath)).find((candidate) => candidate.ref === branchRef)
+    if (!branch) throw new TypeError('That branch is no longer available in this Repository.')
+
+    const selectedBranch = await switchBranch(location.workingPath, branch)
+    const database = openDatabase()
+
+    try {
+      database.exec('BEGIN IMMEDIATE;')
+      database
+        .prepare('UPDATE session_repository_locations SET branch = ? WHERE session_id = ? AND repository_id = ?')
+        .run(selectedBranch, sessionId, repositoryId)
+      if (location.kind === 'worktree') {
+        database
+          .prepare(
+            'UPDATE workstream_repository_locations SET branch = ? WHERE workstream_id = ? AND repository_id = ?'
+          )
+          .run(selectedBranch, location.workstreamId, repositoryId)
+        incrementSessionWorkingLocationRevision(database, sessionId)
+      }
+      incrementRevision(database)
+      database.exec('COMMIT;')
+    } catch (error) {
+      database.exec('ROLLBACK;')
+      throw error
+    } finally {
+      database.close()
+    }
+
+    return getSessionWorkingLocations(sessionId)
+  }
+
   async function getSessionWorkingLocations(sessionId: SessionId): Promise<SessionWorkingLocationsSnapshot> {
     const resolution = await resolveOwnedSession(sessionId)
     if (!resolution) throw new TypeError('The Session is unavailable.')
-    if (!resolution.managedPolicy) return { sessionId, repositories: [] }
+
+    if (!resolution.managedPolicy) {
+      const database = openDatabase()
+
+      try {
+        const location = database
+          .prepare(
+            `SELECT location.repository_id, location.kind, location.working_path, repository.directory_path
+               FROM sessions session
+               JOIN session_repository_locations location ON location.session_id = session.id
+               JOIN repositories repository ON repository.id = location.repository_id
+              WHERE session.id = ? AND session.access_kind = 'direct'`
+          )
+          .get(sessionId)
+
+        if (!location) return { sessionId, repositories: [] }
+
+        const properties = {
+          repositoryId: String(location.repository_id),
+          repositoryName: repositoryName(String(location.directory_path)),
+          kind: parseWorkstreamRepositoryLocationKind(location.kind),
+        }
+
+        try {
+          const workingPath = String(location.working_path)
+
+          return {
+            sessionId,
+            repositories: [
+              {
+                ...properties,
+                availability: 'available',
+                branch: await inspectBranch(workingPath),
+                workingPath,
+              },
+            ],
+          }
+        } catch {
+          return { sessionId, repositories: [{ ...properties, availability: 'unavailable' }] }
+        }
+      } finally {
+        database.close()
+      }
+    }
 
     const repositories = await Promise.all(
       resolution.managedPolicy.repositories.map(async (repository) => {
@@ -1698,6 +1849,8 @@ export function createWorkstreamSessionStore({
     renameWorkstreamSession,
     setSessionDescription,
     resolveOwnedSession,
+    getSessionBranches,
+    switchQuickSessionBranch,
     getSessionWorkingLocations,
     resolveSessionChangeRepositories,
     resolveWorkstreamWorkingLocation,

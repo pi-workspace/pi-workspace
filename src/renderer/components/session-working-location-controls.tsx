@@ -7,19 +7,24 @@ import type {
   SessionWorkingLocationsBridge,
   SessionWorkingLocationsSnapshot,
 } from '@/src/session-working-locations'
+import { SessionBranchPicker } from '@/src/renderer/components/session-branch-picker'
 
 type SessionWorkingLocationControlsProperties = Readonly<{
   bridge: SessionWorkingLocationsBridge
   canCreateWorktree: boolean
+  canSwitchBranch?: boolean
   isWorking: boolean
   sessionId: SessionId
+  onMutationChange?: (mutating: boolean) => void
 }>
 
 export function SessionWorkingLocationControls({
   bridge,
   canCreateWorktree,
+  canSwitchBranch = false,
   isWorking,
   sessionId,
+  onMutationChange = () => {},
 }: SessionWorkingLocationControlsProperties) {
   const request = useRef(0)
   const [snapshot, setSnapshot] = useState<SessionWorkingLocationsSnapshot>()
@@ -28,21 +33,33 @@ export function SessionWorkingLocationControls({
   const [error, setError] = useState<string>()
 
   useEffect(() => {
-    const currentRequest = ++request.current
-    setSnapshot(undefined)
-    setSelectedRepositoryId(undefined)
-    setError(undefined)
-
-    void bridge.get(sessionId).then(
-      (nextSnapshot) => {
-        if (request.current !== currentRequest) return
-        setSnapshot(nextSnapshot)
-        setSelectedRepositoryId(nextSnapshot.repositories[0]?.repositoryId)
-      },
-      () => {
-        if (request.current === currentRequest) setError('Repository context is unavailable.')
+    const load = (reset: boolean) => {
+      const currentRequest = ++request.current
+      if (reset) {
+        setSnapshot(undefined)
+        setSelectedRepositoryId(undefined)
       }
-    )
+      setError(undefined)
+
+      void bridge.get(sessionId).then(
+        (nextSnapshot) => {
+          if (request.current !== currentRequest) return
+          setSnapshot(nextSnapshot)
+          setSelectedRepositoryId((selected) => selected ?? nextSnapshot.repositories[0]?.repositoryId)
+        },
+        () => {
+          if (request.current === currentRequest) setError('Repository context is unavailable.')
+        }
+      )
+    }
+
+    load(true)
+    const unsubscribe = bridge.subscribe?.(() => load(false)) ?? (() => {})
+
+    return () => {
+      request.current += 1
+      unsubscribe()
+    }
   }, [bridge, isWorking, sessionId])
 
   const repositories = snapshot?.repositories ?? []
@@ -54,6 +71,7 @@ export function SessionWorkingLocationControls({
 
     setCreating(true)
     setError(undefined)
+    onMutationChange(true)
     try {
       const nextSnapshot = await bridge.createWorktree(sessionId, selectedRepository.repositoryId)
       setSnapshot(nextSnapshot)
@@ -61,6 +79,7 @@ export function SessionWorkingLocationControls({
       setError(operationError instanceof Error ? operationError.message : 'Could not create the Session worktree.')
     } finally {
       setCreating(false)
+      onMutationChange(false)
     }
   }
 
@@ -98,13 +117,24 @@ export function SessionWorkingLocationControls({
               </DropdownMenu>
             </Dropdown>
           )}
-          <WorkingLocationControl
-            canCreateWorktree={canCreateWorktree}
-            creating={creating}
-            isWorking={isWorking}
-            location={selectedRepository}
-            onCreateWorktree={() => void createWorktree()}
-          />
+          {canSwitchBranch && selectedRepository.availability === 'available' ? (
+            <SessionBranchPicker
+              bridge={bridge}
+              isWorking={isWorking}
+              location={selectedRepository}
+              sessionId={sessionId}
+              onMutationChange={onMutationChange}
+              onWorkingLocationsChange={setSnapshot}
+            />
+          ) : (
+            <WorkingLocationControl
+              canCreateWorktree={canCreateWorktree}
+              creating={creating}
+              isWorking={isWorking}
+              location={selectedRepository}
+              onCreateWorktree={() => void createWorktree()}
+            />
+          )}
         </div>
       )}
       {error && (

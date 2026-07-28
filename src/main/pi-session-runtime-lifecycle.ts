@@ -34,6 +34,7 @@ export function createSessionRuntimeLifecycle({
   attach,
 }: SessionRuntimeLifecycleOptions): SessionRuntimeLifecycle {
   const entries = new Map<SessionId, Promise<SessionRuntimeEntry>>()
+  const runtimeRequests = new Map<SessionId, Promise<PiSessionRuntime | undefined>>()
 
   async function retire(sessionId: SessionId, pendingEntry: Promise<SessionRuntimeEntry>): Promise<void> {
     try {
@@ -49,38 +50,50 @@ export function createSessionRuntimeLifecycle({
     }
   }
 
+  async function resolveRuntime(sessionId: SessionId): Promise<PiSessionRuntime | undefined> {
+    const existingEntry = entries.get(sessionId)
+    const existing = existingEntry ? await existingEntry : undefined
+
+    if (existing?.runtime.isStreaming || (existing && existing.runtimeKey === undefined)) return existing.runtime
+
+    const location = await findSession(sessionId)
+    if (!location) return undefined
+    if (existing && existing.runtimeKey === location.runtimeKey) return existing.runtime
+
+    if (existing) {
+      existing.unsubscribes.forEach((unsubscribe) => unsubscribe())
+      existing.runtime.dispose()
+      entries.delete(sessionId)
+    }
+
+    const pendingEntry = createSession(location, sessionId).then((runtime) =>
+      attach(sessionId, location.directoryPath, runtime, location.runtimeKey)
+    )
+    entries.set(sessionId, pendingEntry)
+
+    try {
+      return (await pendingEntry).runtime
+    } catch (error) {
+      entries.delete(sessionId)
+      throw error
+    }
+  }
+
   return {
     register(sessionId, runtimeDirectory, runtime) {
       if (entries.has(sessionId)) throw new Error('The Session runtime is already registered.')
       entries.set(sessionId, Promise.resolve(attach(sessionId, runtimeDirectory, runtime)))
     },
-    async get(sessionId) {
-      const existingEntry = entries.get(sessionId)
-      const existing = existingEntry ? await existingEntry : undefined
+    get(sessionId) {
+      const existingRequest = runtimeRequests.get(sessionId)
+      if (existingRequest) return existingRequest
 
-      if (existing?.runtime.isStreaming || (existing && existing.runtimeKey === undefined)) return existing.runtime
+      const request = resolveRuntime(sessionId).finally(() => {
+        if (runtimeRequests.get(sessionId) === request) runtimeRequests.delete(sessionId)
+      })
+      runtimeRequests.set(sessionId, request)
 
-      const location = await findSession(sessionId)
-      if (!location) return undefined
-      if (existing && existing.runtimeKey === location.runtimeKey) return existing.runtime
-
-      if (existing) {
-        existing.unsubscribes.forEach((unsubscribe) => unsubscribe())
-        existing.runtime.dispose()
-        entries.delete(sessionId)
-      }
-
-      const pendingEntry = createSession(location, sessionId).then((runtime) =>
-        attach(sessionId, location.directoryPath, runtime, location.runtimeKey)
-      )
-      entries.set(sessionId, pendingEntry)
-
-      try {
-        return (await pendingEntry).runtime
-      } catch (error) {
-        entries.delete(sessionId)
-        throw error
-      }
+      return request
     },
     getEntry(sessionId) {
       return entries.get(sessionId)
@@ -99,6 +112,7 @@ export function createSessionRuntimeLifecycle({
           .catch(() => {})
       })
       entries.clear()
+      runtimeRequests.clear()
     },
   }
 }

@@ -5,6 +5,7 @@ import { promisify } from 'node:util'
 import { worktreeName } from './workstream-id'
 
 const exec = promisify(execFile)
+const branchFetchTimeoutMs = 30_000
 
 export type InspectedGitRepository = Readonly<{
   directoryPath: string
@@ -18,6 +19,13 @@ export type WorktreeProposal = Readonly<{
   worktreePath: string
   branch: string
   baseCommit: string
+}>
+
+export type GitBranchReference = Readonly<{
+  ref: string
+  name: string
+  kind: 'local' | 'remote'
+  current: boolean
 }>
 
 export async function proposeWorktree(options: {
@@ -112,9 +120,89 @@ async function addWorktree(
 }
 
 function worktreeCreationError(proposal: WorktreeProposal, error: unknown): Error {
+  return gitOperationError(error, `Git could not create the worktree at ${proposal.worktreePath}.`)
+}
+
+function gitOperationError(error: unknown, fallback: string): Error {
   const detail = error instanceof Error && 'stderr' in error ? String(error.stderr).trim() : ''
 
-  return new Error(detail || `Git could not create the worktree at ${proposal.worktreePath}.`, { cause: error })
+  return new Error(detail || fallback, { cause: error })
+}
+
+export async function listGitBranches(repositoryPath: string): Promise<readonly GitBranchReference[]> {
+  const { stdout } = await exec('git', [
+    '-C',
+    repositoryPath,
+    'for-each-ref',
+    '--format=%(refname)%09%(refname:short)%09%(HEAD)%09%(symref)',
+    'refs/heads',
+    'refs/remotes',
+  ])
+
+  return stdout
+    .trim()
+    .split(/\r?\n/)
+    .flatMap((line): GitBranchReference[] => {
+      if (!line) return []
+
+      const [ref, name, head, symbolicRef] = line.split('\t')
+      if (!ref || !name || symbolicRef) return []
+
+      const kind = ref.startsWith('refs/heads/') ? 'local' : ref.startsWith('refs/remotes/') ? 'remote' : undefined
+
+      return kind ? [{ ref, name, kind, current: head === '*' }] : []
+    })
+    .sort((left, right) => left.kind.localeCompare(right.kind) || left.name.localeCompare(right.name))
+}
+
+export async function fetchGitBranches(repositoryPath: string): Promise<readonly GitBranchReference[]> {
+  const { stdout } = await exec('git', ['-C', repositoryPath, 'remote'])
+  const remotes = stdout.trim().split(/\r?\n/).filter(Boolean)
+
+  let failed = false
+
+  for (const remote of remotes) {
+    try {
+      await exec('git', ['-C', repositoryPath, 'fetch', '--prune', '--no-tags', remote], {
+        env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+        timeout: branchFetchTimeoutMs,
+      })
+    } catch {
+      failed = true
+    }
+  }
+
+  if (failed) throw new Error('One or more remotes could not be refreshed.')
+
+  return listGitBranches(repositoryPath)
+}
+
+export async function switchGitBranch(repositoryPath: string, branch: GitBranchReference): Promise<string> {
+  const currentBranch = await inspectGitBranch(repositoryPath)
+  if (branch.kind === 'local' && branch.name === currentBranch) return currentBranch
+
+  const { stdout: status } = await exec('git', [
+    '-C',
+    repositoryPath,
+    'status',
+    '--porcelain',
+    '--untracked-files=normal',
+  ])
+  if (status.length > 0)
+    throw new TypeError('The working tree has changes. Commit or stash them before switching branches.')
+
+  const arguments_ =
+    branch.kind === 'local'
+      ? ['-C', repositoryPath, 'switch', branch.name]
+      : ['-C', repositoryPath, 'switch', '--track', branch.name]
+
+  try {
+    await exec('git', arguments_, { env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } })
+  } catch (error) {
+    throw gitOperationError(error, `Git could not switch to ${branch.name}.`)
+  }
+
+  return inspectGitBranch(repositoryPath)
 }
 
 export async function inspectGitBranch(repositoryPath: string): Promise<string> {

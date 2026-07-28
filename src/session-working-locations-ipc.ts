@@ -2,7 +2,10 @@ import { isSessionId, type SessionId } from '@/src/domain/session'
 
 export const sessionWorkingLocationsIpcChannels = {
   get: 'session-working-locations:get',
+  getBranches: 'session-working-locations:get-branches',
+  switchBranch: 'session-working-locations:switch-branch',
   createWorktree: 'session-working-locations:create-worktree',
+  changed: 'session-working-locations:changed',
 } as const
 
 export function parseSessionWorkingLocationRequest(
@@ -22,4 +25,26 @@ export function parseSessionWorkingLocationRequest(
   }
 
   return { sessionId, ...(repositoryId ? { repositoryId } : {}) }
+}
+
+export function parseSessionBranchRequest(
+  value: unknown
+): Readonly<{ sessionId: SessionId; repositoryId: string; refresh?: boolean; branchRef?: string }> | undefined {
+  const request = parseSessionWorkingLocationRequest(value)
+  if (!request?.repositoryId) return undefined
+
+  const refresh = (value as { refresh?: unknown }).refresh
+  const branchRef = (value as { branchRef?: unknown }).branchRef
+  if (refresh !== undefined && typeof refresh !== 'boolean') return undefined
+  if (branchRef !== undefined && (typeof branchRef !== 'string' || branchRef.length === 0 || branchRef.length > 1024)) {
+    return undefined
+  }
+  if (refresh !== undefined && branchRef !== undefined) return undefined
+
+  return {
+    sessionId: request.sessionId,
+    repositoryId: request.repositoryId,
+    ...(refresh === undefined ? {} : { refresh }),
+    ...(branchRef === undefined ? {} : { branchRef }),
+  }
 }

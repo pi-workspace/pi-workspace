@@ -109,7 +109,7 @@ Then:
 1. Open Railyard and create a Workspace.
 2. Select one or more local Git Repositories that belong together.
 3. Start a Quick Session for a focused task, or create a Workstream for a durable goal.
-4. Choose an available Model in Composer, review the Repository working location, then send your first message.
+4. Choose an available Model in Composer, review the Repository working location, optionally switch a Quick Session to a local or remote branch, then send your first message.
 
 ### Troubleshooting setup
 
@@ -119,7 +119,9 @@ Then:
 
 ## Repository context
 
-A Quick Session works with one selected Repository. A Workstream selects one or more Repositories and adds their names, locations, roles, relationships, validation commands, and related metadata to every Session's system prompt. Workstream Sessions use current checkouts by default; you can explicitly create a separate Session worktree for an individual Repository.
+A Quick Session works with one selected Repository. Its working-context control beneath Composer can switch to a local branch or lazily fetch known remotes and create a local tracking branch. Switching a shared current checkout requires confirmation, a clean working tree, and idle affected Sessions; a dedicated Quick Session worktree switches in isolation.
+
+A Workstream selects one or more Repositories and adds their names, locations, roles, relationships, validation commands, and related metadata to every Session's system prompt. Workstream Sessions use current checkouts by default; you can explicitly create a separate Session worktree for an individual Repository.
 
 A Workspace and Workstream are routing boundaries, not operating-system sandboxes. Pi, installed extensions, and commands run with your normal user permissions.
 

@@ -37,6 +37,7 @@ type ComposerProperties = Readonly<{
   sessionFiles?: SessionFilesBridge
   sessionWorkingLocations?: SessionWorkingLocationsBridge
   canCreateWorktree?: boolean
+  canSwitchBranch?: boolean
 }>
 
 export function Composer({
@@ -55,6 +56,7 @@ export function Composer({
   sessionFiles,
   sessionWorkingLocations,
   canCreateWorktree = false,
+  canSwitchBranch = false,
 }: ComposerProperties) {
   const descriptionId = useId()
   const statusId = useId()
@@ -75,6 +77,7 @@ export function Composer({
   const [availableSkills, setAvailableSkills] = useState<readonly SessionSkill[]>([])
   const [skillsError, setSkillsError] = useState<string>()
   const [availableFiles, setAvailableFiles] = useState<readonly SessionFile[]>([])
+  const [workingLocationMutating, setWorkingLocationMutating] = useState(false)
   const configurationPending = pendingConfiguration.size > 0
 
   useEffect(() => {
@@ -212,8 +215,8 @@ export function Composer({
   const empty = submissionState.draft.trim().length === 0
   const sendLabel = isWorking ? 'Steer session' : 'Send message'
   const { awaiting, error, status } = submissionState
-  const configurationDisabled = isWorking || awaiting || compacting || isCompacting
-  const agentRunDisabled = awaiting || configurationPending || compacting || isCompacting
+  const configurationDisabled = isWorking || awaiting || compacting || isCompacting || workingLocationMutating
+  const agentRunDisabled = awaiting || configurationPending || compacting || isCompacting || workingLocationMutating
   const modelConfigurationRequired = configuration !== undefined && configuration.models.length === 0
   const configurationMessage = modelConfigurationRequired
     ? 'No Model is available. Install Pi CLI, sign in to a provider, then restart Railyard.'
@@ -400,8 +403,10 @@ export function Composer({
         <SessionWorkingLocationControls
           bridge={sessionWorkingLocations}
           canCreateWorktree={canCreateWorktree}
+          canSwitchBranch={canSwitchBranch}
           isWorking={isWorking}
           sessionId={session.id}
+          onMutationChange={setWorkingLocationMutating}
         />
       )}
       <p id={descriptionId} className="sr-only">

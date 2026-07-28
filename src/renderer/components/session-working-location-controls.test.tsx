@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { afterEach, test } from 'node:test'
-import { cleanup, render, waitFor } from '@testing-library/react'
+import { act, cleanup, render, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { sessionId } from '@/src/domain/session'
 import type { SessionWorkingLocationsBridge } from '@/src/session-working-locations'
@@ -29,6 +29,12 @@ test('creates a worktree only after the user requests isolation for the selected
   const bridge: SessionWorkingLocationsBridge = {
     async get() {
       return currentSnapshot
+    },
+    async getBranches() {
+      throw new Error('Not used.')
+    },
+    async switchBranch() {
+      throw new Error('Not used.')
     },
     async createWorktree(...values) {
       requests.push(values)
@@ -83,6 +89,162 @@ test('creates a worktree only after the user requests isolation for the selected
   assert.deepEqual(requests, [[currentSnapshot.sessionId, 'repository-a']])
 })
 
+test('loads cached branches before lazily refreshing remote branches', async () => {
+  const requests: boolean[] = []
+  let finishRefresh: () => void = () => {}
+  const refreshReady = new Promise<void>((resolve) => {
+    finishRefresh = resolve
+  })
+  const bridge: SessionWorkingLocationsBridge = {
+    async get() {
+      return currentSnapshot
+    },
+    async getBranches(sessionId, repositoryId, options) {
+      requests.push(options?.refresh ?? false)
+      if (options?.refresh) await refreshReady
+
+      return {
+        sessionId,
+        repositoryId,
+        branches: [
+          { ref: 'refs/heads/main', name: 'main', kind: 'local', current: true },
+          { ref: 'refs/heads/feature/local', name: 'feature/local', kind: 'local', current: false },
+          ...(options?.refresh
+            ? [
+                {
+                  ref: 'refs/remotes/origin/feature/remote',
+                  name: 'origin/feature/remote',
+                  kind: 'remote' as const,
+                  current: false,
+                },
+              ]
+            : []),
+        ],
+      }
+    },
+    async switchBranch() {
+      throw new Error('Not used.')
+    },
+    async createWorktree() {
+      throw new Error('Not used.')
+    },
+  }
+  const user = userEvent.setup({ document: browser.document as unknown as Document })
+  const view = render(
+    <SessionWorkingLocationControls
+      bridge={bridge}
+      canCreateWorktree={false}
+      canSwitchBranch
+      isWorking={false}
+      sessionId={currentSnapshot.sessionId}
+    />,
+    { container: browser.document.body as unknown as HTMLElement }
+  )
+
+  await user.click(await view.findByRole('button', { name: 'Current checkout · main' }))
+
+  assert.ok(await view.findByRole('button', { name: 'feature/local' }))
+  await waitFor(() => assert.deepEqual(requests, [false, true]))
+  assert.ok(view.getByText('Refreshing remote branches…'))
+
+  finishRefresh()
+
+  assert.ok(await view.findByRole('button', { name: 'origin/feature/remote' }))
+})
+
+test('confirms a shared current-checkout branch switch', async () => {
+  const switches: string[] = []
+  const bridge: SessionWorkingLocationsBridge = {
+    async get() {
+      return currentSnapshot
+    },
+    async getBranches(sessionId, repositoryId) {
+      return {
+        sessionId,
+        repositoryId,
+        branches: [
+          { ref: 'refs/heads/main', name: 'main', kind: 'local', current: true },
+          { ref: 'refs/heads/feature/local', name: 'feature/local', kind: 'local', current: false },
+        ],
+      }
+    },
+    async switchBranch(_sessionId, _repositoryId, branchRef) {
+      switches.push(branchRef)
+      return {
+        ...currentSnapshot,
+        repositories: [{ ...currentSnapshot.repositories[0]!, branch: 'feature/local' }],
+      }
+    },
+    async createWorktree() {
+      throw new Error('Not used.')
+    },
+  }
+  const user = userEvent.setup({ document: browser.document as unknown as Document })
+  const view = render(
+    <SessionWorkingLocationControls
+      bridge={bridge}
+      canCreateWorktree={false}
+      canSwitchBranch
+      isWorking={false}
+      sessionId={currentSnapshot.sessionId}
+    />,
+    { container: browser.document.body as unknown as HTMLElement }
+  )
+
+  await user.click(await view.findByRole('button', { name: 'Current checkout · main' }))
+  await user.click(await view.findByRole('button', { name: 'feature/local' }))
+
+  assert.ok(view.getByRole('heading', { name: 'Switch shared checkout?' }))
+  assert.deepEqual(switches, [])
+
+  await user.click(view.getByRole('button', { name: 'Switch to feature/local' }))
+
+  await waitFor(() => assert.deepEqual(switches, ['refs/heads/feature/local']))
+  assert.ok(await view.findByRole('button', { name: 'Current checkout · feature/local' }))
+})
+
+test('refreshes shared checkout context after another Session switches branches', async () => {
+  let snapshot = currentSnapshot
+  let publishChange: () => void = () => {}
+  const bridge: SessionWorkingLocationsBridge = {
+    async get() {
+      return snapshot
+    },
+    async getBranches() {
+      throw new Error('Not used.')
+    },
+    async switchBranch() {
+      throw new Error('Not used.')
+    },
+    async createWorktree() {
+      throw new Error('Not used.')
+    },
+    subscribe(listener) {
+      publishChange = listener
+      return () => {}
+    },
+  }
+  const view = render(
+    <SessionWorkingLocationControls
+      bridge={bridge}
+      canCreateWorktree={false}
+      isWorking={false}
+      sessionId={currentSnapshot.sessionId}
+    />,
+    { container: browser.document.body as unknown as HTMLElement }
+  )
+
+  assert.ok(await view.findByText('Current checkout · main'))
+
+  snapshot = {
+    ...currentSnapshot,
+    repositories: [{ ...currentSnapshot.repositories[0]!, branch: 'feature/shared' }],
+  }
+  act(() => publishChange())
+
+  assert.ok(await view.findByText('Current checkout · feature/shared'))
+})
+
 test('selects which Workstream Repository context to show', async () => {
   const bridge: SessionWorkingLocationsBridge = {
     async get() {
@@ -100,6 +262,12 @@ test('selects which Workstream Repository context to show', async () => {
           },
         ],
       }
+    },
+    async getBranches() {
+      throw new Error('Not used.')
+    },
+    async switchBranch() {
+      throw new Error('Not used.')
     },
     async createWorktree() {
       throw new Error('Not used.')

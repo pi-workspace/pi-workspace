@@ -6,7 +6,7 @@ type RunLeaseStoreOptions = Readonly<{
   openDatabase: () => SqliteDatabase
 }>
 
-type SessionLeasePurpose = 'agent-run' | 'context-compaction' | 'worktree-creation'
+type SessionLeasePurpose = 'agent-run' | 'branch-switch' | 'context-compaction' | 'worktree-creation'
 
 export function createRunLeaseStore({ openDatabase }: RunLeaseStoreOptions) {
   async function acquireSessionLease(sessionId: SessionId, purpose: SessionLeasePurpose): Promise<boolean> {
@@ -32,7 +32,7 @@ export function createRunLeaseStore({ openDatabase }: RunLeaseStoreOptions) {
         return false
       }
       if (
-        purpose === 'agent-run' &&
+        (purpose === 'agent-run' || purpose === 'branch-switch') &&
         database
           .prepare(
             `WITH effective_locations AS (
@@ -62,7 +62,7 @@ export function createRunLeaseStore({ openDatabase }: RunLeaseStoreOptions) {
                FROM session_run_leases held
                JOIN effective_locations held_location ON held_location.session_id = held.session_id
                JOIN effective_locations requested_location ON requested_location.session_id = ?
-              WHERE held.purpose = 'agent-run'
+              WHERE held.purpose IN ('agent-run', 'branch-switch')
                 AND held.session_id <> ?
                 AND held_location.working_path = requested_location.working_path
               LIMIT 1`
@@ -116,5 +116,7 @@ export function createRunLeaseStore({ openDatabase }: RunLeaseStoreOptions) {
     settleSessionCompactionLease: (sessionId: SessionId) => settleSessionLease(sessionId, 'context-compaction'),
     acquireSessionWorktreeLease: (sessionId: SessionId) => acquireSessionLease(sessionId, 'worktree-creation'),
     settleSessionWorktreeLease: (sessionId: SessionId) => settleSessionLease(sessionId, 'worktree-creation'),
+    acquireSessionBranchSwitchLease: (sessionId: SessionId) => acquireSessionLease(sessionId, 'branch-switch'),
+    settleSessionBranchSwitchLease: (sessionId: SessionId) => settleSessionLease(sessionId, 'branch-switch'),
   }
 }

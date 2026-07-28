@@ -274,6 +274,7 @@ export function SessionContainer({
               sessionFiles={sessionFiles}
               sessionWorkingLocations={sessionWorkingLocations}
               canCreateWorktree={session.repositoryAccess.kind === 'managed' && workstreamLifecycle === 'active'}
+              canSwitchBranch={session.repositoryAccess.kind === 'direct' && workstreamLifecycle === 'active'}
             />
           )}
         </div>

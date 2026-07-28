@@ -300,14 +300,14 @@ export async function initializeApplicationStateStore(storageDirectory: string, 
       database.exec('BEGIN IMMEDIATE;')
       const leases = database
         .prepare(
-          "SELECT lease_id FROM session_run_leases WHERE purpose IN ('agent-run', 'context-compaction', 'session-fork', 'worktree-creation')"
+          "SELECT lease_id FROM session_run_leases WHERE purpose IN ('agent-run', 'branch-switch', 'context-compaction', 'session-fork', 'worktree-creation')"
         )
         .all()
 
       if (leases.length > 0) {
         database
           .prepare(
-            "DELETE FROM session_run_leases WHERE purpose IN ('agent-run', 'context-compaction', 'session-fork', 'worktree-creation')"
+            "DELETE FROM session_run_leases WHERE purpose IN ('agent-run', 'branch-switch', 'context-compaction', 'session-fork', 'worktree-creation')"
           )
           .run()
         incrementRevision(database)
