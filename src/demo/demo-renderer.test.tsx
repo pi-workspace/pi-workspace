@@ -5,6 +5,34 @@ import { createDemoBridge } from '@/src/demo/demo-bridge'
 import { getDemoScenario, getDemoScenarioPresentation } from '@/src/demo/demo-scenarios'
 import { sessionId } from '@/src/domain/session'
 
+test('the demo bridge previews a selected application update state', async () => {
+  const snapshot = await createDemoBridge(undefined, 'downloading').applicationUpdate.getSnapshot()
+
+  assert.deepEqual(snapshot, {
+    currentVersion: '2.0.0-beta.1',
+    updateMethod: 'self-install',
+    status: 'downloading',
+    availableVersion: '2.0.0-beta.2',
+    releaseUrl: 'https://github.com/pi-workspace/railyard/releases/tag/v2.0.0-beta.2',
+    progress: {
+      percent: 42,
+      transferred: 44_040_192,
+      total: 104_857_600,
+      bytesPerSecond: 8_388_608,
+    },
+  })
+})
+
+test('the demo bridge keeps unknown application update previews unavailable', async () => {
+  const snapshot = await createDemoBridge(undefined, 'unknown').applicationUpdate.getSnapshot()
+
+  assert.deepEqual(snapshot, {
+    currentVersion: '2.0.0-beta.1',
+    updateMethod: 'unavailable',
+    status: 'unavailable',
+  })
+})
+
 test('the demo bridge dismisses an available action card', async () => {
   const bridge = createDemoBridge('workstream')
   const implementationSessionId = sessionId('offline-implementation')
