@@ -677,7 +677,7 @@ function ExternalLinkConfirmation({
   return (
     <div
       aria-labelledby="external-link-confirmation-title"
-      className="absolute right-4 bottom-3 z-10 w-[min(24rem,calc(100%-2rem))] rounded-xl border border-content-border bg-content-background p-3 shadow-lg"
+      className="absolute right-4 bottom-3 z-20 w-[min(24rem,calc(100%-2rem))] rounded-xl border border-content-border bg-content-background p-3 shadow-lg"
       role="dialog"
     >
       <p id="external-link-confirmation-title" className="text-sm/6 font-medium text-content-foreground">
