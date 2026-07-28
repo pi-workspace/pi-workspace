@@ -20,6 +20,25 @@ export function isSemanticVersion(version: string): boolean {
 
 export const bundledReleaseNotes: readonly ReleaseNote[] = [
   {
+    version: '2.1.0-beta.1',
+    releaseDate: '2026-07-28',
+    summary:
+      'This beta makes Railyard easier to keep current and gives Quick Sessions safer control over Repository branches.',
+    changes: {
+      new: [
+        'Install this updater-enabled beta manually from GitHub Releases once; after that, check for newer releases in Settings, download signed and notarized macOS updates, and restart only when you choose, while Windows and Debian show verified manual guidance.',
+        'Switch a Quick Session between local branches or create a local tracking branch from a remote, with clean-tree, idle-Session, and shared-checkout safeguards.',
+      ],
+      improved: [
+        'Quick Session Composer now keeps Model, Effort, Repository, branch, path, and checkout context available.',
+      ],
+      fixed: [
+        'Composer controls now align correctly, and selecting a file reference no longer leaves an extra @ in the draft.',
+        'External-link confirmation stays above the floating Composer so its actions remain visible.',
+      ],
+    },
+  },
+  {
     version: '2.0.0-beta.1',
     releaseDate: '2026-07-27',
     summary:

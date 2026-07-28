@@ -8,5 +8,5 @@ test('formats the latest bundled Release Note for a GitHub Release', () => {
 
   assert.match(markdown, new RegExp(`^${bundledReleaseNotes[0]!.summary}`, 'm'))
   assert.match(markdown, /^## Improved$/m)
-  assert.match(markdown, /^- Sessions load faster as their histories grow,/m)
+  assert.match(markdown, /^- Quick Session Composer now keeps Model, Effort, Repository,/m)
 })
