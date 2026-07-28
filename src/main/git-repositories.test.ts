@@ -7,10 +7,13 @@ import { promisify } from 'node:util'
 import test from 'node:test'
 import {
   createWorktree,
+  fetchGitBranches,
   inspectGitBranch,
   inspectGitRepository,
+  listGitBranches,
   proposeWorktree,
   repositoryRootsOverlap,
+  switchGitBranch,
 } from './git-repositories'
 
 const exec = promisify(execFile)
@@ -36,6 +39,127 @@ test('reads the current branch from a Repository without requiring a commit', as
   await exec('git', ['-C', repositoryPath, 'branch', '-m', 'feature/current'])
 
   assert.equal(await inspectGitBranch(repositoryPath), 'feature/current')
+})
+
+test('lists local and known remote branches without remote symbolic refs', async () => {
+  const repositoryPath = await createRepository()
+  await writeFile(join(repositoryPath, 'tracked.txt'), 'committed')
+  await exec('git', ['-C', repositoryPath, 'add', 'tracked.txt'])
+  await exec('git', [
+    '-C',
+    repositoryPath,
+    '-c',
+    'user.name=Pi Workspace tests',
+    '-c',
+    'user.email=tests@pi-workspace.invalid',
+    'commit',
+    '-m',
+    'Initial commit',
+  ])
+  await exec('git', ['-C', repositoryPath, 'branch', 'feature/local'])
+  const currentBranch = await inspectGitBranch(repositoryPath)
+  await exec('git', ['-C', repositoryPath, 'update-ref', 'refs/remotes/origin/feature/remote', 'HEAD'])
+  await exec('git', ['-C', repositoryPath, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/main'])
+
+  const branches = await listGitBranches(repositoryPath)
+
+  assert.deepEqual(
+    branches.map(({ name, kind, current }) => ({ name, kind, current })),
+    [
+      { name: 'feature/local', kind: 'local', current: false },
+      { name: currentBranch, kind: 'local', current: true },
+      { name: 'origin/feature/remote', kind: 'remote', current: false },
+    ]
+  )
+})
+
+test('fetches remote branches only when requested', async () => {
+  const repositoryPath = await createRepository()
+  await writeFile(join(repositoryPath, 'tracked.txt'), 'committed')
+  await exec('git', ['-C', repositoryPath, 'add', 'tracked.txt'])
+  await exec('git', [
+    '-C',
+    repositoryPath,
+    '-c',
+    'user.name=Pi Workspace tests',
+    '-c',
+    'user.email=tests@pi-workspace.invalid',
+    'commit',
+    '-m',
+    'Initial commit',
+  ])
+  const remotePath = join(parse(repositoryPath).dir, 'remote.git')
+  await exec('git', ['init', '--bare', remotePath])
+  await exec('git', ['-C', repositoryPath, 'remote', 'add', 'origin', remotePath])
+  await exec('git', ['-C', repositoryPath, 'push', 'origin', 'HEAD:refs/heads/feature/remote'])
+  await exec('git', ['-C', repositoryPath, 'update-ref', '-d', 'refs/remotes/origin/feature/remote'])
+
+  assert.equal(
+    (await listGitBranches(repositoryPath)).some(({ name }) => name === 'origin/feature/remote'),
+    false
+  )
+
+  const branches = await fetchGitBranches(repositoryPath)
+
+  assert.equal(
+    branches.some(({ name }) => name === 'origin/feature/remote'),
+    true
+  )
+})
+
+test('creates a local tracking branch when switching to a remote branch', async () => {
+  const repositoryPath = await createRepository()
+  await writeFile(join(repositoryPath, 'tracked.txt'), 'committed')
+  await exec('git', ['-C', repositoryPath, 'add', 'tracked.txt'])
+  await exec('git', [
+    '-C',
+    repositoryPath,
+    '-c',
+    'user.name=Pi Workspace tests',
+    '-c',
+    'user.email=tests@pi-workspace.invalid',
+    'commit',
+    '-m',
+    'Initial commit',
+  ])
+  const remotePath = join(parse(repositoryPath).dir, 'remote.git')
+  await exec('git', ['init', '--bare', remotePath])
+  await exec('git', ['-C', repositoryPath, 'remote', 'add', 'origin', remotePath])
+  await exec('git', ['-C', repositoryPath, 'push', 'origin', 'HEAD:refs/heads/feature/remote'])
+  const remoteBranch = (await listGitBranches(repositoryPath)).find(({ name }) => name === 'origin/feature/remote')
+  assert.ok(remoteBranch)
+
+  assert.equal(await switchGitBranch(repositoryPath, remoteBranch), 'feature/remote')
+  assert.equal((await exec('git', ['-C', repositoryPath, 'branch', '--show-current'])).stdout.trim(), 'feature/remote')
+  assert.equal(
+    (await exec('git', ['-C', repositoryPath, 'rev-parse', '--abbrev-ref', '@{upstream}'])).stdout.trim(),
+    'origin/feature/remote'
+  )
+})
+
+test('refuses to switch branches when the working tree has changes', async () => {
+  const repositoryPath = await createRepository()
+  await writeFile(join(repositoryPath, 'tracked.txt'), 'committed')
+  await exec('git', ['-C', repositoryPath, 'add', 'tracked.txt'])
+  await exec('git', [
+    '-C',
+    repositoryPath,
+    '-c',
+    'user.name=Pi Workspace tests',
+    '-c',
+    'user.email=tests@pi-workspace.invalid',
+    'commit',
+    '-m',
+    'Initial commit',
+  ])
+  await exec('git', ['-C', repositoryPath, 'branch', 'feature/local'])
+  const currentBranch = await inspectGitBranch(repositoryPath)
+  await writeFile(join(repositoryPath, 'tracked.txt'), 'dirty')
+  const localBranch = (await listGitBranches(repositoryPath)).find(({ name }) => name === 'feature/local')
+  assert.ok(localBranch)
+
+  await assert.rejects(() => switchGitBranch(repositoryPath, localBranch), /working tree has changes/i)
+  assert.equal(await inspectGitBranch(repositoryPath), currentBranch)
 })
 
 test('resolves a selected Repository subdirectory to its canonical Git root and common directory', async () => {

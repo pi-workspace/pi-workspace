@@ -378,6 +378,129 @@ test('reports current checkout, path, and branch context for a Workstream Sessio
   })
 })
 
+test('reports Repository and branch context for a current-checkout Quick Session', async () => {
+  const { authority, workspace } = await createFixture()
+  const repository = workspace.repositories[0]!
+  await exec('git', ['-C', repository.directoryPath, 'branch', '-m', 'feature/quick'])
+  const created = await authority.createQuickSession(workspace.id, { repositoryId: repository.id })
+
+  assert.deepEqual(await authority.getSessionWorkingLocations(created.sessionId), {
+    sessionId: created.sessionId,
+    repositories: [
+      {
+        repositoryId: repository.id,
+        repositoryName: repository.name,
+        kind: 'current-checkout',
+        availability: 'available',
+        branch: 'feature/quick',
+        workingPath: repository.directoryPath,
+      },
+    ],
+  })
+})
+
+test('reports Repository and worktree context for a dedicated-worktree Quick Session', async () => {
+  const { authority, workspace } = await createFixture()
+  const repository = workspace.repositories[0]!
+  await commitRepositoryFile(repository.directoryPath, 'tracked.txt', 'committed', 'Initial commit')
+  const preview = await authority.previewWorktreeLocations(workspace.id, repository.id)
+  const created = await authority.createQuickSession(workspace.id, {
+    repositoryId: repository.id,
+    workingLocation: 'worktrees',
+    workstreamId: preview.workstreamId,
+  })
+
+  const context = await authority.getSessionWorkingLocations(created.sessionId)
+
+  assert.equal(context.repositories[0]?.repositoryName, repository.name)
+  assert.equal(context.repositories[0]?.kind, 'worktree')
+  assert.match(
+    context.repositories[0]?.availability === 'available' ? context.repositories[0].branch : '',
+    /^railyard\//
+  )
+})
+
+test('lists and switches local branches for a current-checkout Quick Session', async () => {
+  const { authority, workspace } = await createFixture()
+  const repository = workspace.repositories[0]!
+  await commitRepositoryFile(repository.directoryPath, 'tracked.txt', 'committed', 'Initial commit')
+  await exec('git', ['-C', repository.directoryPath, 'branch', 'feature/quick-switch'])
+  const created = await authority.createQuickSession(workspace.id, { repositoryId: repository.id })
+
+  const branches = await authority.getSessionBranches(created.sessionId, repository.id, false)
+  const target = branches.branches.find(({ name }) => name === 'feature/quick-switch')
+  assert.ok(target)
+
+  const locations = await authority.switchQuickSessionBranch(created.sessionId, repository.id, target.ref)
+
+  assert.equal(locations.repositories[0]?.availability, 'available')
+  assert.equal(
+    locations.repositories[0]?.availability === 'available' ? locations.repositories[0].branch : undefined,
+    'feature/quick-switch'
+  )
+})
+
+test('keeps cached branches available when a lazy remote refresh fails', async () => {
+  const { authority, storageDirectory, workspace } = await createFixture()
+  const repository = workspace.repositories[0]!
+  await commitRepositoryFile(repository.directoryPath, 'tracked.txt', 'committed', 'Initial commit')
+  await exec('git', ['-C', repository.directoryPath, 'remote', 'add', 'origin', join(storageDirectory, 'missing.git')])
+  const created = await authority.createQuickSession(workspace.id, { repositoryId: repository.id })
+
+  const branches = await authority.getSessionBranches(created.sessionId, repository.id, true)
+
+  assert.ok(branches.branches.some(({ current }) => current))
+  assert.equal(
+    branches.refreshError,
+    'Remote branches could not be refreshed. Check network access and Git credentials, then retry.'
+  )
+})
+
+test('persists a dedicated-worktree Quick Session branch switch', async () => {
+  const { authority, storageDirectory, workspace } = await createFixture()
+  const repository = workspace.repositories[0]!
+  await commitRepositoryFile(repository.directoryPath, 'tracked.txt', 'committed', 'Initial commit')
+  await exec('git', ['-C', repository.directoryPath, 'branch', 'feature/worktree-switch'])
+  const preview = await authority.previewWorktreeLocations(workspace.id, repository.id)
+  const created = await authority.createQuickSession(workspace.id, {
+    repositoryId: repository.id,
+    workingLocation: 'worktrees',
+    workstreamId: preview.workstreamId,
+  })
+  const branches = await authority.getSessionBranches(created.sessionId, repository.id, false)
+  const target = branches.branches.find(({ name }) => name === 'feature/worktree-switch')
+  assert.ok(target)
+
+  await authority.switchQuickSessionBranch(created.sessionId, repository.id, target.ref)
+
+  const restarted = await initializeApplicationAuthority(storageDirectory, { sqlite: bunSqlite })
+  const locations = await restarted.getSessionWorkingLocations(created.sessionId)
+  assert.equal(locations.repositories[0]?.kind, 'worktree')
+  assert.equal(
+    locations.repositories[0]?.availability === 'available' ? locations.repositories[0].branch : undefined,
+    'feature/worktree-switch'
+  )
+})
+
+test('blocks a shared-checkout branch switch while another Session is running', async () => {
+  const { authority, workspace } = await createFixture()
+  const repository = workspace.repositories[0]!
+  await commitRepositoryFile(repository.directoryPath, 'tracked.txt', 'committed', 'Initial commit')
+  await exec('git', ['-C', repository.directoryPath, 'branch', 'feature/blocked-switch'])
+  const running = await authority.createQuickSession(workspace.id, { repositoryId: repository.id })
+  const switching = await authority.createQuickSession(workspace.id, { repositoryId: repository.id })
+  const target = (await authority.getSessionBranches(switching.sessionId, repository.id, false)).branches.find(
+    ({ name }) => name === 'feature/blocked-switch'
+  )
+  assert.ok(target)
+  assert.equal(await authority.acquireSessionRunLease(running.sessionId), true)
+
+  await assert.rejects(
+    authority.switchQuickSessionBranch(switching.sessionId, repository.id, target.ref),
+    /every Session using the checkout to become idle/
+  )
+})
+
 test('prepares the current checkout for a Workstream Session without creating a worktree', async () => {
   const { authority, storageDirectory, workspace } = await createFixture()
   const repository = workspace.repositories[0]!

@@ -16,7 +16,11 @@ import type { SessionSkillsBridge } from '@/src/session-skills'
 import { sessionSkillsIpcChannels } from '@/src/session-skills-ipc'
 import type { SessionChangesBridge, SessionChangesSnapshot, SessionFileDiff } from '@/src/session-changes'
 import { sessionChangesIpcChannels } from '@/src/session-changes-ipc'
-import type { SessionWorkingLocationsBridge, SessionWorkingLocationsSnapshot } from '@/src/session-working-locations'
+import type {
+  SessionRepositoryBranchesSnapshot,
+  SessionWorkingLocationsBridge,
+  SessionWorkingLocationsSnapshot,
+} from '@/src/session-working-locations'
 import { sessionWorkingLocationsIpcChannels } from '@/src/session-working-locations-ipc'
 import type { SessionFilesBridge } from '@/src/session-files'
 import { sessionFilesIpcChannels } from '@/src/session-files-ipc'
@@ -273,11 +277,31 @@ const sessionWorkingLocationsBridge: SessionWorkingLocationsBridge = {
       sessionId,
     }) as Promise<SessionWorkingLocationsSnapshot>
   },
+  getBranches(sessionId, repositoryId, options) {
+    return ipcRenderer.invoke(sessionWorkingLocationsIpcChannels.getBranches, {
+      sessionId,
+      repositoryId,
+      refresh: options?.refresh,
+    }) as Promise<SessionRepositoryBranchesSnapshot>
+  },
+  switchBranch(sessionId, repositoryId, branchRef) {
+    return ipcRenderer.invoke(sessionWorkingLocationsIpcChannels.switchBranch, {
+      sessionId,
+      repositoryId,
+      branchRef,
+    }) as Promise<SessionWorkingLocationsSnapshot>
+  },
   createWorktree(sessionId, repositoryId) {
     return ipcRenderer.invoke(sessionWorkingLocationsIpcChannels.createWorktree, {
       sessionId,
       repositoryId,
     }) as Promise<SessionWorkingLocationsSnapshot>
+  },
+  subscribe(listener) {
+    const handleChange = () => listener()
+    ipcRenderer.on(sessionWorkingLocationsIpcChannels.changed, handleChange)
+
+    return () => ipcRenderer.removeListener(sessionWorkingLocationsIpcChannels.changed, handleChange)
   },
 }
 

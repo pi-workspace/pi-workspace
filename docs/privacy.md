@@ -93,6 +93,11 @@ The model provider receives this data under the provider account and the provide
 and regional-processing terms. Railyard cannot delete provider-side copies. Review those terms and do not submit a
 secret unless the chosen provider and account are approved to receive it.
 
+Opening a Quick Session’s branch picker loads local and already-known remote refs immediately, then lazily asks Git to
+fetch each configured remote once per Repository during the application session. A manual refresh fetches them again. These fetches contact the Git
+remote using the user’s existing Git and SSH configuration; they do not use model-provider credentials. Failed
+credential or network checks remain non-interactive and leave cached branch choices available.
+
 Railyard does not automatically publish Sessions and does not expose Pi's `/share` command. Sharing a Session with
 a separate tool is an explicit user action. Installed Pi extensions and packages can make their own network requests,
 so review their source and configuration before use.
@@ -112,7 +117,8 @@ package, and do not ask the Agent to print credential files or environment varia
 A Workspace or Workstream is an application routing boundary, not an operating-system sandbox:
 
 - A **Quick Session** works directly in its selected Repository's current checkout or dedicated worktree with Pi's
-  normal tools.
+  normal tools. Its branch control can switch a clean, idle working location to a local branch or a local tracking
+  branch created from a selected remote ref.
 - A **Workstream Session** receives the Workstream goal plus the selected Repositories' names, working locations,
   roles, relationships, validation commands, and related metadata in its system prompt. It can inspect and modify
   those Repository checkouts with Pi's normal tools.

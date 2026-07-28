@@ -128,6 +128,7 @@ export function createDemoBridge(scenarioName?: string, applicationUpdateStateNa
   const settingsListeners = new Set<Parameters<PiWorkspaceBridge['settings']['subscribe']>[0]>()
   const codeReviewDrafts = new Map<string, SessionCodeReviewDraft>()
   const demoSessionWorktrees = new Set<string>()
+  const demoSessionBranches = new Map<string, string>()
   const demoFileStaging = new Map<string, 'staged' | 'unstaged' | 'partial'>([
     ['src/notes/note-store.ts', 'partial'],
     ['src/notes/sync-queue.ts', 'unstaged'],
@@ -155,7 +156,12 @@ export function createDemoBridge(scenarioName?: string, applicationUpdateStateNa
       candidate.sessions.some((session) => session.id === requestedSessionId)
     )
     const session = workstream?.sessions.find((candidate) => candidate.id === requestedSessionId)
-    if (!workstream || !session || session.repositoryAccess.kind === 'direct') return []
+    if (!workstream || !session) return []
+    if (session.repositoryAccess.kind === 'direct') {
+      const repositoryId = session.repositoryAccess.repositoryId
+
+      return demoRepositories.filter((repository) => repository.id === repositoryId)
+    }
 
     const selectedRepositoryIds = workstream.repositoryWorkingLocations.map((location) => location.repositoryId)
 
@@ -417,7 +423,9 @@ export function createDemoBridge(scenarioName?: string, applicationUpdateStateNa
               repositoryName: repository.name,
               kind: usesWorktree ? ('worktree' as const) : ('current-checkout' as const),
               availability: 'available' as const,
-              branch: usesWorktree ? `railyard/demo/${repository.id}` : 'main',
+              branch:
+                demoSessionBranches.get(`${sessionId}:${repository.id}`) ??
+                (usesWorktree ? `railyard/demo/${repository.id}` : 'main'),
               workingPath: usesWorktree
                 ? `/Users/maya/Projects/.worktrees/${sessionId}/${repository.id}`
                 : repository.directoryPath,
@@ -425,9 +433,47 @@ export function createDemoBridge(scenarioName?: string, applicationUpdateStateNa
           }),
         }
       },
+      async getBranches(sessionId, repositoryId) {
+        const current = demoSessionBranches.get(`${sessionId}:${repositoryId}`) ?? 'main'
+
+        return {
+          sessionId,
+          repositoryId,
+          branches: [
+            { ref: 'refs/heads/main', name: 'main', kind: 'local' as const, current: current === 'main' },
+            {
+              ref: 'refs/heads/feature/order-events',
+              name: 'feature/order-events',
+              kind: 'local' as const,
+              current: current === 'feature/order-events',
+            },
+            {
+              ref: 'refs/remotes/origin/feature/order-search',
+              name: 'origin/feature/order-search',
+              kind: 'remote' as const,
+              current: false,
+            },
+          ],
+        }
+      },
+      async switchBranch(sessionId, repositoryId, branchRef) {
+        const branch = (await this.getBranches(sessionId, repositoryId)).branches.find(
+          (candidate) => candidate.ref === branchRef
+        )
+        if (!branch) throw new Error('That branch is no longer available.')
+
+        demoSessionBranches.set(
+          `${sessionId}:${repositoryId}`,
+          branch.kind === 'remote' ? branch.name.slice(branch.name.indexOf('/') + 1) : branch.name
+        )
+        return this.get(sessionId)
+      },
       async createWorktree(sessionId, repositoryId) {
         demoSessionWorktrees.add(`${sessionId}:${repositoryId}`)
         return this.get(sessionId)
+      },
+      subscribe() {
+        return () => {}
       },
     },
     sessionConfiguration: {

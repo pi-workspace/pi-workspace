@@ -17,14 +17,20 @@ import type {
 } from '@/src/domain/workstream'
 import {
   createWorktree as createGitWorktree,
+  fetchGitBranches,
   inspectGitBranch,
   inspectGitRepository,
+  listGitBranches,
   restoreWorktree as restoreGitWorktree,
+  switchGitBranch,
   type InspectedGitRepository,
   type WorktreeProposal,
 } from '@/src/main/git-repositories'
 import { createPiSessionFileStore, type PiSessionFileStore } from '@/src/main/pi-session-files'
-import type { SessionWorkingLocationsSnapshot } from '@/src/session-working-locations'
+import type {
+  SessionRepositoryBranchesSnapshot,
+  SessionWorkingLocationsSnapshot,
+} from '@/src/session-working-locations'
 import type { SqliteModule } from './sqlite'
 import { createRunLeaseStore } from './run-lease-store'
 import { createSessionFileReconciliation } from './session-file-reconciliation'
@@ -88,6 +94,16 @@ export type ApplicationAuthority = Readonly<{
   renameWorkstreamSession(sessionId: SessionId, title: string): Promise<WorkstreamsSnapshot>
   setSessionDescription(sessionId: SessionId, description: string): Promise<WorkstreamsSnapshot>
   resolveOwnedSession(sessionId: SessionId): Promise<OwnedSessionResolution | undefined>
+  getSessionBranches(
+    sessionId: SessionId,
+    repositoryId: string,
+    refresh: boolean
+  ): Promise<SessionRepositoryBranchesSnapshot>
+  switchQuickSessionBranch(
+    sessionId: SessionId,
+    repositoryId: string,
+    branchRef: string
+  ): Promise<SessionWorkingLocationsSnapshot>
   getSessionWorkingLocations(sessionId: SessionId): Promise<SessionWorkingLocationsSnapshot>
   resolveSessionChangeRepositories(sessionId: SessionId): Promise<readonly SessionChangeRepositoryLocation[]>
   resolveWorkstreamWorkingLocation(workstreamId: string, repositoryId: string): Promise<string>
@@ -151,6 +167,8 @@ export async function initializeApplicationAuthority(
     settleSessionCompactionLease,
     acquireSessionWorktreeLease,
     settleSessionWorktreeLease,
+    acquireSessionBranchSwitchLease,
+    settleSessionBranchSwitchLease,
   } = runLeaseStore
   const {
     getWorkstreamKnowledge,
@@ -163,6 +181,9 @@ export async function initializeApplicationAuthority(
     openDatabase,
     inspectRepository,
     inspectBranch,
+    listBranches: listGitBranches,
+    fetchBranches: fetchGitBranches,
+    switchBranch: switchGitBranch,
     createWorktree,
     restoreWorktree: restoreGitWorktree,
     sessionFiles,
@@ -185,6 +206,8 @@ export async function initializeApplicationAuthority(
     renameWorkstreamSession,
     setSessionDescription,
     resolveOwnedSession,
+    getSessionBranches,
+    switchQuickSessionBranch: switchPersistedQuickSessionBranch,
     getSessionWorkingLocations,
     resolveSessionChangeRepositories,
     resolveWorkstreamWorkingLocation,
@@ -200,6 +223,18 @@ export async function initializeApplicationAuthority(
       return await createPersistedSessionWorktree(sessionId, repositoryId)
     } finally {
       await settleSessionWorktreeLease(sessionId)
+    }
+  }
+
+  const switchQuickSessionBranch = async (sessionId: SessionId, repositoryId: string, branchRef: string) => {
+    if (!(await acquireSessionBranchSwitchLease(sessionId))) {
+      throw new TypeError('Wait for every Session using the checkout to become idle before switching branches.')
+    }
+
+    try {
+      return await switchPersistedQuickSessionBranch(sessionId, repositoryId, branchRef)
+    } finally {
+      await settleSessionBranchSwitchLease(sessionId)
     }
   }
 
@@ -228,6 +263,8 @@ export async function initializeApplicationAuthority(
     renameWorkstreamSession,
     setSessionDescription,
     resolveOwnedSession,
+    getSessionBranches,
+    switchQuickSessionBranch,
     getSessionWorkingLocations,
     resolveSessionChangeRepositories,
     resolveWorkstreamWorkingLocation,

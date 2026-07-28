@@ -55,6 +55,16 @@ test('the demo bridge projects only a Workstream’s selected Repository locatio
   )
 })
 
+test('the demo bridge projects a Quick Session’s direct Repository location', async () => {
+  const bridge = createDemoBridge('quick-sessions')
+  const locations = await bridge.sessionWorkingLocations.get(sessionId('atlas-api-checkout'))
+
+  assert.deepEqual(
+    locations.repositories.map((repository) => repository.repositoryId),
+    ['Atlas API']
+  )
+})
+
 test('the multi-Session demo includes empty, half-full, and full context windows', () => {
   const scenario = getDemoScenario('multi-session')
   const usages = scenario.workstreams.workstreams

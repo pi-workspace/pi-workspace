@@ -10,6 +10,7 @@ import type { OwnedSession } from '@/src/domain/workstream'
 import type { SessionConfigurationBridge, SessionConfigurationSnapshot } from '@/src/session-configuration'
 import type { SessionSkillsBridge } from '@/src/session-skills'
 import type { SessionFilesBridge } from '@/src/session-files'
+import type { SessionWorkingLocationsBridge } from '@/src/session-working-locations'
 import { Composer } from './composer'
 import { SessionArea } from './session-area'
 
@@ -906,6 +907,79 @@ test('prevents Session actions while a Model change is pending', async () => {
   await waitFor(() =>
     assert.equal((view.getByRole('button', { name: 'Send message' }) as HTMLButtonElement).disabled, false)
   )
+})
+
+test('prevents Session actions while a branch switch is pending', async () => {
+  let finishSwitch: (snapshot: Awaited<ReturnType<SessionWorkingLocationsBridge['get']>>) => void = () => {}
+  const currentLocations = {
+    sessionId: session.id,
+    repositories: [
+      {
+        repositoryId: 'repository-a',
+        repositoryName: 'Repository A',
+        kind: 'current-checkout' as const,
+        availability: 'available' as const,
+        branch: 'main',
+        workingPath: '/workspace/repository-a',
+      },
+    ],
+  }
+  const bridge: SessionWorkingLocationsBridge = {
+    async get() {
+      return currentLocations
+    },
+    async getBranches(sessionId, repositoryId) {
+      return {
+        sessionId,
+        repositoryId,
+        branches: [
+          { ref: 'refs/heads/main', name: 'main', kind: 'local', current: true },
+          { ref: 'refs/heads/feature/local', name: 'feature/local', kind: 'local', current: false },
+        ],
+      }
+    },
+    switchBranch() {
+      return new Promise((resolve) => {
+        finishSwitch = resolve
+      })
+    },
+    async createWorktree() {
+      throw new Error('Not used.')
+    },
+  }
+  const user = createUser()
+  const view = renderInBrowser(
+    <Composer
+      session={session}
+      draft="Wait for the branch"
+      isWorking={false}
+      onActivate={() => {}}
+      onDraftChange={() => {}}
+      submitMessage={async () => ({ status: 'accepted', delivery: 'prompt' })}
+      sessionWorkingLocations={bridge}
+      canSwitchBranch
+    />
+  )
+
+  await user.click(await view.findByRole('button', { name: 'Current checkout · main' }))
+  await user.click(await view.findByRole('button', { name: 'feature/local' }))
+  await user.click(view.getByRole('button', { name: 'Switch to feature/local' }))
+
+  await waitFor(() =>
+    assert.equal(
+      view.container.querySelector('[aria-label="Message for First Session"]')?.getAttribute('contenteditable'),
+      'false'
+    )
+  )
+  assert.equal(
+    (view.container.querySelector('[aria-label="Send message"]') as HTMLButtonElement | null)?.disabled,
+    true
+  )
+
+  await act(async () => {
+    finishSwitch(currentLocations)
+    await Promise.resolve()
+  })
 })
 
 test('shows the current context window usage in the Composer action cluster', () => {
